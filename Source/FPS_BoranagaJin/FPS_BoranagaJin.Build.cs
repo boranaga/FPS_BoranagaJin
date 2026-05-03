@@ -18,8 +18,13 @@ public class FPS_BoranagaJin : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
-		});
+			"Slate",
+            "EngineCameras", //Added for CameraShake
+			"Niagara",        //Added for the use of ParticleSystem
+            "AnimGraphRuntime", //Added for Animation
+            "MotionWarping", // Added for Enemy motion warping
+            "PhysicsCore" //Added by Boranaga for Animation
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
