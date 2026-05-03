@@ -10,6 +10,7 @@
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"Engine",
+				"CoreUObject",
 				"AIModule",
 				"UMG"
 			]
@@ -22,6 +23,10 @@
 			"TargetAllowList": [
 				"Editor"
 			]
+		},
+		{
+			"Name": "MotionWarping",
+			"Enabled": true
 		},
 		{
 			"Name": "StateTree",

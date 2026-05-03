@@ -19,6 +19,7 @@ public class FPS_BoranagaJin : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
+			"SlateCore",
             "EngineCameras", //Added for CameraShake
 			"Niagara",        //Added for the use of ParticleSystem
             "AnimGraphRuntime", //Added for Animation
