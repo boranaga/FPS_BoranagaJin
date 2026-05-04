@@ -194,6 +194,7 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ACharacterPlayer::HandleMoveInput);
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ACharacterPlayer::HandleMoveInput);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ACharacterPlayer::HandleLookInput);
+		//EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Started, this, &ACharacterPlayer::LookInputTest);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartJumpInput);
 		EnhancedInputComponent->BindAction(ShiftAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartShiftInput);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartCrouchInput);
@@ -217,8 +218,12 @@ void ACharacterPlayer::PossessedBy(AController* NewController)
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+
+			UE_LOG(LogTemp, Error, TEXT("Player input mapping 222"));
 		}
 	}
+
+	UE_LOG(LogTemp, Error, TEXT("Player input mapping!"));
 }
 
 void ACharacterPlayer::OnPrimaryJump()
@@ -431,7 +436,7 @@ void ACharacterPlayer::HandleMoveInput(const FInputActionValue& Value)
 
 void ACharacterPlayer::HandleLookInput(const FInputActionValue& Value)
 {
-	UE_LOG(LogTemp, Error, TEXT("Player Mouse Input!"));
+	//UE_LOG(LogTemp, Error, TEXT("Player Mouse Input!"));
 
 	if (MovementComponent->GetMovementState() == EMovementState::EMS_Downed ||
 		MovementComponent->GetMovementState() == EMovementState::EMS_Dead)
@@ -451,6 +456,11 @@ void ACharacterPlayer::HandleLookInput(const FInputActionValue& Value)
 		AddControllerYawInput(InputVector.X * 1.0f);
 		AddControllerPitchInput(InputVector.Y * 1.0f);
 	}
+}
+
+void ACharacterPlayer::LookInputTest(const FInputActionValue& Value)
+{
+	UE_LOG(LogTemp, Error, TEXT("LookInputTest(const FInputActionValue& Value)"));
 }
 
 

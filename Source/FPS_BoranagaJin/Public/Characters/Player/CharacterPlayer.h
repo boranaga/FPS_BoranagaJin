@@ -187,6 +187,7 @@ protected:
 
 	void HandleMoveInput(const FInputActionValue& Value);
 	void HandleLookInput(const FInputActionValue& Value);
+	void LookInputTest(const FInputActionValue& Value);
 	void StartJumpInput();
 	void StartShiftInput();
 	void StartCrouchInput();
