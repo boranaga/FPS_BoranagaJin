@@ -431,6 +431,8 @@ void ACharacterPlayer::HandleMoveInput(const FInputActionValue& Value)
 
 void ACharacterPlayer::HandleLookInput(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Error, TEXT("Player Mouse Input!"));
+
 	if (MovementComponent->GetMovementState() == EMovementState::EMS_Downed ||
 		MovementComponent->GetMovementState() == EMovementState::EMS_Dead)
 	{
