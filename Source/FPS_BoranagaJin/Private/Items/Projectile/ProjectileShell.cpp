@@ -12,7 +12,7 @@ AProjectileShell::AProjectileShell()
 
 	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleComponent"));
 	RootComponent = CapsuleComponent;
-	CapsuleComponent->SetCollisionObjectType(ECC_GameTraceChannel9);
+	CapsuleComponent->SetCollisionObjectType(ECC_GameTraceChannel4);
 	//CapsuleComponent->SetCollisionObjectType(ECC_WorldDynamic);
 	CapsuleComponent->SetCollisionProfileName(FName("ProjectileShell"));
 	CapsuleComponent->SetSimulatePhysics(true);

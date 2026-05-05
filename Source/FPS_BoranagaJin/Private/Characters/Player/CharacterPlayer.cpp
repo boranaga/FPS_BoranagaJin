@@ -58,7 +58,7 @@ ACharacterPlayer::ACharacterPlayer()
 
 	// <WeaponSystem>
 	WeaponSystem = CreateDefaultSubobject<UWeaponSystemComponent>(TEXT("WeaponSystem"));
-	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel7, ECR_Ignore);
+	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel8, ECR_Ignore);
 	ArmMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	// FPSceneCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent")); //<JaeHyeong>

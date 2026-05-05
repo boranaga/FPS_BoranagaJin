@@ -38,12 +38,12 @@ AProjectile::AProjectile()
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	//CollisionComp->InitSphereRadius(5.0f);
 	CollisionComp->SetCollisionProfileName("PlayerProjectile");
-	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel7);
+	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel3);
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); //Projectile
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //ClimbWall
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //Weapon
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel4, ECR_Ignore); //Player
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel7, ECR_Ignore); //PlayerProjectile
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore); //Weapon
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //Player
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
 
@@ -72,7 +72,7 @@ AProjectile::AProjectile()
 	//ProjectileMesh->SetCollisionObjectType(ECC_GameTraceChannel1);
 	ProjectileMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ProjectileMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-	ProjectileMesh->SetCollisionObjectType(ECC_GameTraceChannel7);
+	ProjectileMesh->SetCollisionObjectType(ECC_GameTraceChannel3);
 	ProjectileMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
 
 	ProjectileMesh->SetCastShadow(false);
@@ -800,7 +800,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 			Start,
 			End,
 			FQuat::Identity,
-			ECC_GameTraceChannel7,
+			ECC_GameTraceChannel3,
 			Sphere,
 			Params,
 			ResponseParams
@@ -961,7 +961,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 		TraceStart,
 		TraceEnd,
 		FQuat::Identity,
-		ECC_GameTraceChannel7,
+		ECC_GameTraceChannel3,
 		Sphere,
 		BaseParams);
 
@@ -1063,11 +1063,10 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 			FCollisionResponseParams WorldStaticResponseParams;
 			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel1, ECR_Ignore);
 			//WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel2, ECR_Ignore); //ClimbWall
+			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel5, ECR_Ignore); //Weapon
+			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel2, ECR_Ignore); //Player
+			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel6, ECR_Ignore); //Enemy TODO: 구현
 			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel3, ECR_Ignore);
-			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel4, ECR_Ignore);
-			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel5, ECR_Ignore);
-			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel6, ECR_Ignore);
-			WorldStaticResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel7, ECR_Ignore);
 
 			FHitResult BlockHit;
 			const bool bBlocked = GetWorld()->LineTraceSingleByChannel(

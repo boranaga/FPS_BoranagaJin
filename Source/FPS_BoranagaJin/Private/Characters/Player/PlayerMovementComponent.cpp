@@ -18,8 +18,8 @@
 #include "Curves/CurveVector.h"
 #include "GameModes/DefaultGameMode.h" //TODO: GameMode 구현
 
-#define WALL_TRACE_CHANNEL ECC_GameTraceChannel2
-#define ENEMY_TRACE_CHANNEL ECC_GameTraceChannel6
+#define WALL_TRACE_CHANNEL ECC_GameTraceChannel2 //TODO: 수정
+#define ENEMY_TRACE_CHANNEL ECC_GameTraceChannel6 //TODO: 수정
 
 UPlayerMovementComponent::UPlayerMovementComponent()
 {
@@ -1726,8 +1726,8 @@ bool UPlayerMovementComponent::IsGrounded()
 	GroundSweepParams.AddIgnoredActor(PawnOwner);
 
 	FCollisionResponseParams ResponseParams;
-	ResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel7, ECR_Ignore);
-	ResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel9, ECR_Ignore);
+	ResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel3, ECR_Ignore);
+	ResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel4, ECR_Ignore);
 
 	FVector SweepStart = CharacterPlayer->GetActorLocation();
 	FVector SweepEnd = CharacterPlayer->GetActorLocation() +

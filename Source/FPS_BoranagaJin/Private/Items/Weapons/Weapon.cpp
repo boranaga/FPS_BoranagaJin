@@ -72,11 +72,11 @@ AWeapon::AWeapon()
 	MuzzlePoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Muzzle"));
 	MuzzlePoint->SetupAttachment(GetRootComponent(), FName(TEXT("Muzzle")));
 	MuzzlePoint->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	MuzzlePoint->SetCollisionObjectType(ECC_GameTraceChannel3); //Weapon
+	MuzzlePoint->SetCollisionObjectType(ECC_GameTraceChannel5); //Weapon
 	MuzzlePoint->SetCollisionResponseToAllChannels(ECR_Ignore);
 
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	WeaponMesh->SetCollisionObjectType(ECC_GameTraceChannel3); //Weapon
+	WeaponMesh->SetCollisionObjectType(ECC_GameTraceChannel5); //Weapon
 	WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
 	//---------------------------------------------------------------------------------
