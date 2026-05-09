@@ -4,7 +4,6 @@
 #include "Items/Weapons/Weapon.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "Items/Weapons/WeaponSystemComponent.h"
-
 #include "Items/WeaponState/WeaponBaseState.h"
 #include "Items/WeaponState/WeaponIdleState.h"
 #include "Items/WeaponState/WeaponFiringState.h"
@@ -17,15 +16,12 @@
 #include "Items/WeaponState/WeaponWaitingState.h"
 #include "Items/Weapons/WeaponCamShakeBase.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/Player/PlayerMovementComponent.h"
 #include "UI/AmmoCounterWidget.h"
 #include "UI/WeaponAimUIWidget.h"
 #include "Items/Projectile/ProjectileShell.h"
 #include "Data/PlayerWeaponPrimaryDataAsset.h"
 #include "Data/WeaponData.h"
-
-#include "Characters/Player/CharacterPlayer.h"
-#include "Characters/Player/PlayerMovementComponent.h"
-
 
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"

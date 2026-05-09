@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "WeaponAimUIWidget.generated.h"
+#include "StaminaWidget.generated.h"
 
 class ACharacterPlayer;
 class AProjectile;
@@ -15,7 +15,7 @@ class UProgressBar;
 class UTextBlock;
 
 UCLASS()
-class FPS_BORANAGAJIN_API UWeaponAimUIWidget : public UUserWidget
+class FPS_BORANAGAJIN_API UStaminaWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
@@ -48,16 +48,7 @@ public:
 
 
 
-#pragma region Spread
-	void ResetAimUISize();
-	void ApplyAimUISpread(float SpreadValue = 0.f);
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector2D DefaultOutCircleSize;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float OutCircleSpreadSizeOffset = 10.f;
-#pragma endregion
 
 #pragma region HitIndicator
 protected:
@@ -108,4 +99,30 @@ protected:
 	void UpdateHitIndicator(float DeltaTime);
 
 #pragma endregion
+
+#pragma region DashCounter
+protected:
+	// WeaponAimUIWidget.h
+	FTimerHandle LeftDashTimerHandle;
+	FTimerHandle RightDashTimerHandle;
+
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* DashGauge = nullptr;
+
+	float fDashGauge = 0.f;
+
+	// Dash Counter
+	UPROPERTY(meta = (BindWidget))
+	UProgressBar* LeftDashCounter = nullptr;
+
+	UPROPERTY(meta = (BindWidget))
+	UProgressBar* RightDashCounter = nullptr;
+
+	UPROPERTY()
+	ACharacterPlayer* CharacterPlayer = nullptr;
+
+public:
+	void SetDashGauge();
+	void UpdateDashUI(float InDashGauge);
+#pragma endregion 
 };

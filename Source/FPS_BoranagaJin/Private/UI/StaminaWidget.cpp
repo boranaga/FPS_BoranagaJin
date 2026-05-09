@@ -1,7 +1,7 @@
 
 
 
-#include "UI/WeaponAimUIWidget.h"
+#include "UI/StaminaWidget.h"
 
 // #include "InterchangeResult.h"
 #include "Items/Projectile/Projectile.h"
@@ -15,54 +15,39 @@
 #include "Components//TextBlock.h"
 
 
-void UWeaponAimUIWidget::NativeConstruct()
+void UStaminaWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
     //UE_LOG(LogTemp, Error, TEXT("UWeaponAimUIWidget::NativeConstruct()!!!"));
+
+    CharacterPlayer = Cast<ACharacterPlayer>(GetOwningPlayerPawn());
 }
 
-void UWeaponAimUIWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void UStaminaWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
     UpdateHitIndicator(InDeltaTime);
-}
 
-#pragma region Spread
-void UWeaponAimUIWidget::ResetAimUISize()
-{
-    if (OutCircle)
+    SetDashGauge();
+    fDashGauge = CharacterPlayer->GetPlayerMovementComponent()->GetDashGauge();
+
+    // DashGauge UI 업데이트 함수 호출
+    if (CharacterPlayer)
     {
-        UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(OutCircle->Slot);
-        if (CanvasSlot)
-        {
-            CanvasSlot->SetSize(DefaultOutCircleSize);
-        }
+        UpdateDashUI(fDashGauge);
     }
 }
-void UWeaponAimUIWidget::ApplyAimUISpread(float SpreadValue)
-{
-    if (OutCircle)
-    {
-        UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(OutCircle->Slot);
-        if (CanvasSlot)
-        {
-            FVector2D NewSize = { DefaultOutCircleSize.X + SpreadValue * OutCircleSpreadSizeOffset, DefaultOutCircleSize.Y + SpreadValue * OutCircleSpreadSizeOffset };
-            CanvasSlot->SetSize(NewSize);
-        }
-    }
-}
-#pragma endregion
 
 #pragma region HitIndicator
-void UWeaponAimUIWidget::SetUpAimUIDelegateBinding(AProjectile* Projectile)
-{
-    Projectile->OnHeadShot.BindUObject(this, &UWeaponAimUIWidget::HeadShot);
-    Projectile->OnBodyShot.BindUObject(this, &UWeaponAimUIWidget::BodyShot);
-}
+//void UStaminaWidget::SetUpAimUIDelegateBinding(AProjectile* Projectile)
+//{
+//    Projectile->OnHeadShot.BindUObject(this, &UWeaponAimUIWidget::HeadShot);
+//    Projectile->OnBodyShot.BindUObject(this, &UWeaponAimUIWidget::BodyShot);
+//}
 
-void UWeaponAimUIWidget::HeadShot()
+void UStaminaWidget::HeadShot()
 {
     //UE_LOG(LogTemp, Error, TEXT("UWeaponAimUIWidget::HeadShot()!!!"));
 
@@ -74,7 +59,7 @@ void UWeaponAimUIWidget::HeadShot()
     CriticalOverlay->SetVisibility(ESlateVisibility::Visible);
 }
 
-void UWeaponAimUIWidget::BodyShot()
+void UStaminaWidget::BodyShot()
 {
     //UE_LOG(LogTemp, Error, TEXT("UWeaponAimUIWidget::BodyShot()!!!"));
 
@@ -86,7 +71,7 @@ void UWeaponAimUIWidget::BodyShot()
     NormalOverlay->SetVisibility(ESlateVisibility::Visible);
 }
 
-void UWeaponAimUIWidget::FadeInCriticalOverlay(float DeltaTime)
+void UStaminaWidget::FadeInCriticalOverlay(float DeltaTime)
 {
     float InterpOpacity = FMath::FInterpTo(CurrentCriticalOverlayOpacity, TargetCriticalOverlayOpacity, DeltaTime, CriticalOverlayFadeInSpeed);
     CurrentCriticalOverlayOpacity = InterpOpacity;
@@ -95,7 +80,7 @@ void UWeaponAimUIWidget::FadeInCriticalOverlay(float DeltaTime)
     CriticalOverlayFadeOutTimer += DeltaTime;
 }
 
-void UWeaponAimUIWidget::FadeOutCriticalOverlay(float DeltaTime)
+void UStaminaWidget::FadeOutCriticalOverlay(float DeltaTime)
 {
     float InterpOpacity = FMath::FInterpTo(CurrentCriticalOverlayOpacity, 0.f, DeltaTime, CriticalOverlayFadeOutSpeed);
     CurrentCriticalOverlayOpacity = InterpOpacity;
@@ -111,7 +96,7 @@ void UWeaponAimUIWidget::FadeOutCriticalOverlay(float DeltaTime)
     }
 }
 
-void UWeaponAimUIWidget::FadeInNormalOverlay(float DeltaTime)
+void UStaminaWidget::FadeInNormalOverlay(float DeltaTime)
 {
     float InterpOpacity = FMath::FInterpTo(CurrentNormalOverlayOpacity, TargetNormalOverlayOpacity, DeltaTime, NormalOverlayFadeInSpeed);
     CurrentNormalOverlayOpacity = InterpOpacity;
@@ -120,7 +105,7 @@ void UWeaponAimUIWidget::FadeInNormalOverlay(float DeltaTime)
     NormalOverlayFadeOutTimer += DeltaTime;
 }
 
-void UWeaponAimUIWidget::FadeOutNormalOverlay(float DeltaTime)
+void UStaminaWidget::FadeOutNormalOverlay(float DeltaTime)
 {
     float InterpOpacity = FMath::FInterpTo(CurrentNormalOverlayOpacity, 0.f, DeltaTime, NormalOverlayFadeOutSpeed);
     CurrentNormalOverlayOpacity = InterpOpacity;
@@ -136,21 +121,21 @@ void UWeaponAimUIWidget::FadeOutNormalOverlay(float DeltaTime)
     }
 }
 
-void UWeaponAimUIWidget::SetCriticalOvelayInvisible()
+void UStaminaWidget::SetCriticalOvelayInvisible()
 {
     bIsIndicatingCriticalHit = false;
     CurrentCriticalOverlayOpacity = 0.f;
     CriticalOverlay->SetRenderOpacity(0.f);
 }
 
-void UWeaponAimUIWidget::SetNormalOvelayInvisible()
+void UStaminaWidget::SetNormalOvelayInvisible()
 {
     bIsIndicatingNormalHit = false;
     CurrentNormalOverlayOpacity = 0.f;
     NormalOverlay->SetRenderOpacity(0.f);
 }
 
-void UWeaponAimUIWidget::UpdateHitIndicator(float DeltaTime)
+void UStaminaWidget::UpdateHitIndicator(float DeltaTime)
 {
     if (bIsIndicatingCriticalHit)
     {
@@ -174,6 +159,33 @@ void UWeaponAimUIWidget::UpdateHitIndicator(float DeltaTime)
         {
             FadeOutNormalOverlay(DeltaTime);
         }
+    }
+}
+
+
+
+
+#pragma endregion
+
+#pragma region DashCounter
+void UStaminaWidget::SetDashGauge()
+{
+    DashGauge->SetText(FText::AsNumber(fDashGauge));
+}
+
+void UStaminaWidget::UpdateDashUI(float InDashGauge)
+{
+    if (!LeftDashCounter || !RightDashCounter) return;
+
+    if (InDashGauge <= 1.f)
+    {
+        RightDashCounter->SetPercent(InDashGauge);
+        LeftDashCounter->SetPercent(0.f);
+    }
+    else
+    {
+        RightDashCounter->SetPercent(1.f);
+        LeftDashCounter->SetPercent(InDashGauge - 1.f);
     }
 }
 #pragma endregion
