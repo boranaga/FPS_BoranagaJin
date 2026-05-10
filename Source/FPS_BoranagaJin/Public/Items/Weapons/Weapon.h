@@ -294,17 +294,17 @@ public:
 
 #pragma region ProjectileShell
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
 	TSubclassOf<AProjectileShell> ProjectileShellClass;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
 	int32 MaxProjectileShellNum = 5;
 
 	UPROPERTY()
 	TArray<AProjectileShell*> ProjectileShells; //TODO: queue로 대체 , 근데 그냥 array가 나을듯
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
 	FVector DefaultEjectImpulseVec;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
 	float DefaultEjectImpulse = 0.f;
 
 	int32 CurrProjectileShellIdx = 0;

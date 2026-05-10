@@ -362,7 +362,7 @@ void UWeaponSystemComponent::LoadWSCData()
 //	// //	OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
 //	// //}
 //
-//	// <suhyeon>  weapon save data changed
+//	//  weapon save data changed
 //
 //	//UE_LOG(LogTemp, Error, TEXT("UWeaponSystemComponent::InitStartingWeapons_Ordering()"));
 //
@@ -815,8 +815,6 @@ bool UWeaponSystemComponent::ObtainNewWeapon(AWeaponPickUp* NewWeaponPickUp)
 		CurrentSkillWeapon = NewWeapon;
 		CurrentSkillWeapon->EquipWeapon(PlayerOwner, true);
 
-		//suhyeon 여기에 skillweapon획득 델리게이트 연결
-		// 스킬 무기 장착 후 델리게이트를 브로드캐스트
 		OnSkillWeaponEquipped.Broadcast(CurrentSkillWeapon);
 	}
 	else
@@ -827,7 +825,7 @@ bool UWeaponSystemComponent::ObtainNewWeapon(AWeaponPickUp* NewWeaponPickUp)
 			CurrentWeapon = NewWeapon;
 			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
 		}
-		OnWeaponPickedUp.Broadcast(NewWeaponPickUp->GetWeaponName()); /** suhyeon **/
+		OnWeaponPickedUp.Broadcast(NewWeaponPickUp->GetWeaponName());
 	}
 
 	OwnedWeapons.FindOrAdd(NewWeaponName) = true;
