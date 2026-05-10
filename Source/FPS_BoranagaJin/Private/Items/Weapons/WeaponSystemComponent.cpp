@@ -18,6 +18,8 @@
 #include "Items/WeaponState/WeaponChargingState.h"
 #include "Items/WeaponState/WeaponWaitingState.h"
 
+#include "UI/InteractionWidget.h"
+
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 
@@ -36,6 +38,8 @@ void UWeaponSystemComponent::BeginPlay()
 	LoadWSCData();
 	//InitStartingWeapons_Ordering();
 	InitStartingWeapons_New();
+
+	InitInteractionUI();
 }
 
 void UWeaponSystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -648,7 +652,24 @@ bool UWeaponSystemComponent::SearchWeapon()
 		}
 	}
 
+	if (OverlappedWeapon == nullptr && NearestWeapon != nullptr)
+	{
+		InteractionWidget->PlayPopUpAnim();
+	}
+
 	OverlappedWeapon = NearestWeapon;
+
+	if (OverlappedWeapon != nullptr)
+	{
+		//InteractionWidget->PlayPopUpAnim();
+		UpdateInteractionUI(true, OverlappedWeapon->GetActorLocation());
+	}
+	else
+	{
+		//InteractionWidget->PlayPopUpAnimReverse();
+		UpdateInteractionUI(false);
+	}
+
 
 	return bIsWeaponInViewPort;
 }
@@ -1087,6 +1108,52 @@ void UWeaponSystemComponent::ReleaseControl()
 		}
 		else
 		{
+		}
+	}
+}
+#pragma endregion
+
+#pragma region InteractionUI
+void UWeaponSystemComponent::InitInteractionUI()
+{
+	if (InteractionWidgetClass)
+	{
+		InteractionWidget = CreateWidget<UInteractionWidget>(GetWorld(), InteractionWidgetClass);
+		if (InteractionWidget)
+		{
+			InteractionWidget->AddToViewport();
+			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+}
+void UWeaponSystemComponent::UpdateInteractionUI(bool bflag, FVector location)
+{
+	FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(location).Get<0>();
+
+	if (bflag)
+	{
+		if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
+		{
+			InteractionWidget->SetPositionInViewport(TargetScreenPosition);
+
+			if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
+			{
+				InteractionWidget->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+		//else
+		//{
+		//	if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+		//	{
+		//		InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		//	}
+		//}
+	}
+	else
+	{
+		if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+		{
+			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }

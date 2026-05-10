@@ -13,9 +13,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponPickedUp, EWeaponName, Weap
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSwitched, int32, PrevIndex, int32, NewIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapon*, NewSkillWeapon);
 
+//DECLARE_MULTICAST_DELEGATE(FOnInteractionStart);
+//DECLARE_MULTICAST_DELEGATE(FOnInteractionEnd);
+
 class ACharacterPlayer;
 class AWeapon;
 class AWeaponPickUp;
+class UInteractionWidget;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class FPS_BORANAGAJIN_API UWeaponSystemComponent : public UActorComponent, public IWeaponInterface
@@ -30,6 +34,9 @@ public:
 	FOnWeaponSwitched OnWeaponSwitched;
 	UPROPERTY(BlueprintAssignable, Category = "Weapon")
 	FOnSkillWeaponEquipped OnSkillWeaponEquipped;
+
+	//FOnInteractionStart OnInteractionStart;
+	//FOnInteractionEnd OnInteractionEnd;
 protected:
 	virtual void BeginPlay() override;
 public:	
@@ -171,5 +178,16 @@ protected:
 public:
 	bool TryTakeControl(AWeapon* NewWeapon);
 	void ReleaseControl();
+#pragma endregion
+
+#pragma region InteractionUI
+protected:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InteractionWidget")
+	TSubclassOf<UInteractionWidget> InteractionWidgetClass;
+	UPROPERTY()
+	UInteractionWidget* InteractionWidget;
+
+	void InitInteractionUI();
+	void UpdateInteractionUI(bool bflag = false, FVector location = FVector::ZeroVector);
 #pragma endregion
 };
