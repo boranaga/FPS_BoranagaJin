@@ -13,9 +13,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponPickedUp, EWeaponName, Weap
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSwitched, int32, PrevIndex, int32, NewIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapon*, NewSkillWeapon);
 
-//DECLARE_MULTICAST_DELEGATE(FOnInteractionStart);
-//DECLARE_MULTICAST_DELEGATE(FOnInteractionEnd);
-
 class ACharacterPlayer;
 class AWeapon;
 class AWeaponPickUp;
@@ -35,8 +32,6 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Weapon")
 	FOnSkillWeaponEquipped OnSkillWeaponEquipped;
 
-	//FOnInteractionStart OnInteractionStart;
-	//FOnInteractionEnd OnInteractionEnd;
 protected:
 	virtual void BeginPlay() override;
 public:	

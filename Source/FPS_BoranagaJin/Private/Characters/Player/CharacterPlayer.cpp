@@ -32,7 +32,6 @@ ACharacterPlayer::ACharacterPlayer()
 	CapsuleComponent->SetCollisionProfileName(TEXT("Pawn"));
 	CapsuleComponent->SetNotifyRigidBodyCollision(true);
 
-
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(CapsuleComponent);
 	Camera->SetRelativeLocation(FVector(0.f, 0.f, 70.f));
@@ -53,7 +52,6 @@ ACharacterPlayer::ACharacterPlayer()
 
 	CameraMovementComponent = CreateDefaultSubobject<UPlayerCameraComponent>(TEXT("CameraMovement Component"));
 
-
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 
 	// <WeaponSystem>
@@ -61,8 +59,6 @@ ACharacterPlayer::ACharacterPlayer()
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel8, ECR_Ignore);
 	ArmMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	// FPSceneCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent")); //<JaeHyeong>
-	// FPSceneCapture->SetupAttachment(Camera);
 
 	// for damage interactions with enemies
 	//AttackTokensComponent = CreateDefaultSubobject<UACPlayerAttackTokens>(TEXT("Attack Tokens Component"));
@@ -115,8 +111,7 @@ void ACharacterPlayer::BeginPlay()
 	//GetDamageSystemComponent()->OnDamaged.AddUObject(CameraMovementComponent, &UPlayerCameraComponent::OnDamaged);
 	//GetDamageSystemComponent()->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
 
-	GetPlayerMovementComponent()->OnPrimaryJumpDelegate.AddDynamic(this, &ACharacterPlayer::OnPrimaryJump);
-	GetPlayerMovementComponent()->OnDoubleJumpDelegate.AddDynamic(this, &ACharacterPlayer::OnDoubleJump);
+	GetPlayerMovementComponent()->OnPrimaryJumpDelegate.AddDynamic(this, &ACharacterPlayer::OnJump);
 	GetPlayerMovementComponent()->OnWallJumpDelegate.AddDynamic(this, &ACharacterPlayer::OnWallJump);
 	GetPlayerMovementComponent()->OnWallRunDelegate.AddDynamic(this, &ACharacterPlayer::OnWallRun);
 	GetPlayerMovementComponent()->OnWallRunEndDelegate.AddDynamic(this, &ACharacterPlayer::OnWallRunEnd);
@@ -178,11 +173,9 @@ void ACharacterPlayer::SetLookInputVector2DZero()
 	PlayerLookInputVector2D = FVector2D::ZeroVector;
 }
 
-
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -194,9 +187,10 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ACharacterPlayer::HandleMoveInput);
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ACharacterPlayer::HandleMoveInput);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ACharacterPlayer::HandleLookInput);
-		//EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Started, this, &ACharacterPlayer::LookInputTest);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartJumpInput);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacterPlayer::StopJumpInput);
 		EnhancedInputComponent->BindAction(ShiftAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartShiftInput);
+		EnhancedInputComponent->BindAction(ShiftAction, ETriggerEvent::Completed, this, &ACharacterPlayer::StopShiftInput);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ACharacterPlayer::StartCrouchInput);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ACharacterPlayer::StopCrouchInput);
 
@@ -219,20 +213,17 @@ void ACharacterPlayer::PossessedBy(AController* NewController)
 		{
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 
-			UE_LOG(LogTemp, Error, TEXT("Player input mapping 222"));
+
+			UE_LOG(LogTemp, Error, TEXT("Player input mapping!"));
 		}
 	}
-
-	UE_LOG(LogTemp, Error, TEXT("Player input mapping!"));
 }
 
-void ACharacterPlayer::OnPrimaryJump()
+void ACharacterPlayer::OnJump()
 {
 	const FPlayerSoundData& Data = PlayerSound_DataAsset->PrimaryJumpSound;
 	float VolumeMultiplier, PitchMultiplier;
-
 	float Speed = GetPlayerMovementComponent()->Velocity.Size();
-
 	CalculateMappedSoundValue(Data, Speed, VolumeMultiplier, PitchMultiplier);
 
 	UGameplayStatics::SpawnSoundAttached(Data.Sound, GetRootComponent(), NAME_None,
@@ -247,33 +238,11 @@ void ACharacterPlayer::OnPrimaryJump()
 	}
 }
 
-void ACharacterPlayer::OnDoubleJump()
-{
-	const FPlayerSoundData& Data = PlayerSound_DataAsset->DoubleJumpSound;
-	float VolumeMultiplier, PitchMultiplier;
-	float Speed = GetPlayerMovementComponent()->Velocity.Size();
-	CalculateMappedSoundValue(Data, GetPlayerMovementComponent()->Velocity.Size(), VolumeMultiplier, PitchMultiplier);
-
-	UGameplayStatics::SpawnSoundAttached(PlayerSound_DataAsset->DoubleJumpSound.Sound, GetRootComponent(), NAME_None,
-		FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset,
-		false, VolumeMultiplier, PitchMultiplier);
-
-	if (Data.bDebug)
-	{
-		if (!GEngine) return;
-		GEngine->AddOnScreenDebugMessage(1257, Data.DebugDisplayDuration, FColor::Green,
-			FString::Printf(TEXT("Double Jump Sound Evaluation Speed: %.0f, "
-				"Mapped Volume Multiplier: %.3f, Mapped Pitch Multiplier: %.3f"), Speed, VolumeMultiplier, PitchMultiplier));
-	}
-}
-
 void ACharacterPlayer::OnWallJump()
 {
 	const FPlayerSoundData& Data = PlayerSound_DataAsset->PrimaryJumpSound;
 	float VolumeMultiplier, PitchMultiplier;
-
 	float Speed = GetPlayerMovementComponent()->Velocity.Size();
-
 	CalculateMappedSoundValue(Data, Speed, VolumeMultiplier, PitchMultiplier);
 
 	UGameplayStatics::SpawnSoundAttached(Data.Sound, GetRootComponent(), NAME_None,
@@ -346,8 +315,6 @@ void ACharacterPlayer::OnWallRun()
 	}
 
 	WallRunAudioComponent->Play();
-
-
 }
 
 void ACharacterPlayer::OnWallRunEnd()
@@ -359,9 +326,7 @@ void ACharacterPlayer::OnLand(float ZSpeed)
 {
 	const FPlayerSoundData& Data = PlayerSound_DataAsset->LandSound;
 	float VolumeMultiplier, PitchMultiplier;
-
 	float Speed = FMath::Abs(ZSpeed);
-
 	CalculateMappedSoundValue(Data, Speed, VolumeMultiplier, PitchMultiplier);
 
 	UGameplayStatics::SpawnSoundAttached(Data.Sound, GetRootComponent(), NAME_None,
@@ -458,12 +423,6 @@ void ACharacterPlayer::HandleLookInput(const FInputActionValue& Value)
 	}
 }
 
-void ACharacterPlayer::LookInputTest(const FInputActionValue& Value)
-{
-	UE_LOG(LogTemp, Error, TEXT("LookInputTest(const FInputActionValue& Value)"));
-}
-
-
 void ACharacterPlayer::StartJumpInput()
 {
 	if (!MovementComponent)
@@ -471,10 +430,18 @@ void ACharacterPlayer::StartJumpInput()
 		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
-
 	MovementComponent->SetJumpPressed(true);
 }
 
+void ACharacterPlayer::StopJumpInput()
+{
+	if (!MovementComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		return;
+	}
+	MovementComponent->SetJumpPressed(false);
+}
 
 void ACharacterPlayer::StartShiftInput()
 {
@@ -483,10 +450,18 @@ void ACharacterPlayer::StartShiftInput()
 		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
-
 	MovementComponent->SetShiftPressed(true);
 }
 
+void ACharacterPlayer::StopShiftInput()
+{
+	if (!MovementComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		return;
+	}
+	MovementComponent->SetShiftPressed(false);
+}
 
 void ACharacterPlayer::StartCrouchInput()
 {
@@ -495,7 +470,6 @@ void ACharacterPlayer::StartCrouchInput()
 		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
-
 	MovementComponent->SetCrouchPressed(true);
 }
 
@@ -506,7 +480,6 @@ void ACharacterPlayer::StopCrouchInput()
 		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
-
 	MovementComponent->SetCrouchPressed(false);
 }
 
@@ -647,9 +620,7 @@ void ACharacterPlayer::OnDash(FVector2D MovementInput)
 {
 	const FPlayerSoundData& Data = PlayerSound_DataAsset->DashSound;
 	float VolumeMultiplier, PitchMultiplier;
-
 	float Speed = GetPlayerMovementComponent()->Velocity.Size();
-
 	CalculateMappedSoundValue(Data, Speed, VolumeMultiplier, PitchMultiplier);
 
 	UGameplayStatics::SpawnSoundAttached(Data.Sound, GetRootComponent(), NAME_None,
@@ -663,7 +634,6 @@ void ACharacterPlayer::OnDash(FVector2D MovementInput)
 			FString::Printf(TEXT("Dash Sound Evaluation Speed: %.0f, "
 				"Mapped Volume Multiplier: %.3f, Mapped Pitch Multiplier: %.3f"), Speed, VolumeMultiplier, PitchMultiplier));
 	}
-
 
 	if (MovementInput.IsZero())
 	{

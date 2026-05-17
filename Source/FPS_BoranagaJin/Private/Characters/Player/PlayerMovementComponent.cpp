@@ -64,10 +64,7 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 				Velocity.X, Velocity.Y, Velocity.Z, Velocity.Size(), Velocity.Size2D()));
 	}
 
-	if (!PawnOwner || !UpdatedComponent)
-	{
-		return;
-	}
+	if (!PawnOwner || !UpdatedComponent) { return; }
 
 	ConsumeDeadRequest();
 
@@ -89,7 +86,7 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 	//ApplyMovementDataModifiers();
 	//ApplyKeyHoldModifiers();
 
-	UpdateDashGauge(DeltaTime);
+	//UpdateDashGauge(DeltaTime);
 
 	UpdateWallCooldowns();
 
@@ -121,13 +118,11 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 				FVector AdjustedTickMovement = FVector(DesiredTickMovement.X, DesiredTickMovement.Y, 0).GetSafeNormal() * DesiredTickMovement.Size();
 				FVector AdjustedNormal = FVector(Hit.Normal.X, Hit.Normal.Y, 0).GetSafeNormal();
 				SlideAlongSurface(AdjustedTickMovement, 1.f - Hit.Time, AdjustedNormal, Hit);
-
 			}
 			else
 			{
 				SlideAlongSurface(DesiredTickMovement, 1.f - Hit.Time, Hit.Normal, Hit);
 			}
-
 		}
 	}
 
@@ -189,7 +184,6 @@ void UPlayerMovementComponent::UnCrouchCapsule(float DeltaTime)
 		float HeightDelta = NewHeight - CurrentHalfHeight;
 		CharacterPlayer->AddActorWorldOffset(FVector(0, 0, HeightDelta));
 		PlayerCapsule->SetCapsuleHalfHeight(NewHeight);
-
 	}
 }
 
@@ -214,7 +208,6 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 		bool bSteppingFrontHit = GetWorld()->SweepSingleByChannel(SteppingFrontHit, CharacterPlayer->GetActorLocation(),
 			CharacterPlayer->GetActorLocation() + CharacterPlayer->GetActorForwardVector() * 50.f, CharacterPlayer->GetActorQuat(),
 			ECC_WorldStatic, CharacterPlayer->GetCapsuleComponent()->GetCollisionShape(), SteppingFrontParams);
-
 
 		Velocity = StepUpDir * (bIsRunning ? RunSpeed : WalkSpeed);
 
@@ -242,7 +235,6 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 
 	if (Input.bCrouchHeld)
 	{
-
 		bIsCrouching = true;
 
 		if (Velocity.Size() >= RunSpeed - 50.f && GroundHit.ImpactNormal.Z >= MinWalkableFloorZ && !bIsDashing)
@@ -292,7 +284,6 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 
 				UnCrouchCapsule(DeltaTime);
 			}
-
 		}
 	}
 
@@ -307,52 +298,7 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 		}
 	}
 
-	if (!bIsDashing)
-	{
-		if (Input.MovementInput2D.IsNearlyZero())
-		{
-			if (Velocity.Size() > 0.f)
-			{
-				FVector DeltaVelocity = -Velocity.GetSafeNormal() * Deceleration * DeltaTime;
-				if (DeltaVelocity.Size() > Velocity.Size())
-				{
-					Velocity = FVector::ZeroVector;
-				}
-				else
-				{
-					Velocity += DeltaVelocity;
-				}
-			}
-		}
-		else
-		{
-
-			if (bIsRunning)
-			{
-				if (AWeapon* CurrentWeapon = CharacterPlayer->GetWeaponSystemComponent()->GetCurrentWeapon())
-				{
-					EWeaponStateType CurrentWeaponState = CurrentWeapon->GetCurrentState()->GetWeaponStateType();
-					if (CurrentWeaponState == EWeaponStateType::WeaponStateType_Firing)
-					{
-						bIsRunning = false;
-					}
-				}
-
-				if (Input.MovementInput2D.Y <= 0)
-				{
-					bIsRunning = false;
-				}
-			}
-
-			float WishSpeed = bIsCrouching ? CrouchSpeed : (bIsRunning ? RunSpeed : WalkSpeed);
-
-			WishSpeed = bDamageSlowDebuff ? WishSpeed * DamageSlowDebuffMultiplier : WishSpeed;
-
-			FVector AcceleratedVelocity = Velocity + Input.WorldInputDir * Acceleration * DeltaTime;
-			Velocity = AcceleratedVelocity.Size() > WishSpeed ? AcceleratedVelocity.GetSafeNormal() * WishSpeed : AcceleratedVelocity;
-		}
-	}
-	else
+	if (bIsDashing)
 	{
 		if (ElapsedTimeFromDash < DashDecelerationTime)
 		{
@@ -375,16 +321,55 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 			Velocity = Velocity.GetSafeNormal() * DashEndSpeed;
 		}
 	}
-
-
-
-	if (!bIsDashing)
+	else
 	{
+		if (Input.MovementInput2D.IsNearlyZero())
+		{
+			if (Velocity.Size() > 0.f)
+			{
+				FVector DeltaVelocity = -Velocity.GetSafeNormal() * Deceleration * DeltaTime;
+				if (DeltaVelocity.Size() > Velocity.Size())
+				{
+					Velocity = FVector::ZeroVector;
+				}
+				else
+				{
+					Velocity += DeltaVelocity;
+				}
+			}
+		}
+		else
+		{
+			if (bIsRunning)
+			{
+				if (AWeapon* CurrentWeapon = CharacterPlayer->GetWeaponSystemComponent()->GetCurrentWeapon())
+				{
+					EWeaponStateType CurrentWeaponState = CurrentWeapon->GetCurrentState()->GetWeaponStateType();
+					if (CurrentWeaponState == EWeaponStateType::WeaponStateType_Firing)
+					{
+						bIsRunning = false;
+					}
+				}
+
+				if (Input.MovementInput2D.Y <= 0)
+				{
+					bIsRunning = false;
+				}
+			}
+
+			float WishSpeed = bIsCrouching ? CrouchSpeed : (bIsRunning ? RunSpeed : WalkSpeed);
+			WishSpeed = bDamageSlowDebuff ? WishSpeed * DamageSlowDebuffMultiplier : WishSpeed;
+
+			FVector AcceleratedVelocity = Velocity + Input.WorldInputDir * Acceleration * DeltaTime;
+			Velocity = AcceleratedVelocity.Size() > WishSpeed ? AcceleratedVelocity.GetSafeNormal() * WishSpeed : AcceleratedVelocity;
+		}
+
 		if (GroundHit.ImpactNormal.Z >= MinWalkableFloorZ)
 		{
 			Velocity = FVector::VectorPlaneProject(Velocity, GroundHit.ImpactNormal).GetSafeNormal() * Velocity.Size();
 		}
 	}
+
 
 	TArray<FHitResult> StepHits;
 	FCollisionQueryParams StepParams;
@@ -468,10 +453,25 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 
 	if (Input.bJumpPressed && CurrentJumpCount < MaxJumpCount)
 	{
+		//-----------------
+		float WishSpeed = bIsCrouching ? CrouchSpeed : (bIsRunning ? RunSpeed : WalkSpeed);
+		WishSpeed = bDamageSlowDebuff ? WishSpeed * DamageSlowDebuffMultiplier : WishSpeed;
+
+		FVector AcceleratedVelocity = Velocity + Input.WorldInputDir * JumpHorizontalBoost * DeltaTime;
+		Velocity = AcceleratedVelocity.Size() > WishSpeed ? AcceleratedVelocity.GetSafeNormal() * WishSpeed : AcceleratedVelocity;
+
+		if (GroundHit.ImpactNormal.Z >= MinWalkableFloorZ)
+		{
+			Velocity = FVector::VectorPlaneProject(Velocity, GroundHit.ImpactNormal).GetSafeNormal() * Velocity.Size();
+		}
+
+		if (!Input.MovementInput2D.IsNearlyZero())
+		{
+			JumpBoostWindowRemaining = 0.f;
+		}
+		//-----------------
 		CurrentJumpCount++;
 		Velocity.Z = PrimaryJumpZVelocity;
-
-		if (bIsDashing) bHasDashedInAir = true;
 
 		OnPrimaryJumpDelegate.Broadcast();
 		SetMovementState(EMovementState::EMS_Airborne);
@@ -480,17 +480,16 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 
 	if (Input.bShiftPressed)
 	{
-		// If dash is available
-		if (DashGauge >= 1.f)
+		if (CurrStamina >= DashStaminaConsumeRate)
 		{
-			SetIsDashing(true);
+			if (!bIsDashing && !bIsRunning)
+			{
+				SetIsDashing(true);
+				bIsRunning = true;
 
-			bIsRunning = true; // Player will run after dash ends
-
-			DashGauge = FMath::Clamp(DashGauge - 1.f, 0.f, 2.f);
-
-			const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
-			Velocity = DashDirection * DashStartSpeed;
+				const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
+				Velocity = DashDirection * DashStartSpeed;
+			}
 		}
 		else
 		{
@@ -499,9 +498,11 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 				bIsRunning = !bIsRunning;
 			}
 		}
-
 	}
-
+	else
+	{
+		bIsRunning = false;
+	}
 }
 
 void UPlayerMovementComponent::TickSlide(float DeltaTime)
@@ -610,7 +611,7 @@ void UPlayerMovementComponent::TickSlide(float DeltaTime)
 	if (Input.bJumpPressed && CurrentJumpCount < MaxJumpCount)
 	{
 		CurrentJumpCount++;
-		Velocity.Z = PrimaryJumpZVelocity;
+		Velocity.Z = PrimaryJumpZVelocity; //TODO: make this as function
 		bShouldKeepSlideSpeed = SlideStateElapsedTime >= 0.1f; // TODO : Make this as a variable
 
 		LastSlideSpeedBeforeAirborne = Velocity;
@@ -641,13 +642,8 @@ void UPlayerMovementComponent::TickSlide(float DeltaTime)
 				bIsRunning = !bIsRunning;
 			}
 		}
-
 	}
-
-
 }
-
-
 
 void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 {
@@ -658,7 +654,6 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 		ElapsedTimeFromSurface += DeltaTime;
 	}
 
-
 	if (bDownedDamage)
 	{
 		bDownedDamage = false;
@@ -668,9 +663,7 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 
 	if (Input.bCrouchHeld)
 	{
-
 		bIsCrouching = true;
-
 		CrouchCapsule(DeltaTime);
 	}
 	else
@@ -681,8 +674,6 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 			FHitResult UnCrouchHitResult;
 			FCollisionQueryParams UnCrouchParams;
 			UnCrouchParams.AddIgnoredActor(CharacterPlayer);
-
-
 
 			FVector UnCrouchSweepStart = CharacterPlayer->GetActorLocation();
 			// (DefaultHalfHeight - CurrentHalfHeight) for default height assumed actor location adjustment
@@ -707,7 +698,6 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 
 				UnCrouchCapsule(DeltaTime);
 			}
-
 		}
 	}
 
@@ -743,8 +733,6 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 		}
 	}
 
-
-
 	FHitResult PreWallRightHit;
 	FHitResult PreWallLeftHit;
 	FCollisionQueryParams PreWallParams;
@@ -757,9 +745,6 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 
 	bool bPreWallLeftHit = GetWorld()->SweepSingleByChannel(PreWallLeftHit, TraceStart, TraceLeftEnd, CharacterPlayer->GetActorQuat(),
 		WALL_TRACE_CHANNEL, FCollisionShape::MakeSphere(40.f), PreWallParams);
-
-
-
 
 	if (bPreWallRightHit && FVector::DotProduct(CharacterPlayer->GetVelocity().GetSafeNormal2D(), PreWallRightHit.ImpactNormal) < 0.f)
 	{
@@ -845,68 +830,7 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 		}
 	}
 
-	if (!bIsDashing)
-	{
-		float MaxHorizontalSpeed = bIsRunning ? RunSpeed : WalkSpeed;
-		if (bWallJumpAirBoost)
-		{
-			MaxHorizontalSpeed = WallRunJumpAirSpeed2D;
-		}
-		else
-		{
-			if (bHasDashedInAir && bShouldKeepSlideSpeed)
-			{
-				MaxHorizontalSpeed = FMath::Max(DashEndSpeed, LastSlideSpeedBeforeAirborne.Size2D());
-			}
-			else if (bHasDashedInAir && !bShouldKeepSlideSpeed)
-			{
-				MaxHorizontalSpeed = DashEndSpeed;
-			}
-			else if (!bHasDashedInAir && bShouldKeepSlideSpeed)
-			{
-				MaxHorizontalSpeed = LastSlideSpeedBeforeAirborne.Size2D();
-			}
-		}
-
-		if (bAirborneFromGravityLauncher)
-		{
-			MaxHorizontalSpeed = FMath::Max(MaxHorizontalSpeed, JumpPadInitialVelocityXY.Size2D());
-		}
-
-
-		if (Velocity.Size2D() > MaxHorizontalSpeed)
-		{
-			if (!Input.MovementInput2D.IsNearlyZero())
-			{
-				FVector CurrentDir2D = FVector(Velocity.X, Velocity.Y, 0.f).GetSafeNormal();
-				FVector TargetDir2D = Input.WorldInputDir;
-
-				// Interpolate current direction towards target input direction
-				FVector NewDirection = FMath::VInterpTo(CurrentDir2D, TargetDir2D, DeltaTime, AirDirectionInterpSpeed);
-
-				Velocity.X = NewDirection.X * MaxHorizontalSpeed;
-				Velocity.Y = NewDirection.Y * MaxHorizontalSpeed;
-			}
-			else
-			{
-				Velocity.X = Velocity.GetSafeNormal2D().X * MaxHorizontalSpeed;
-				Velocity.Y = Velocity.GetSafeNormal2D().Y * MaxHorizontalSpeed;
-			}
-		}
-		else
-		{
-			FVector VelocityXY = FVector(Velocity.X, Velocity.Y, 0.f);
-			FVector NewVelocityXY = VelocityXY + Input.WorldInputDir * AirAcceleration * DeltaTime;
-			if (NewVelocityXY.Size() > MaxHorizontalSpeed)
-			{
-				NewVelocityXY = NewVelocityXY.GetSafeNormal() * MaxHorizontalSpeed;
-			}
-
-			Velocity.X = NewVelocityXY.X;
-			Velocity.Y = NewVelocityXY.Y;
-		}
-	}
-	else
+	if (bIsDashing) //TODO: 수정
 	{
 		if (ElapsedTimeFromDash < DashDecelerationTime)
 		{
@@ -921,6 +845,76 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 			ElapsedTimeFromDash = 0.f;
 			FVector HorizontalVelocity = Velocity.GetSafeNormal2D() * DashEndSpeed;
 			Velocity = FVector(HorizontalVelocity.X, HorizontalVelocity.Y, Velocity.Z);
+		}
+	}
+	else
+	{
+		float MaxHorizontalSpeed = bIsRunning ? RunSpeed : WalkSpeed;
+		if (bWallJumpAirBoost)
+		{
+			MaxHorizontalSpeed = WallRunJumpAirSpeed2D;
+		}
+		else
+		{
+			if (bShouldKeepSlideSpeed)
+			{
+				MaxHorizontalSpeed = FMath::Max(DashEndSpeed, LastSlideSpeedBeforeAirborne.Size2D());
+			}
+			else if (!bShouldKeepSlideSpeed)
+			{
+				MaxHorizontalSpeed = DashEndSpeed;
+			}
+			else if (bShouldKeepSlideSpeed)
+			{
+				MaxHorizontalSpeed = LastSlideSpeedBeforeAirborne.Size2D();
+			}
+		}
+
+		if (bAirborneFromGravityLauncher)
+		{
+			MaxHorizontalSpeed = FMath::Max(MaxHorizontalSpeed, JumpPadInitialVelocityXY.Size2D());
+		}
+
+		if (Velocity.Size2D() > MaxHorizontalSpeed)
+		{
+			if (!Input.MovementInput2D.IsNearlyZero())
+			{
+				FVector CurrentDir2D = FVector(Velocity.X, Velocity.Y, 0.f).GetSafeNormal();
+				FVector TargetDir2D = Input.WorldInputDir;
+
+				// Interpolate current direction towards target input direction
+				FVector NewDirection = FMath::VInterpTo(CurrentDir2D, TargetDir2D, DeltaTime, AirDirectionInterpSpeed);
+
+				Velocity.X = NewDirection.X * MaxHorizontalSpeed;
+				Velocity.Y = NewDirection.Y * MaxHorizontalSpeed;
+			}
+			else //TODO: 여기에서 공중에서 이동 입력 불가능 하도록 수정하기
+			{
+				Velocity.X = Velocity.GetSafeNormal2D().X * MaxHorizontalSpeed;
+				Velocity.Y = Velocity.GetSafeNormal2D().Y * MaxHorizontalSpeed;
+			}
+		}
+		else
+		{
+			FVector VelocityXY = FVector(Velocity.X, Velocity.Y, 0.f);
+			FVector NewVelocityXY = VelocityXY + Input.WorldInputDir * AirAcceleration * DeltaTime;
+
+			if (!Input.WorldInputDir.IsNearlyZero())
+			{
+				if (JumpBoostWindowRemaining > 0.f)
+				{
+					NewVelocityXY += Input.WorldInputDir * JumpHorizontalBoost * DeltaTime;
+					JumpBoostWindowRemaining = 0.f;
+				}
+			}
+
+			if (NewVelocityXY.Size() > MaxHorizontalSpeed)
+			{
+				NewVelocityXY = NewVelocityXY.GetSafeNormal() * MaxHorizontalSpeed;
+			}
+
+			Velocity.X = NewVelocityXY.X;
+			Velocity.Y = NewVelocityXY.Y;
 		}
 	}
 
@@ -954,55 +948,43 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 		SetIsDashing(false);
 	}
 
-	if (Input.bJumpPressed && CurrentJumpCount < MaxJumpCount)
+	if (bCanExtendJump)
 	{
-		CurrentJumpCount++;
-
-		if (bCoyoteTimeActivated)
+		if (Input.bJumpPressed)
 		{
-			bCoyoteTimeActivated = false;
-			Velocity.Z = PrimaryJumpZVelocity;
-			if (bIsDashing) bHasDashedInAir = true;
+			CurrJumpHoldTime += DeltaTime;
 
-			OnPrimaryJumpDelegate.Broadcast();
-
-		}
-		else
-		{
-			// Commented out to prevent infinite slide boost using slide jump
-			// bHasRecentlySlid = false;
-			SlideElapsedTime = 0.f;
-			OnDoubleJumpDelegate.Broadcast();
-			Velocity.Z = DoubleJumpZVelocity;
-		}
-	}
-
-	if (Input.bShiftPressed)
-	{
-		if (DashGauge >= 1.f)
-		{
-			SetIsDashing(true);
-
-			bIsRunning = true; // Player will run after dash ends
-
-			bHasDashedInAir = true;
-
-			DashGauge = FMath::Clamp(DashGauge - 1.f, 0.f, 2.f);
-
-			const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
-			// Commented out the Velocity.Z addition since it didn't seem smooth and user couldn't feel the second dash.
-			Velocity = DashDirection.GetSafeNormal2D() * DashStartSpeed; // + FVector(0, 0, Velocity.Z)
-		}
-		else
-		{
-			if (!bIsDashing)
+			if (CurrJumpHoldTime < MaxJumpHoldTime)
 			{
-				bIsRunning = !bIsRunning;
+				Velocity.Z += ExtraJumpZVel * DeltaTime;
+			}
+			else
+			{
+				bCanExtendJump = false;
 			}
 		}
+		else
+		{
+			bCanExtendJump = false;
+		}
+	}
+	else
+	{
+		if (Input.bJumpPressed && CurrentJumpCount < MaxJumpCount)
+		{
+			CurrentJumpCount++;
 
+			if (bCoyoteTimeActivated)
+			{
+				bCoyoteTimeActivated = false;
+				Velocity.Z = PrimaryJumpZVelocity;
+
+				OnPrimaryJumpDelegate.Broadcast();
+			}
+		}
 	}
 
+	JumpBoostWindowRemaining -= DeltaTime;
 }
 
 void UPlayerMovementComponent::TickWallRun(float DeltaTime)
@@ -1368,15 +1350,15 @@ void UPlayerMovementComponent::TickDowned(float DeltaTime)
 		}
 		else
 		{
-			if (bHasDashedInAir && bShouldKeepSlideSpeed)
+			if (bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = FMath::Max(DashEndSpeed, LastSlideSpeedBeforeAirborne.Size2D());
 			}
-			else if (bHasDashedInAir && !bShouldKeepSlideSpeed)
+			else if (!bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = DashEndSpeed;
 			}
-			else if (!bHasDashedInAir && bShouldKeepSlideSpeed)
+			else if (bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = LastSlideSpeedBeforeAirborne.Size2D();
 			}
@@ -1439,15 +1421,15 @@ void UPlayerMovementComponent::TickDead(float DeltaTime)
 		}
 		else
 		{
-			if (bHasDashedInAir && bShouldKeepSlideSpeed)
+			if (bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = FMath::Max(DashEndSpeed, LastSlideSpeedBeforeAirborne.Size2D());
 			}
-			else if (bHasDashedInAir && !bShouldKeepSlideSpeed)
+			else if (!bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = DashEndSpeed;
 			}
-			else if (!bHasDashedInAir && bShouldKeepSlideSpeed)
+			else if (bShouldKeepSlideSpeed)
 			{
 				MaxHorizontalSpeed = LastSlideSpeedBeforeAirborne.Size2D();
 			}
@@ -1580,12 +1562,16 @@ void UPlayerMovementComponent::OnMovementStateChanged(EMovementState OldState, E
 
 	case EMovementState::EMS_Airborne:
 	{
-		bHasDashedInAir = false;
 		bWallJumpAirBoost = false;
 		bShouldKeepSlideSpeed = false;
 		bAirborneFromGravityLauncher = false;
 		ElapsedTimeFromSurface = 0.f;
 		CurrentJumpCount = 0;
+
+		CurrJumpHoldTime = 0;
+		bCanExtendJump = true;
+
+		JumpBoostWindowRemaining = JumpBoostInputWindow;
 
 		bCoyoteTimeActivated = false;
 		break;
@@ -1665,7 +1651,6 @@ void UPlayerMovementComponent::OnMovementStateChanged(EMovementState OldState, E
 		}
 		break;
 	}
-
 	case EMovementState::EMS_Mantle:
 	{
 		OnMantleDelegate.Broadcast();
@@ -1673,7 +1658,6 @@ void UPlayerMovementComponent::OnMovementStateChanged(EMovementState OldState, E
 		SlideElapsedTime = 0.f;
 		break;
 	}
-
 	case EMovementState::EMS_Slide:
 	{
 		OnSlideDelegate.Broadcast();
@@ -1682,7 +1666,6 @@ void UPlayerMovementComponent::OnMovementStateChanged(EMovementState OldState, E
 			SlideMaxDuration - SlideElapsedTime, 0.1f);
 		break;
 	}
-
 	case EMovementState::EMS_Downed:
 	{
 		OnDownedDelegate.Broadcast();
@@ -1696,7 +1679,6 @@ void UPlayerMovementComponent::OnMovementStateChanged(EMovementState OldState, E
 		Velocity += ReceivedDamageDirection * ReceivedDamageForce;
 		break;
 	}
-
 	case EMovementState::EMS_Dead:
 	{
 		Velocity = FVector::ZeroVector;
@@ -1737,6 +1719,7 @@ bool UPlayerMovementComponent::IsGrounded()
 
 	bool bHit = GetWorld()->SweepSingleByChannel(GroundHit, SweepStart, SweepEnd, FQuat::Identity, ECC_WorldStatic,
 		FCollisionShape::MakeSphere(CapsuleRadius - 5.f), GroundSweepParams, ResponseParams);
+	//MEMO: 왜 CapsuleRadius - 5 를 하는가?
 
 	if (!bHit || !GroundHit.bBlockingHit)
 	{
@@ -1883,20 +1866,18 @@ void UPlayerMovementComponent::UpdateDashGauge(float DeltaTime)
 
 		DashGauge = FMath::Clamp(DashGauge + (1.f / DashCooldown) * DeltaTime, 0.f, 2.f);
 	}
-
 }
 
 void UPlayerMovementComponent::CacheInput()
 {
-
 	Input.WorldInputDir = ConsumeInputVector().GetSafeNormal();
 	Input.MovementInput2D = MovementInputVector;
 	Input.bJumpPressed = bJumpPressed;
 	Input.bShiftPressed = bShiftPressed;
 	Input.bCrouchHeld = bCrouchPressed;
 
-	bJumpPressed = false;
-	bShiftPressed = false;
+	//bJumpPressed = false;
+	//bShiftPressed = false;
 
 	if (bMovementKeyHoldActive)
 	{
@@ -1952,8 +1933,15 @@ void UPlayerMovementComponent::UpdateDependentMovementData()
 	MinWalkableFloorZ = FMath::Cos(FMath::DegreesToRadians(MaxWalkableFloorAngle));
 	GravityAcceleration = FVector::DownVector * GravityScale;
 	PrimaryJumpZVelocity = FMath::Sqrt(2 * GravityScale * PrimaryJumpHeight);
-	DoubleJumpZVelocity = FMath::Sqrt(2 * GravityScale * DoubleJumpHeight);
+	ExtraJumpZVel = FMath::Sqrt(2 * GravityScale * ExtraJumpHeight);
+	//DoubleJumpZVelocity = FMath::Sqrt(2 * GravityScale * DoubleJumpHeight);
 	WallJumpZVelocity = FMath::Sqrt(2 * GravityScale * WallJumpHeight);
+}
+
+void UPlayerMovementComponent::UpdateStamina(float DeltaTime, float UpdateRate)
+{
+	CurrStamina += UpdateRate;
+	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
 }
 
 void UPlayerMovementComponent::AddControllerRoll(float DeltaTime, const FVector& WallRunDirection, EWallRunSide WallRunSide)
@@ -2057,8 +2045,11 @@ void UPlayerMovementComponent::ApplyMovementDataTable()
 	CrouchSpeed = Row->CrouchSpeed;
 	CrouchHeightScale = Row->CrouchHeightScale;
 	PrimaryJumpHeight = Row->PrimaryJumpHeight;
-	DoubleJumpHeight = Row->DoubleJumpHeight;
+	ExtraJumpHeight = Row->ExtraJumpHeight;
 	WallJumpHeight = Row->WallJumpHeight;
+	JumpHorizontalBoost = Row->JumpHorizontalBoost;
+	JumpBoostInputWindow = Row->JumpBoostInputWindow;
+	MaxJumpHoldTime = Row->MaxJumpHoldTime;
 	Acceleration = Row->Acceleration;
 	Deceleration = Row->Deceleration;
 	AirDirectionInterpSpeed = Row->AirDirectionInterpSpeed;
@@ -2111,16 +2102,18 @@ void UPlayerMovementComponent::InitMovementDataTypeMap()
 	MovementDataTypeMap.Add(EMovementDataType::CrouchSpeed, &CrouchSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::CrouchHeightScale, &CrouchHeightScale);
 	MovementDataTypeMap.Add(EMovementDataType::PrimaryJumpHeight, &PrimaryJumpHeight);
-	MovementDataTypeMap.Add(EMovementDataType::DoubleJumpHeight, &DoubleJumpHeight),
-	MovementDataTypeMap.Add(EMovementDataType::WallJumpHeight, &WallJumpHeight),
+	MovementDataTypeMap.Add(EMovementDataType::ExtraJumpHeight, &ExtraJumpHeight);
+	MovementDataTypeMap.Add(EMovementDataType::WallJumpHeight, &WallJumpHeight);
 	MovementDataTypeMap.Add(EMovementDataType::Acceleration, &Acceleration);
-	MovementDataTypeMap.Add(EMovementDataType::Deceleration, &Deceleration),
+	MovementDataTypeMap.Add(EMovementDataType::Deceleration, &Deceleration);
+	MovementDataTypeMap.Add(EMovementDataType::JumpHorizontalBoost, &JumpHorizontalBoost);
 	MovementDataTypeMap.Add(EMovementDataType::AirDirectionInterpSpeed, &AirDirectionInterpSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::AirAcceleration, &AirAcceleration);
 	MovementDataTypeMap.Add(EMovementDataType::AirDeceleration, &AirDeceleration);
 	MovementDataTypeMap.Add(EMovementDataType::MaxFallVerticalSpeed, &MaxFallVerticalSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::MaxWalkableFloorAngle, &MaxWalkableFloorAngle);
 	MovementDataTypeMap.Add(EMovementDataType::MaxStepHeight, &MaxStepHeight);
+	MovementDataTypeMap.Add(EMovementDataType::MaxJumpHoldTime, &MaxJumpHoldTime);
 	MovementDataTypeMap.Add(EMovementDataType::WallRunMaxDuration, &WallRunMaxDuration);
 	MovementDataTypeMap.Add(EMovementDataType::WallRunAcceleration, &WallRunAcceleration);
 	MovementDataTypeMap.Add(EMovementDataType::WallRunDeceleration, &WallRunDeceleration);

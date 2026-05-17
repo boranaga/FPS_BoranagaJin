@@ -76,7 +76,6 @@ public:
 	UAudioComponent* GetSlideAudioComponent() const { return SlideAudioComponent; }
 
 protected:
-
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UAudioComponent> WallRunAudioComponent;
 	UPROPERTY(EditDefaultsOnly)
@@ -102,8 +101,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "WeaponSystem")
 	TObjectPtr<UWeaponSystemComponent> WeaponSystem;
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	//USceneCaptureComponent2D* FPSceneCapture;
+
 
 	// This actor component is for handling camera shakes and state-based movement
 	// IT IS NOT THE CAMERA!!
@@ -162,9 +160,7 @@ protected:
 	TObjectPtr<UCustomGameInstance> CachedGameInstance;
 
 	UFUNCTION()
-	void OnPrimaryJump();
-	UFUNCTION()
-	void OnDoubleJump();
+	void OnJump();
 	UFUNCTION()
 	void OnWallJump();
 	UFUNCTION()
@@ -187,9 +183,10 @@ protected:
 
 	void HandleMoveInput(const FInputActionValue& Value);
 	void HandleLookInput(const FInputActionValue& Value);
-	void LookInputTest(const FInputActionValue& Value);
 	void StartJumpInput();
+	void StopJumpInput();
 	void StartShiftInput();
+	void StopShiftInput();
 	void StartCrouchInput();
 	void StopCrouchInput();
 	void StartTeleportToLastCheckpointInput();

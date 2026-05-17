@@ -42,10 +42,19 @@ struct FPS_BORANAGAJIN_API FPlayerMovementRow : public FTableRowBase
 	float PrimaryJumpHeight = 200.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
-	float DoubleJumpHeight = 300.f;
+	float ExtraJumpHeight = 200.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
 	float WallJumpHeight = 200.f;
+
+	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
+	float JumpHorizontalBoost = 20000.f;
+
+	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
+	float JumpBoostInputWindow = 0.1f;
+
+	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
+	float MaxJumpHoldTime = 1.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement")
 	float Acceleration = 8000.f;

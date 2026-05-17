@@ -43,7 +43,7 @@ void UPlayerCameraComponent::BeginPlay()
 
 	MovementComponent->OnLandDelegate.AddDynamic(this, &UPlayerCameraComponent::OnLand);
 	MovementComponent->OnPrimaryJumpDelegate.AddDynamic(this, &UPlayerCameraComponent::OnPrimaryJump);
-	MovementComponent->OnDoubleJumpDelegate.AddDynamic(this, &UPlayerCameraComponent::OnDoubleJump);
+	//MovementComponent->OnDoubleJumpDelegate.AddDynamic(this, &UPlayerCameraComponent::OnDoubleJump);
 	MovementComponent->OnWallJumpDelegate.AddDynamic(this, &UPlayerCameraComponent::OnWallJump);
 	MovementComponent->OnMantleDelegate.AddDynamic(this, &UPlayerCameraComponent::OnMantle);
 	MovementComponent->OnDashDelegate.AddDynamic(this, &UPlayerCameraComponent::OnDash);

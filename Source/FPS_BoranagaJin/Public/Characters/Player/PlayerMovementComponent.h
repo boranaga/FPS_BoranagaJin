@@ -72,23 +72,24 @@ struct FWallInfo
 };
 
 
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMoveSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunEndSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAirborneSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideEndSignature);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLandSignature, float, ZSpeed);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPrimaryJumpSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDoubleJumpSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallJumpSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMantleSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDashSignature, FVector2D, InputVector);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDownedSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDashEndSignature);
 
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunSignature); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunEndSignature); //
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideSignature); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideEndSignature); //
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLandSignature, float, ZSpeed); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPrimaryJumpSignature); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallJumpSignature); //
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDashSignature, FVector2D, InputVector); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDashEndSignature); //
 
 
 UCLASS()
@@ -159,7 +160,6 @@ public:
 
 	FOnLandSignature OnLandDelegate;
 	FOnPrimaryJumpSignature OnPrimaryJumpDelegate;
-	FOnDoubleJumpSignature OnDoubleJumpDelegate;
 	FOnWallJumpSignature OnWallJumpDelegate;
 	FOnMantleSignature OnMantleDelegate;
 	FOnDashSignature OnDashDelegate;
@@ -213,10 +213,16 @@ protected:
 	float PrimaryJumpHeight = 200.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
-	float DoubleJumpHeight = 300.f;
+	float ExtraJumpHeight = 200.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
 	float WallJumpHeight = 200.f;
+
+	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
+	float JumpHorizontalBoost = 20000.f;
+
+	UPROPERTY(EditAnywhere, Category = "Movement|Jump")
+	float JumpBoostInputWindow = 0.1f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement")
 	float Acceleration = 8000.f;
@@ -297,7 +303,6 @@ protected:
 	bool bIsStepping = false;
 
 	FHitResult StepWallHit;
-
 	FHitResult StepFloorHit;
 
 	FVector LastVelocityBeforeStep;
@@ -329,8 +334,6 @@ protected:
 
 	TArray<FWallInfo> CooldownWalls;
 	float WallCooldown = 2.f;
-
-
 #pragma endregion WallRun
 
 #pragma region Dash
@@ -339,8 +342,6 @@ protected:
 	bool bIsDashing = false;
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Dash")
 	float ElapsedTimeFromDash = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Movement|Dash")
-	bool bHasDashedInAir = false;
 
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Dash")
 	float DashGauge = 2.f;
@@ -350,12 +351,11 @@ protected:
 #pragma region Jump
 
 	float WallJumpZVelocity = 0.f;
-	float DoubleJumpZVelocity = 0.f;
 	float PrimaryJumpZVelocity = 0.f;
 	float JumpBuffer = 0.1f;
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Jump")
 	float ElapsedTimeFromSurface = 0.f;
-	int32 MaxJumpCount = 2;
+	int32 MaxJumpCount = 1;
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Jump")
 	int32 CurrentJumpCount = 0;
 
@@ -363,6 +363,12 @@ protected:
 	float AirborneStartTime;
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Jump")
 	bool bCoyoteTimeActivated = false;
+	//-----------------------------
+	bool bCanExtendJump = true;
+	float MaxJumpHoldTime = 1.f;
+	float CurrJumpHoldTime = 0.f;
+	float ExtraJumpZVel = 1000.f;
+	float JumpBoostWindowRemaining = 0.f;
 
 #pragma endregion Jump
 
@@ -583,5 +589,18 @@ protected:
 	void UpdateDamageFlags();
 
 	void UpdateDependentMovementData();
+
+#pragma region Stamina
+protected:
+	float MaxStamina = 1000.f;
+	float CurrStamina = 1000.f;
+
+	float DashStaminaConsumeRate = 100.f;
+	float RunStaminaConsumeRate = 10.f;
+
+	void UpdateStamina(float DeltaTime, float UpdateRate = 0.f);
+
+
+#pragma endregion
 };
 
