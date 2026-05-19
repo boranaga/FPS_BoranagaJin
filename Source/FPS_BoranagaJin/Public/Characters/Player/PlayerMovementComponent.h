@@ -590,16 +590,19 @@ protected:
 
 	void UpdateDependentMovementData();
 
+	void TryStartStep();
+
 #pragma region Stamina
 protected:
-	float MaxStamina = 1000.f;
-	float CurrStamina = 1000.f;
+	float MaxStamina = 400.f;
+	float CurrStamina = 400.f;
 
-	float DashStaminaConsumeRate = 100.f;
-	float RunStaminaConsumeRate = 10.f;
+	float DashStaminaConsumeRate = -100.f;
+	float RunStaminaConsumeRate = -50.f;
+	float StaminaRecoveryRate = 100.f;
 
 	void UpdateStamina(float DeltaTime, float UpdateRate = 0.f);
-
+	void ConsumeStamina(float stamina);
 
 #pragma endregion
 };

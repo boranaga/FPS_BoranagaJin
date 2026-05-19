@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/PlayerMovementComponent.h"
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
@@ -8,6 +9,8 @@
 #include "GameModes/DefaultGameMode.h"
 #include "Instance/DefaultGameInstance.h"
 #include "Data/PlayerSoundData.h"
+#include "UI/UIManagerComponent.h"
+
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -139,7 +142,7 @@ void ACharacterPlayer::BeginPlay()
 	//			GameMode->TeleportToLastCheckpoint();
 	//		}
 	//	}
-	//}
+	//}	
 }
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -706,4 +709,14 @@ void ACharacterPlayer::OnDashEnd()
 	RightDashEffectComponent->Deactivate();
 }
 
-
+void ACharacterPlayer::InitUIManager()
+{
+	if (GetController())
+	{
+		AFPSPlayerController* PlayerController = Cast<AFPSPlayerController>(GetOwner());
+		if (PlayerController)
+		{
+			PlayerController->InitUIManager();
+		}
+	}
+}

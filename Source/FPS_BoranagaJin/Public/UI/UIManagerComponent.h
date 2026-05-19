@@ -6,7 +6,13 @@
 #include "Components/ActorComponent.h"
 #include "UIManagerComponent.generated.h"
 
+class AFPSPlayerController;
+class ACharacterPlayer;
+class UStaminaWidget;
+
 class UWeaponSystemComponent;
+
+
 
 class UPlayerHUD;
 
@@ -32,9 +38,17 @@ public:
 	UUIManagerComponent();
 	// virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	void InitUIManagerComponent();
+
 protected:
 	virtual void BeginPlay() override;
 	void SetupInput();
+
+protected:
+	UPROPERTY()
+	TObjectPtr<ACharacterPlayer> CharacterPlayer = nullptr;
+	UPROPERTY()
+	TObjectPtr<AFPSPlayerController> PlayerController = nullptr;
 
 public:
 	void OpenUI(EUIType UIType);
@@ -74,4 +88,20 @@ private:
 
 	//UPROPERTY()
 	//TMap<EUIType, UBaseUIWidget*> UIWidgets;
+//----------------------------
+#pragma region StaminaBar
+public:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "StaminaWidget")
+	TSubclassOf<UStaminaWidget> StaminaWidgetClass;
+protected:
+	UPROPERTY()
+	UStaminaWidget* StaminaWidget = nullptr;
+
+	UFUNCTION()
+	void InitStaminaBar(float maxstamina = 100.f);
+	UFUNCTION()
+	void SetStaminaBarPercent(float const Value);
+	//void HideInGame(bool bHidden);
+	//void PlayFadeAnimation();
+#pragma endregion
 };

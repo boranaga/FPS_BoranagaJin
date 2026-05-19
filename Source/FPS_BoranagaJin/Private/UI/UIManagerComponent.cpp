@@ -2,7 +2,9 @@
 
 
 #include "UI/UIManagerComponent.h"
-//#include "Characters/Player/CharacterPlayer.h"
+#include "UI/StaminaWidget.h"
+#include "Characters/Player/CharacterPlayer.h"
+#include "Characters/Player/FPSPlayerController.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "EnhancedInputComponent.h"
@@ -12,6 +14,27 @@ UUIManagerComponent::UUIManagerComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
+}
+
+void UUIManagerComponent::InitUIManagerComponent()
+{
+	if (GetOwner())
+	{
+		PlayerController = Cast<AFPSPlayerController>(GetOwner());
+		if (PlayerController)
+		{
+			if (PlayerController->GetPawn())
+			{
+				CharacterPlayer = Cast<ACharacterPlayer>(PlayerController->GetPawn());
+			}
+		}
+	}
+
+	if (CharacterPlayer)
+	{
+		CharacterPlayer->OnStaminaInit.AddDynamic(this, &UUIManagerComponent::InitStaminaBar);
+		CharacterPlayer->OnStaminaUpdated.AddDynamic(this, &UUIManagerComponent::SetStaminaBarPercent);
+	}
 }
 
 void UUIManagerComponent::BeginPlay()
@@ -27,6 +50,30 @@ void UUIManagerComponent::BeginPlay()
 	//	WeaponSystemComponent = SuraPawnPlayer->GetWeaponSystemComponent();
 	//}
 
+	//-------------------------
+	if (StaminaWidgetClass)
+	{
+		StaminaWidget = CreateWidget<UStaminaWidget>(GetWorld(), StaminaWidgetClass);
+		if (StaminaWidget)
+		{
+			StaminaWidget->AddToViewport();
+			//StaminaWidget->SetVisibility(ESlateVisibility::Hidden);
+			StaminaWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
+}
+
+void UUIManagerComponent::InitStaminaBar(float maxstamina)
+{
+	if (StaminaWidget)
+	{
+		StaminaWidget->InitStaminaBar(maxstamina);
+		UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::InitStaminaBar(float maxstamina)!!!"));
+	}
+}
+void UUIManagerComponent::SetStaminaBarPercent(float const Value)
+{
+	if (StaminaWidget) StaminaWidget->SetStaminaBarPercent(Value);
 }
 
 void UUIManagerComponent::SetupInput()

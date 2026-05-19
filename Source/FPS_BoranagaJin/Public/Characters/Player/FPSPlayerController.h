@@ -29,5 +29,8 @@ protected:
 	virtual void SetupInputComponent() override;
 
 	UUIManagerComponent* GetUIManager() const { return UIManagerComponent; }
+
+public:
+	void InitUIManager();
 };
 

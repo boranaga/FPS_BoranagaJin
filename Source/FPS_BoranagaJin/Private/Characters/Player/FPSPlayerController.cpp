@@ -53,3 +53,8 @@ void AFPSPlayerController::SetupInputComponent()
 		}
 	}
 }
+
+void AFPSPlayerController::InitUIManager()
+{
+	if (UIManagerComponent) UIManagerComponent->InitUIManagerComponent();
+}

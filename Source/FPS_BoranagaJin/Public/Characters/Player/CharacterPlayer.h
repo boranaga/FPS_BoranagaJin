@@ -22,6 +22,9 @@ class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
 UCLASS()
@@ -60,7 +63,10 @@ public:
 	//UACPlayerAttackTokens* GetAttackTokensComponent() const { return AttackTokensComponent; }
 	virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) override;
 
+	FOnStaminaInit OnStaminaInit;
+	FOnStaminaUpdated OnStaminaUpdated;
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
+
 
 	//virtual void GravityLaunchPlayer(const FVector& Direction, float ForceAmount) override;
 
@@ -205,4 +211,8 @@ protected:
 
 
 	float SlideEndTime = 0.f;
+
+	//---------------
+public:
+	void InitUIManager();
 };

@@ -7,7 +7,6 @@
 #include "StaminaWidget.generated.h"
 
 class ACharacterPlayer;
-class AProjectile;
 
 class UImage;
 class UOverlay;
@@ -23,106 +22,16 @@ public:
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
 public:
 	UPROPERTY(meta = (BindWidget))
-	UImage* Dot = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UImage* OutCircle = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UOverlay* NormalOverlay = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UOverlay* CriticalOverlay = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UImage* TopCrosshair = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UImage* BottomCrosshair = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UImage* LeftCrosshair = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UImage* RightCrosshair = nullptr;
-
-
-
-
-
-#pragma region HitIndicator
+	UProgressBar* StaminaBar = nullptr;
+	UPROPERTY(meta = (BindWidgetAnim), Transient)
+	UWidgetAnimation* FadeInOutAnimation = nullptr;
 protected:
-	bool bIsIndicatingNormalHit = false;
-	bool bIsIndicatingCriticalHit = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float TargetNormalOverlayOpacity = 1.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float TargetCriticalOverlayOpacity = 1.f;
-
-	float CurrentNormalOverlayOpacity = 0.f;
-	float CurrentCriticalOverlayOpacity = 0.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float NormalOverlayFadeInSpeed = 15.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float CriticalOverlayFadeInSpeed = 15.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float NormalOverlayFadeOutSpeed = 15.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float CriticalOverlayFadeOutSpeed = 15.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float NormalOverlayFadeOutStartTime = 0.2f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float CriticalOverlayFadeOutStartTime = 0.2f;
-
-	float NormalOverlayFadeOutTimer = 0.f;
-	float CriticalOverlayFadeOutTimer = 0.f;
-
+	float MaxStamina = 100.f;
+	float CurrStamina = 100.f;
 public:
-	void SetUpAimUIDelegateBinding(AProjectile* Projectile);
-protected:
-	void HeadShot();
-	void BodyShot();
-
-	void FadeInCriticalOverlay(float DeltaTime);
-	void FadeOutCriticalOverlay(float DeltaTime);
-
-	void FadeInNormalOverlay(float DeltaTime);
-	void FadeOutNormalOverlay(float DeltaTime);
-
-	void SetCriticalOvelayInvisible();
-	void SetNormalOvelayInvisible();
-
-	void UpdateHitIndicator(float DeltaTime);
-
+	void InitStaminaBar(float maxstamina = 100.f);
+	void SetStaminaBarPercent(float const Value);
+	void HideInGame(bool bHidden);
+	void PlayFadeAnimation();
 #pragma endregion
-
-#pragma region DashCounter
-protected:
-	// WeaponAimUIWidget.h
-	FTimerHandle LeftDashTimerHandle;
-	FTimerHandle RightDashTimerHandle;
-
-	UPROPERTY(meta = (BindWidget))
-	UTextBlock* DashGauge = nullptr;
-
-	float fDashGauge = 0.f;
-
-	// Dash Counter
-	UPROPERTY(meta = (BindWidget))
-	UProgressBar* LeftDashCounter = nullptr;
-
-	UPROPERTY(meta = (BindWidget))
-	UProgressBar* RightDashCounter = nullptr;
-
-	UPROPERTY()
-	ACharacterPlayer* CharacterPlayer = nullptr;
-
-public:
-	void SetDashGauge();
-	void UpdateDashUI(float InDashGauge);
-#pragma endregion 
 };

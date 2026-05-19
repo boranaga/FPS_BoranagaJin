@@ -47,6 +47,9 @@ void UPlayerMovementComponent::BeginPlay()
 	// Start as airborne state
 	CurrentMovementState = EMovementState::EMS_Airborne;
 	OnAirborneDelegate.Broadcast();
+
+	CharacterPlayer->InitUIManager();
+	CharacterPlayer->OnStaminaInit.Broadcast(MaxStamina);
 }
 
 void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -227,8 +230,6 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 	{
 		AirborneStartTime = GetWorld()->GetTimeSeconds();
 		bCoyoteTimeActivated = true;
-
-		// CurrentJumpCount++; Commented out since we are going to implement coyote time!
 		SetMovementState(EMovementState::EMS_Airborne);
 		return;
 	}
@@ -258,8 +259,6 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 			FHitResult UnCrouchHitResult;
 			FCollisionQueryParams UnCrouchParams;
 			UnCrouchParams.AddIgnoredActor(CharacterPlayer);
-
-
 
 			FVector UnCrouchSweepStart = CharacterPlayer->GetActorLocation();
 			// (DefaultHalfHeight - CurrentHalfHeight) for default height assumed actor location adjustment
@@ -354,6 +353,12 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 				if (Input.MovementInput2D.Y <= 0)
 				{
 					bIsRunning = false;
+					bShiftPressed = false;
+				}
+				if (CurrStamina < -RunStaminaConsumeRate)
+				{
+					bIsRunning = false;
+					bShiftPressed = false;
 				}
 			}
 
@@ -370,62 +375,20 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 		}
 	}
 
-
-	TArray<FHitResult> StepHits;
-	FCollisionQueryParams StepParams;
-	StepParams.AddIgnoredActor(CharacterPlayer);
-
-	FVector StepTraceStart = CharacterPlayer->GetActorLocation() + FVector(0, 0, -1) * (CharacterPlayer->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - 5.f);
-	FVector StepTraceEnd = StepTraceStart + FVector::VectorPlaneProject(Input.WorldInputDir, GroundHit.ImpactNormal).GetSafeNormal() * CharacterPlayer->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	FCollisionShape StepShape = FCollisionShape::MakeSphere(5.f);
-
-	bool bStepHit = GetWorld()->SweepMultiByChannel(StepHits, StepTraceStart, StepTraceEnd, FQuat::Identity, ECC_WorldStatic, StepShape, StepParams);
-
-	// DrawDebugSphereTraceMulti(GetWorld(), StepTraceStart, StepTraceEnd,
-	// 	5.f, EDrawDebugTrace::ForDuration, bStepHit, StepHits, FLinearColor::Red, FLinearColor::Green, 1.f);
-
-
-	if (bStepHit)
+	//----------------------------
+	if (bIsRunning)
 	{
-		bool bFoundStepWall = false;
-		for (const FHitResult& StepHit : StepHits)
-		{
-			if (StepHit.IsValidBlockingHit() && StepHit.ImpactNormal.Z < MinWalkableFloorZ)
-			{
-				bFoundStepWall = true;
-				StepWallHit = StepHit;
-				break;
-			}
-		}
-
-		if (bFoundStepWall)
-		{
-			FCollisionShape CapsuleShape = CharacterPlayer->GetCapsuleComponent()->GetCollisionShape();
-			FPlane GroundPlane(GroundHit.ImpactPoint, GroundHit.ImpactNormal);
-			float PlanePointZ = (GroundPlane.W - GroundPlane.X * StepWallHit.ImpactPoint.X - GroundPlane.Y * StepWallHit.ImpactPoint.Y) / GroundPlane.Z;
-			float StepHeightZ = PlanePointZ + CapsuleShape.GetCapsuleHalfHeight() + MaxStepHeight;
-
-			FVector DownStepTraceStart =
-				FVector(StepWallHit.ImpactPoint.X, StepWallHit.ImpactPoint.Y, StepHeightZ) +
-				FVector::VectorPlaneProject(Input.WorldInputDir, GroundHit.ImpactNormal).GetSafeNormal() * 3.f;
-			FVector DownStepTraceEnd = DownStepTraceStart + FVector(0, 0, -1) * (StepHeightZ + 10.f);
-
-			FCollisionQueryParams StepFloorParams;
-			StepFloorParams.AddIgnoredActor(CharacterPlayer);
-
-			bool bStepFloorHit = GetWorld()->SweepSingleByChannel(StepFloorHit, DownStepTraceStart, DownStepTraceEnd, FQuat::Identity, ECC_WorldStatic,
-				CapsuleShape, StepFloorParams);
-
-			// DrawDebugCapsuleTraceSingle(GetWorld(), DownStepTraceStart, DownStepTraceEnd, 40.f, 90.f, EDrawDebugTrace::ForDuration, bStepFloorHit,
-			// 	StepFloorHit, FLinearColor::Green, FLinearColor::Red, 1.f);
-
-			if (bStepFloorHit && StepFloorHit.IsValidBlockingHit() && StepFloorHit.ImpactNormal.Z >= MinWalkableFloorZ)
-			{
-				bIsStepping = true;
-				LastVelocityBeforeStep = Velocity;
-			}
-		}
+		UpdateStamina(DeltaTime, RunStaminaConsumeRate);
 	}
+	else
+	{
+		UpdateStamina(DeltaTime, StaminaRecoveryRate);
+	}
+
+	//----------------------------
+
+
+	TryStartStep();
 
 	if (bGravityLaunchForceRequested)
 	{
@@ -482,22 +445,24 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 	{
 		if (CurrStamina >= DashStaminaConsumeRate)
 		{
-			if (!bIsDashing && !bIsRunning)
+			if (!bIsDashing && !bIsRunning && !bIsCrouching)
 			{
 				SetIsDashing(true);
 				bIsRunning = true;
 
 				const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
 				Velocity = DashDirection * DashStartSpeed;
+
+				ConsumeStamina(DashStaminaConsumeRate);
 			}
 		}
-		else
-		{
-			if (!bIsDashing)
-			{
-				bIsRunning = !bIsRunning;
-			}
-		}
+		//else
+		//{
+		//	if (!bIsDashing)
+		//	{
+		//		bIsRunning = !bIsRunning;
+		//	}
+		//}
 	}
 	else
 	{
@@ -1938,10 +1903,77 @@ void UPlayerMovementComponent::UpdateDependentMovementData()
 	WallJumpZVelocity = FMath::Sqrt(2 * GravityScale * WallJumpHeight);
 }
 
+void UPlayerMovementComponent::TryStartStep()
+{
+	TArray<FHitResult> StepHits;
+	FCollisionQueryParams StepParams;
+	StepParams.AddIgnoredActor(CharacterPlayer);
+
+	FVector StepTraceStart = CharacterPlayer->GetActorLocation() + FVector(0, 0, -1) * (CharacterPlayer->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - 5.f);
+	FVector StepTraceEnd = StepTraceStart + FVector::VectorPlaneProject(Input.WorldInputDir, GroundHit.ImpactNormal).GetSafeNormal() * CharacterPlayer->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	FCollisionShape StepShape = FCollisionShape::MakeSphere(5.f);
+
+	bool bStepHit = GetWorld()->SweepMultiByChannel(StepHits, StepTraceStart, StepTraceEnd, FQuat::Identity, ECC_WorldStatic, StepShape, StepParams);
+
+	// DrawDebugSphereTraceMulti(GetWorld(), StepTraceStart, StepTraceEnd,
+	// 	5.f, EDrawDebugTrace::ForDuration, bStepHit, StepHits, FLinearColor::Red, FLinearColor::Green, 1.f);
+
+
+	if (bStepHit)
+	{
+		bool bFoundStepWall = false;
+		for (const FHitResult& StepHit : StepHits)
+		{
+			if (StepHit.IsValidBlockingHit() && StepHit.ImpactNormal.Z < MinWalkableFloorZ)
+			{
+				bFoundStepWall = true;
+				StepWallHit = StepHit;
+				break;
+			}
+		}
+
+		if (bFoundStepWall)
+		{
+			FCollisionShape CapsuleShape = CharacterPlayer->GetCapsuleComponent()->GetCollisionShape();
+			FPlane GroundPlane(GroundHit.ImpactPoint, GroundHit.ImpactNormal);
+			float PlanePointZ = (GroundPlane.W - GroundPlane.X * StepWallHit.ImpactPoint.X - GroundPlane.Y * StepWallHit.ImpactPoint.Y) / GroundPlane.Z;
+			float StepHeightZ = PlanePointZ + CapsuleShape.GetCapsuleHalfHeight() + MaxStepHeight;
+
+			FVector DownStepTraceStart =
+				FVector(StepWallHit.ImpactPoint.X, StepWallHit.ImpactPoint.Y, StepHeightZ) +
+				FVector::VectorPlaneProject(Input.WorldInputDir, GroundHit.ImpactNormal).GetSafeNormal() * 3.f;
+			FVector DownStepTraceEnd = DownStepTraceStart + FVector(0, 0, -1) * (StepHeightZ + 10.f);
+
+			FCollisionQueryParams StepFloorParams;
+			StepFloorParams.AddIgnoredActor(CharacterPlayer);
+
+			bool bStepFloorHit = GetWorld()->SweepSingleByChannel(StepFloorHit, DownStepTraceStart, DownStepTraceEnd, FQuat::Identity, ECC_WorldStatic,
+				CapsuleShape, StepFloorParams);
+
+			// DrawDebugCapsuleTraceSingle(GetWorld(), DownStepTraceStart, DownStepTraceEnd, 40.f, 90.f, EDrawDebugTrace::ForDuration, bStepFloorHit,
+			// 	StepFloorHit, FLinearColor::Green, FLinearColor::Red, 1.f);
+
+			if (bStepFloorHit && StepFloorHit.IsValidBlockingHit() && StepFloorHit.ImpactNormal.Z >= MinWalkableFloorZ)
+			{
+				bIsStepping = true;
+				LastVelocityBeforeStep = Velocity;
+			}
+		}
+	}
+}
+
 void UPlayerMovementComponent::UpdateStamina(float DeltaTime, float UpdateRate)
 {
-	CurrStamina += UpdateRate;
+	CurrStamina += UpdateRate * DeltaTime;
 	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
+	CharacterPlayer->OnStaminaUpdated.Broadcast(CurrStamina);
+}
+
+void UPlayerMovementComponent::ConsumeStamina(float stamina)
+{
+	CurrStamina += stamina;
+	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
+	CharacterPlayer->OnStaminaUpdated.Broadcast(CurrStamina);
 }
 
 void UPlayerMovementComponent::AddControllerRoll(float DeltaTime, const FVector& WallRunDirection, EWallRunSide WallRunSide)
