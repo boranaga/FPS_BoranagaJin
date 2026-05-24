@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "WeaponName.h"
+#include "Items/WeaponState/WeaponStateType.h"
 #include "WeaponInterface.h"
 #include "WeaponSystemComponent.generated.h"
 
@@ -156,6 +157,7 @@ public:
 	int32 GetWeaponNum() { return WeaponInventory.Num(); }
 	int32 GetSkillWeaponNum() { return SkillWeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
+	EWeaponStateType GetCurrWeaponStateType() const;
 
 	void SwitchToPreviousWeapon();
 	void SwitchToNextWeapon();

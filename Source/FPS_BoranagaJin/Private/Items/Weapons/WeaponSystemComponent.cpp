@@ -966,6 +966,11 @@ bool UWeaponSystemComponent::IsCurrentSkillWeaponTargeting()
 	if (CurrentWeapon && CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Waiting) { return true; }
 	else { return false; }
 }
+EWeaponStateType UWeaponSystemComponent::GetCurrWeaponStateType() const
+{
+	if (CurrentWeapon) return CurrentWeapon->GetCurrentState()->GetWeaponStateType();
+	else return EWeaponStateType::WeaponStateType_None;
+}
 void UWeaponSystemComponent::SwitchToPreviousWeapon()
 {
 	if (IsCurrentSkillWeaponTargeting()

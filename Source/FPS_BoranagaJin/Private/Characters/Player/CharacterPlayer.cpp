@@ -165,6 +165,17 @@ bool ACharacterPlayer::HasWeapon() const
 	}
 	return false;
 }
+EWeaponStateType ACharacterPlayer::GetWeaponStateType() const
+{
+	if (WeaponSystem)
+	{
+		return WeaponSystem->GetCurrWeaponStateType();
+	}
+	else
+	{
+		return EWeaponStateType::WeaponStateType_None;
+	}
+}
 
 void ACharacterPlayer::UpdateLookInputVector2D(const FInputActionValue& InputValue)
 {

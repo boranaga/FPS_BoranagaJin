@@ -6,6 +6,7 @@
 //#include "GameFramework/Character.h" //TODO: Pawn vs Character which one?
 #include "GameFramework/Pawn.h"
 #include "Characters/DamageInterface.h"
+#include "Items/WeaponState/WeaponStateType.h"
 #include "CharacterPlayer.generated.h"
 
 class UCameraComponent;
@@ -52,6 +53,7 @@ public:
 	//UACHitScreenManager* GetHitScreenManager() const { return HitScreenManager; }
 
 	bool HasWeapon() const;
+	EWeaponStateType GetWeaponStateType() const;
 
 	void UpdateLookInputVector2D(const FInputActionValue& InputValue);
 	void SetLookInputVector2DZero();
