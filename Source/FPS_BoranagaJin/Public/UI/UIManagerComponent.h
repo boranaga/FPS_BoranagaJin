@@ -9,6 +9,7 @@
 class AFPSPlayerController;
 class ACharacterPlayer;
 class UStaminaWidget;
+class UPlayerDisplayWidget;
 
 class UWeaponSystemComponent;
 
@@ -17,6 +18,7 @@ class UWeaponSystemComponent;
 class UPlayerHUD;
 
 class UInputAction;
+class UInputMappingContext;
 class UEnhancedInputComponent;
 //class UBaseUIWidget;
 
@@ -37,13 +39,9 @@ class FPS_BORANAGAJIN_API UUIManagerComponent : public UActorComponent
 public:
 	UUIManagerComponent();
 	// virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
 	void InitUIManagerComponent();
-
 protected:
 	virtual void BeginPlay() override;
-	void SetupInput();
-
 protected:
 	UPROPERTY()
 	TObjectPtr<ACharacterPlayer> CharacterPlayer = nullptr;
@@ -58,6 +56,8 @@ public:
 	//void InitializeManagers(); //TODO: ???
 
 private:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputMappingContext* UISystemMappingContext;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* ESCAction = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Input")
@@ -74,21 +74,28 @@ private:
 	//UPROPERTY(EditAnywhere, Category = "UI")
 	//TMap<EUIType, TSubclassOf<UBaseUIWidget>> UIWidgetClasses;
 
-
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UUserWidget> TabMenuWidgetClass;
-
-	UPROPERTY()
-	UUserWidget* TabMenuWidgetInstance;
-
-
 	void OnShowTabMenuStarted(const FInputActionValue& Value);
 	void OnShowTabMenuCompleted(const FInputActionValue& Value);
-
 
 	//UPROPERTY()
 	//TMap<EUIType, UBaseUIWidget*> UIWidgets;
 //----------------------------
+#pragma region InventoryUI
+public:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "PlayerDisplayWidget")
+	TSubclassOf<UPlayerDisplayWidget> PlayerDisplayWidgetClass;
+protected:
+	UPROPERTY()
+	UPlayerDisplayWidget* PlayerDisplayWidget = nullptr;
+protected:
+	void InitPlayerDisplayWidget();
+	void OpenInventory();
+	void CloseInventory();
+	void OnTabToggled();
+protected:
+	bool bIsInventoryOpened = false;
+
+#pragma endregion
 #pragma region StaminaBar
 public:
 	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "StaminaWidget")

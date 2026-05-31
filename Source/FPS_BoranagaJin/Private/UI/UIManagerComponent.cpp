@@ -3,11 +3,13 @@
 
 #include "UI/UIManagerComponent.h"
 #include "UI/StaminaWidget.h"
+#include "UI/PlayerDisplayWidget.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 
 
 UUIManagerComponent::UUIManagerComponent()
@@ -27,6 +29,18 @@ void UUIManagerComponent::InitUIManagerComponent()
 			{
 				CharacterPlayer = Cast<ACharacterPlayer>(PlayerController->GetPawn());
 			}
+
+			if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+			{
+				// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
+				Subsystem->AddMappingContext(UISystemMappingContext, 1);
+			}
+
+			if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
+			{
+				EnhancedInputComponent->BindAction(TabAction, ETriggerEvent::Started, this, &UUIManagerComponent::OnTabToggled);
+			}
+
 		}
 	}
 
@@ -61,6 +75,37 @@ void UUIManagerComponent::BeginPlay()
 			StaminaWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
+
+	if (PlayerDisplayWidgetClass)
+	{
+		PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
+		if (PlayerDisplayWidget)
+		{
+			PlayerDisplayWidget->AddToViewport();
+			PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+}
+
+void UUIManagerComponent::OpenInventory()
+{
+	if (!PlayerDisplayWidget) return;
+	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Visible);
+	PlayerDisplayWidget->OpenInventory();
+	bIsInventoryOpened = true;
+}
+
+void UUIManagerComponent::CloseInventory()
+{
+	if (!PlayerDisplayWidget) return;
+	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
+	PlayerDisplayWidget->CloseInventory();
+	bIsInventoryOpened = false;
+}
+
+void UUIManagerComponent::OnTabToggled()
+{
+	bIsInventoryOpened ? CloseInventory() : OpenInventory();
 }
 
 void UUIManagerComponent::InitStaminaBar(float maxstamina)
@@ -76,18 +121,7 @@ void UUIManagerComponent::SetStaminaBarPercent(float const Value)
 	if (StaminaWidget) StaminaWidget->SetStaminaBarPercent(Value);
 }
 
-void UUIManagerComponent::SetupInput()
-{
-	if (APlayerController* PC = Cast<APlayerController>(GetOwner()->GetInstigatorController()))
-	{
-		if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PC->InputComponent))
-		{
-			//EnhancedInput->BindAction(OpenPauseMenuAction, ETriggerEvent::Started, this, &UUIManagerComponent::TogglePauseMenu);
-			//EnhancedInput->BindAction(ShowTabMenuAction, ETriggerEvent::Started, this, &UUIManagerComponent::OnShowTabMenuStarted);
-			//EnhancedInput->BindAction(ShowTabMenuAction, ETriggerEvent::Completed, this, &UUIManagerComponent::OnShowTabMenuCompleted);
-		}
-	}
-}
+
 
 void UUIManagerComponent::OpenUI(EUIType UIType)
 {
@@ -201,46 +235,10 @@ void UUIManagerComponent::InitializeWidgets()
 
 void UUIManagerComponent::OnShowTabMenuStarted(const FInputActionValue& Value)
 {
-	//// 위젯 클래스가 유효하고, 아직 위젯이 생성되지 않았다면
-	//if (TabMenuWidgetClass && !TabMenuWidgetInstance)
-	//{
-	//	// 1. 이 컴포넌트의 소유자(Owner)를 가져옵니다.
-	//	//    (이 컴포넌트가 플레이어 캐릭터에 붙어있다고 가정)
-	//	APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	//	if (!OwnerPawn)
-	//	{
-	//		// 소유자가 Pawn이 아니면 컨트롤러를 가져올 수 없습니다.
-	//		return;
-	//	}
 
-	//	// 2. 소유자인 Pawn에서 컨트롤러를 가져옵니다.
-	//	APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
-	//	if (!PC)
-	//	{
-	//		// 컨트롤러가 유효하지 않으면(예: AI에 의해 조종되는 Pawn) 중단합니다.
-	//		return;
-	//	}
-
-	//	// 이제 PC 변수가 유효하므로 위젯을 생성할 수 있습니다.
-	//	TabMenuWidgetInstance = CreateWidget<UUserWidget>(PC, TabMenuWidgetClass);
-
-	//	if (TabMenuWidgetInstance)
-	//	{
-	//		// 뷰포트에 추가
-	//		TabMenuWidgetInstance->AddToViewport();
-	//	}
-	//}
 }
 
 void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
 {
-	//// 위젯 인스턴스가 유효하다면 (즉, 화면에 떠 있다면)
-	//if (TabMenuWidgetInstance)
-	//{
-	//	TabMenuWidgetInstance->RemoveFromParent();
-	//	TabMenuWidgetInstance = nullptr; // 참조 제거
 
-	//	// *** 중요 ***
-	//	// 여기서도 입력 모드를 건드리지 않습니다.
-	//}
 }
