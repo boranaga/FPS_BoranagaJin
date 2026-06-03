@@ -17,10 +17,15 @@
 //#include "Components/VerticalBox.h"
 
 
+void UInteractionWidget::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    SetUIType(EUIType::UIType_Interaction);
+}
+
 void UInteractionWidget::NativeConstruct()
 {
     Super::NativeConstruct();
-
     //UE_LOG(LogTemp, Error, TEXT("UWeaponAimUIWidget::NativeConstruct()!!!"));
 }
 

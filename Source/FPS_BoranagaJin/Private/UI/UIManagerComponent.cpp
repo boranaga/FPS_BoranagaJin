@@ -4,10 +4,12 @@
 #include "UI/UIManagerComponent.h"
 #include "UI/StaminaWidget.h"
 #include "UI/PlayerDisplayWidget.h"
+#include "UI/InteractionWidget.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 
@@ -46,8 +48,11 @@ void UUIManagerComponent::InitUIManagerComponent()
 
 	if (CharacterPlayer)
 	{
+		CharacterPlayer->OnUIWidgetCreatedDelegate.AddDynamic(this, &UUIManagerComponent::RegisterUIWidget);
 		CharacterPlayer->OnStaminaInit.AddDynamic(this, &UUIManagerComponent::InitStaminaBar);
 		CharacterPlayer->OnStaminaUpdated.AddDynamic(this, &UUIManagerComponent::SetStaminaBarPercent);
+		CharacterPlayer->OnInteractionUIPopUpDelegate.AddDynamic(this, &UUIManagerComponent::PlayPopUpInteractionWidgetAnim);
+		CharacterPlayer->OnInteractionUIUpdatedDelegate.AddDynamic(this, &UUIManagerComponent::UpdateInteractionUI);
 	}
 }
 
@@ -65,13 +70,16 @@ void UUIManagerComponent::BeginPlay()
 	//}
 
 	//-------------------------
+
+	InitUILayersMap();
+
 	if (StaminaWidgetClass)
 	{
 		StaminaWidget = CreateWidget<UStaminaWidget>(GetWorld(), StaminaWidgetClass);
 		if (StaminaWidget)
 		{
-			StaminaWidget->AddToViewport();
-			//StaminaWidget->SetVisibility(ESlateVisibility::Hidden);
+			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
+			RegisterUIWidget(StaminaWidget);
 			StaminaWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
@@ -81,9 +89,123 @@ void UUIManagerComponent::BeginPlay()
 		PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
 		if (PlayerDisplayWidget)
 		{
-			PlayerDisplayWidget->AddToViewport();
+			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), PlayerDisplayWidget->GetUIType());
+			RegisterUIWidget(PlayerDisplayWidget);
 			PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
+	}
+
+	if (InteractionWidgetClass)
+	{
+		InteractionWidget = CreateWidget<UInteractionWidget>(GetWorld(), InteractionWidgetClass);
+		if (InteractionWidget)
+		{
+			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
+			RegisterUIWidget(InteractionWidget);
+			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+}
+
+TTuple<FVector2D, bool> UUIManagerComponent::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
+{
+	FVector2D ScreenLocation = FVector2D::ZeroVector;
+	bool bResult = UGameplayStatics::ProjectWorldToScreen(PlayerController, SearchLocation, ScreenLocation);
+
+	return MakeTuple(ScreenLocation, bResult);
+}
+
+bool UUIManagerComponent::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
+{
+	FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
+
+	bool bIsInWidth = true;
+	bool bIsInHeight = true;
+
+	// Check Width
+	if (ScreenRatio_Width == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Width) > 1.0f || (ScreenRatio_Width == (1.0f - ScreenRatio_Width)))
+	{
+		if (ActorScreenPosition.X >= 0.0f && ActorScreenPosition.X <= ViewportSize.X)
+		{
+			bIsInWidth = true;
+		}
+		else
+		{
+			bIsInWidth = false;
+		}
+	}
+	else
+	{
+		float LargeScreenRatio_Width;
+		float SmallScreenRatio_Width;
+
+		if (ScreenRatio_Width < (1.0f - ScreenRatio_Width))
+		{
+			LargeScreenRatio_Width = 1.0f - ScreenRatio_Width;
+			SmallScreenRatio_Width = ScreenRatio_Width;
+		}
+		else
+		{
+			LargeScreenRatio_Width = ScreenRatio_Width;
+			SmallScreenRatio_Width = 1.0f - ScreenRatio_Width;
+		}
+
+		if (ActorScreenPosition.X >= ViewportSize.X * SmallScreenRatio_Width && ActorScreenPosition.X <= ViewportSize.X * LargeScreenRatio_Width)
+		{
+			bIsInWidth = true;
+		}
+		else
+		{
+			bIsInWidth = false;
+		}
+	}
+
+	// Check Height
+	if (ScreenRatio_Height == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Height) > 1.0f || (ScreenRatio_Height == (1.0f - ScreenRatio_Height)))
+	{
+		if (ActorScreenPosition.Y >= 0.0f && ActorScreenPosition.Y <= ViewportSize.Y)
+		{
+			bIsInHeight = true;
+		}
+		else
+		{
+			bIsInHeight = false;
+		}
+	}
+	else
+	{
+		float LargeScreenRatio_Height;
+		float SmallScreenRatio_Height;
+
+		if (ScreenRatio_Height < (1.0f - ScreenRatio_Height))
+		{
+			LargeScreenRatio_Height = 1.0f - ScreenRatio_Height;
+			SmallScreenRatio_Height = ScreenRatio_Height;
+		}
+		else
+		{
+			LargeScreenRatio_Height = ScreenRatio_Height;
+			SmallScreenRatio_Height = 1.0f - ScreenRatio_Height;
+		}
+
+		if (ActorScreenPosition.Y >= ViewportSize.Y * SmallScreenRatio_Height && ActorScreenPosition.Y <= ViewportSize.Y * LargeScreenRatio_Height)
+		{
+			bIsInHeight = true;
+		}
+		else
+		{
+			bIsInHeight = false;
+		}
+	}
+
+	// Return
+	if (bIsInWidth && bIsInHeight)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
 	}
 }
 
@@ -121,18 +243,59 @@ void UUIManagerComponent::SetStaminaBarPercent(float const Value)
 	if (StaminaWidget) StaminaWidget->SetStaminaBarPercent(Value);
 }
 
-
-
-void UUIManagerComponent::OpenUI(EUIType UIType)
+void UUIManagerComponent::PlayPopUpInteractionWidgetAnim()
 {
-	//UBaseUIWidget* TargetWidget = GetWidget(UIType);
-	//if (!TargetWidget) return; // 위젯 생성에 실패한 경우 처리
+	if (InteractionWidget) InteractionWidget->PlayPopUpAnim();
 
-	//if (!TargetWidget->IsInViewport())
-	//{
-	//	TargetWidget->OpenUI();
-	//}
+	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::PlayPopUpInteractionWidgetAnim"));
 }
+
+void UUIManagerComponent::UpdateInteractionUI(bool bFlag, FVector NewLocation)
+{
+	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::UpdateInteractionUI"));
+
+	FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(NewLocation).Get<0>();
+
+	if (bFlag)
+	{
+		if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
+		{
+			InteractionWidget->SetPositionInViewport(TargetScreenPosition);
+
+			if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
+			{
+				InteractionWidget->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+		//else
+		//{
+		//	if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+		//	{
+		//		InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		//	}
+		//}
+	}
+	else
+	{
+		if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+		{
+			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+}
+
+
+
+//void UUIManagerComponent::OpenUI(EUIType UIType)
+//{
+//	//UBaseUIWidget* TargetWidget = GetWidget(UIType);
+//	//if (!TargetWidget) return; // 위젯 생성에 실패한 경우 처리
+//
+//	//if (!TargetWidget->IsInViewport())
+//	//{
+//	//	TargetWidget->OpenUI();
+//	//}
+//}
 
 //UBaseUIWidget* UUIManagerComponent::GetWidget(EUIType UIType)
 //{
@@ -241,4 +404,22 @@ void UUIManagerComponent::OnShowTabMenuStarted(const FInputActionValue& Value)
 void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
 {
 
+}
+
+void UUIManagerComponent::InitUILayersMap()
+{
+	UILayers.Add(EUIType::UIType_Stamina, 0);
+	UILayers.Add(EUIType::UIType_Interaction, 1);
+	UILayers.Add(EUIType::UIType_Inventory, 3);
+	UILayers.Add(EUIType::UIType_WeaponAim, 2);
+}
+
+void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)
+{
+	UIWidgets.Add(NewUIWidget->GetUIType(), NewUIWidget);
+	UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), NewUIWidget->GetUIType());
+	NewUIWidget->AddToViewport(*UILayers.Find(NewUIWidget->GetUIType()));
+	//NewUIWidget->AddToViewport();
+
+	//UE_LOG(LogTemp, Error, TEXT("eofjeoifwjoiejfi"));
 }

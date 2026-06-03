@@ -178,13 +178,13 @@ public:
 #pragma endregion
 
 #pragma region InteractionUI
-protected:
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InteractionWidget")
-	TSubclassOf<UInteractionWidget> InteractionWidgetClass;
-	UPROPERTY()
-	UInteractionWidget* InteractionWidget;
+//protected:
+//	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InteractionWidget")
+//	TSubclassOf<UInteractionWidget> InteractionWidgetClass;
+//	UPROPERTY()
+//	UInteractionWidget* InteractionWidget;
 
-	void InitInteractionUI();
-	void UpdateInteractionUI(bool bflag = false, FVector location = FVector::ZeroVector);
+	//void InitInteractionUI();
+	//void UpdateInteractionUI(bool bflag = false, FVector location = FVector::ZeroVector);
 #pragma endregion
 };

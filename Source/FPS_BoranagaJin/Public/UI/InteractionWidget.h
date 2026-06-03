@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "BaseUIWidget.h"
 #include "InteractionWidget.generated.h"
 
 class ACharacterPlayer;
@@ -16,12 +16,14 @@ class UWidgetAnimation;
 //class UTextBlock;
 
 UCLASS()
-class FPS_BORANAGAJIN_API UInteractionWidget : public UUserWidget
+class FPS_BORANAGAJIN_API UInteractionWidget : public UBaseUIWidget
 {
 	GENERATED_BODY()
 public:
+	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
+	virtual EUIType GetUIType() const { return EUIType::UIType_Interaction; }
 protected:
 	UPROPERTY(meta = (BindWidgetAnim), Transient)
 	UWidgetAnimation* PopUp;

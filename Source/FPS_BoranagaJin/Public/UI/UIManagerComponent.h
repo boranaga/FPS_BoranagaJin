@@ -4,33 +4,27 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "UIType.h"
 #include "UIManagerComponent.generated.h"
 
 class AFPSPlayerController;
 class ACharacterPlayer;
+class UBaseUIWidget;
 class UStaminaWidget;
 class UPlayerDisplayWidget;
+class UInteractionWidget;
 
 class UWeaponSystemComponent;
-
-
 
 class UPlayerHUD;
 
 class UInputAction;
 class UInputMappingContext;
 class UEnhancedInputComponent;
-//class UBaseUIWidget;
-
-UENUM(BlueprintType)
-enum class EUIType : uint8
-{
-	None UMETA(DisplayName = "None"),
-	Inventory UMETA(DisplayName = "Inventory"),
-	PlayerHUD UMETA(DisplayName = "PlayerHUD")
-};
 
 struct FInputActionValue;
+
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnUIWidgetCreated, UBaseUIWidget*, NewUIWidgetPtr);
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class FPS_BORANAGAJIN_API UUIManagerComponent : public UActorComponent
@@ -49,7 +43,7 @@ protected:
 	TObjectPtr<AFPSPlayerController> PlayerController = nullptr;
 
 public:
-	void OpenUI(EUIType UIType);
+	//void OpenUI(EUIType UIType);
 	//UBaseUIWidget* GetWidget(EUIType UIType);
 
 	void InitializeWidgets();
@@ -77,14 +71,28 @@ private:
 	void OnShowTabMenuStarted(const FInputActionValue& Value);
 	void OnShowTabMenuCompleted(const FInputActionValue& Value);
 
-	//UPROPERTY()
-	//TMap<EUIType, UBaseUIWidget*> UIWidgets;
 //----------------------------
-#pragma region InventoryUI
+protected:
+	TTuple<FVector2D, bool> GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const;
+	bool IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width = 0.0f, float ScreenRatio_Height = 0.0f) const;
+#pragma region UIManagement
 public:
+	//FOnUIWidgetCreated OnUIWidgetCreatedDelegate;
+protected:
+	UPROPERTY()
+	TMap<EUIType, int32> UILayers;
+	UPROPERTY()
+	TMap<EUIType, UBaseUIWidget*> UIWidgets;
+protected:
+	void InitUILayersMap();
+	void RegisterUIWidget(UBaseUIWidget* NewUIWidget);
+	
+
+#pragma endregion
+#pragma region InventoryUI
+protected:
 	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "PlayerDisplayWidget")
 	TSubclassOf<UPlayerDisplayWidget> PlayerDisplayWidgetClass;
-protected:
 	UPROPERTY()
 	UPlayerDisplayWidget* PlayerDisplayWidget = nullptr;
 protected:
@@ -97,10 +105,9 @@ protected:
 
 #pragma endregion
 #pragma region StaminaBar
-public:
+protected:
 	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "StaminaWidget")
 	TSubclassOf<UStaminaWidget> StaminaWidgetClass;
-protected:
 	UPROPERTY()
 	UStaminaWidget* StaminaWidget = nullptr;
 
@@ -110,5 +117,17 @@ protected:
 	void SetStaminaBarPercent(float const Value);
 	//void HideInGame(bool bHidden);
 	//void PlayFadeAnimation();
+#pragma endregion
+#pragma region InteractionUI
+protected:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InteractionWidget")
+	TSubclassOf<UInteractionWidget> InteractionWidgetClass;
+	UPROPERTY()
+	UInteractionWidget* InteractionWidget;
+protected:
+	UFUNCTION()
+	void PlayPopUpInteractionWidgetAnim();
+	UFUNCTION()
+	void UpdateInteractionUI(bool bFlag = false, FVector NewLocation = FVector::ZeroVector);
 #pragma endregion
 };

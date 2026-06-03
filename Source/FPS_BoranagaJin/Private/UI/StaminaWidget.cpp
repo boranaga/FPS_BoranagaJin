@@ -15,6 +15,12 @@
 #include "Components//TextBlock.h"
 
 
+void UStaminaWidget::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    SetUIType(EUIType::UIType_Stamina);
+}
+
 void UStaminaWidget::NativeConstruct()
 {
     Super::NativeConstruct();

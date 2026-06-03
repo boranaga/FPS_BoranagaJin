@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "BaseUIWidget.h"
 #include "StaminaWidget.generated.h"
 
 class ACharacterPlayer;
@@ -14,12 +14,14 @@ class UProgressBar;
 class UTextBlock;
 
 UCLASS()
-class FPS_BORANAGAJIN_API UStaminaWidget : public UUserWidget
+class FPS_BORANAGAJIN_API UStaminaWidget : public UBaseUIWidget
 {
 	GENERATED_BODY()
 public:
+	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
+	virtual EUIType GetUIType() const { return EUIType::UIType_Stamina; }
 public:
 	UPROPERTY(meta = (BindWidget))
 	UProgressBar* StaminaBar = nullptr;

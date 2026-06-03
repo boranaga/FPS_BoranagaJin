@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "BaseUIWidget.h"
 #include "InventoryUIWidget.generated.h"
 
 class UInventorySlotWidget;
@@ -9,7 +9,7 @@ class UInventorySlotWidget;
 class UWrapBox;
 
 UCLASS()
-class FPS_BORANAGAJIN_API UInventoryUIWidget : public UUserWidget
+class FPS_BORANAGAJIN_API UInventoryUIWidget : public UBaseUIWidget
 {
 	GENERATED_BODY()
 public:

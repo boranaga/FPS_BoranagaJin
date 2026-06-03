@@ -23,8 +23,11 @@ class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnUIWidgetCreated, UBaseUIWidget*, NewUIWidgetPtr);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionUIPopUp);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool, bFlag, FVector, NewLocation);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
@@ -65,9 +68,13 @@ public:
 	//UACPlayerAttackTokens* GetAttackTokensComponent() const { return AttackTokensComponent; }
 	virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) override;
 
+public:
+	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;
 	FOnStaminaInit OnStaminaInit;
 	FOnStaminaUpdated OnStaminaUpdated;
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
+	FOnInteractionUIPopUp OnInteractionUIPopUpDelegate;
+	FOnInteractionUIUpdated OnInteractionUIUpdatedDelegate;
 
 
 	//virtual void GravityLaunchPlayer(const FVector& Direction, float ForceAmount) override;
@@ -122,7 +129,6 @@ protected:
 	//UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attack Tokens")
 	//UACPlayerAttackTokens* AttackTokensComponent;
 
-	// UI component - suhyeon
 	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "BaseUI", meta = (AllowPrivateAccess = "true"))
 	//UACUIMangerComponent* UIManager;
 

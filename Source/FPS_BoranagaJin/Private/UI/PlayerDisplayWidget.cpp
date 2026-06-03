@@ -6,6 +6,17 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 
+void UPlayerDisplayWidget::NativePreConstruct()
+{
+	Super::NativePreConstruct();
+	SetUIType(EUIType::UIType_Inventory);
+}
+
+void UPlayerDisplayWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+}
+
 void UPlayerDisplayWidget::OpenInventory()
 {
 	ShowMouseCursor();

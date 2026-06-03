@@ -15,6 +15,12 @@
 #include "Components//TextBlock.h"
 
 
+void UWeaponAimUIWidget::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    SetUIType(EUIType::UIType_WeaponAim);
+}
+
 void UWeaponAimUIWidget::NativeConstruct()
 {
     Super::NativeConstruct();

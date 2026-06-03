@@ -2,7 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "BaseUIWidget.h"
 #include "Items/ItemName.h"
 #include "InventorySlotWidget.generated.h"
 
@@ -12,7 +12,7 @@ class UImage;
 class UOverlay;
 
 UCLASS()
-class FPS_BORANAGAJIN_API UInventorySlotWidget : public UUserWidget
+class FPS_BORANAGAJIN_API UInventorySlotWidget : public UBaseUIWidget
 {
 	GENERATED_BODY()
 public:

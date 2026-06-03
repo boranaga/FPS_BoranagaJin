@@ -2,7 +2,20 @@
 
 
 #include "UI/AmmoCounterWidget.h"
+
 #include "Components/TextBlock.h"
+
+void UAmmoCounterWidget::NativePreConstruct()
+{
+	Super::NativePreConstruct();
+	SetUIType(EUIType::UIType_AmmoCounter);
+}
+
+void UAmmoCounterWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	//SetUIType(EUIType::UIType_AmmoCounter);
+}
 
 void UAmmoCounterWidget::UpdateAmmoCount(int32 NewAmmoCount)
 {

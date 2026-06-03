@@ -28,6 +28,7 @@ protected:
 	virtual void OnPossess(APawn* aPawn) override;
 	virtual void SetupInputComponent() override;
 
+public:
 	UUIManagerComponent* GetUIManager() const { return UIManagerComponent; }
 
 public:
