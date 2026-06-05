@@ -3,7 +3,7 @@
 
 #include "Animations/AN_EjectProjectileShell.h"
 #include "Items/Weapons/WeaponInterface.h"
-#include "Items/Weapons/WeaponSystemComponent.h"
+#include "Items/InventorySystemComponent.h"
 #include "Items/Weapons/Weapon.h"
 #include "Characters/Player/CharacterPlayer.h"
 
@@ -27,7 +27,7 @@ void UAN_EjectProjectileShell::Notify(USkeletalMeshComponent* MeshComp, UAnimSeq
 	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Owner);
 	if (!Player) return;
 
-	UWeaponSystemComponent* WeaponSystem = Player->GetWeaponSystemComponent();
+	UInventorySystemComponent* WeaponSystem = Player->GetWeaponSystemComponent();
 	if (!WeaponSystem) return;
 
 	AActor* CurrentWeapon = WeaponSystem->GetCurrentWeapon();

@@ -311,8 +311,6 @@ protected:
 
 	void InitProjectileShells();
 	virtual void EjectProjectileShell() override;
-
-
 #pragma endregion
 
 #pragma region Aim

@@ -18,7 +18,7 @@ class UNiagaraComponent;
 
 class UPlayerMovementComponent;
 class UPlayerCameraComponent;
-class UWeaponSystemComponent;
+class UInventorySystemComponent;
 class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
@@ -47,7 +47,7 @@ public:
 	UCameraComponent* GetCameraComponent() const { return Camera; };
 	FVector GetDefaultCameraRelativeLocation() const { return DefaultCameraRelativeLocation; };
 
-	UWeaponSystemComponent* GetWeaponSystemComponent() const { return WeaponSystem; }
+	UInventorySystemComponent* GetWeaponSystemComponent() const { return InventorySystem; }
 
 	USkeletalMeshComponent* GetArmMesh() { return ArmMesh; }
 	USkeletalMeshComponent* GetHandsMesh() { return HandsMesh; }
@@ -115,7 +115,7 @@ protected:
 	TObjectPtr<UPlayerMovementComponent> MovementComponent;
 
 	UPROPERTY(EditAnywhere, Category = "WeaponSystem")
-	TObjectPtr<UWeaponSystemComponent> WeaponSystem;
+	TObjectPtr<UInventorySystemComponent> InventorySystem;
 
 
 	// This actor component is for handling camera shakes and state-based movement

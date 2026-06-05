@@ -417,9 +417,5 @@ void UUIManagerComponent::InitUILayersMap()
 void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)
 {
 	UIWidgets.Add(NewUIWidget->GetUIType(), NewUIWidget);
-	UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), NewUIWidget->GetUIType());
 	NewUIWidget->AddToViewport(*UILayers.Find(NewUIWidget->GetUIType()));
-	//NewUIWidget->AddToViewport();
-
-	//UE_LOG(LogTemp, Error, TEXT("eofjeoifwjoiejfi"));
 }

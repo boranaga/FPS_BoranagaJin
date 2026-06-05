@@ -3,7 +3,7 @@
 
 #include "Items/Weapons/WeaponTargeting.h"
 #include "Items/Weapons/Weapon.h"
-#include "Items/Weapons/WeaponSystemComponent.h"
+#include "Items/InventorySystemComponent.h"
 #include "Items/WeaponState/WeaponIdleState.h"
 #include "Items/WeaponState/WeaponTargetingState.h"
 #include "Items/WeaponState/WeaponFiringState.h"
@@ -1174,14 +1174,14 @@ void AWeaponTargeting::UpdateTargetingSkillUI()
 bool AWeaponTargeting::TryTakeControl()
 {
 	if (!Character) { return false; }
-	UWeaponSystemComponent* WSC = Character->GetWeaponSystemComponent();
+	UInventorySystemComponent* WSC = Character->GetWeaponSystemComponent();
 	if (!WSC) { return false; }
 	return WSC->TryTakeControl(this);
 }
 void AWeaponTargeting::ReleaseControl()
 {
 	if (!Character) { return; }
-	UWeaponSystemComponent* WSC = Character->GetWeaponSystemComponent();
+	UInventorySystemComponent* WSC = Character->GetWeaponSystemComponent();
 	if (!WSC) { return; }
 	WSC->ReleaseControl();
 }

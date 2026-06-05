@@ -14,7 +14,7 @@ class UStaminaWidget;
 class UPlayerDisplayWidget;
 class UInteractionWidget;
 
-class UWeaponSystemComponent;
+class UInventorySystemComponent;
 
 class UPlayerHUD;
 

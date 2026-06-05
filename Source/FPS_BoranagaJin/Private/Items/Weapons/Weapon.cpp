@@ -3,7 +3,7 @@
 
 #include "Items/Weapons/Weapon.h"
 #include "Items/Weapons/WeaponInterface.h"
-#include "Items/Weapons/WeaponSystemComponent.h"
+#include "Items/InventorySystemComponent.h"
 #include "Items/WeaponState/WeaponBaseState.h"
 #include "Items/WeaponState/WeaponIdleState.h"
 #include "Items/WeaponState/WeaponFiringState.h"

@@ -5,7 +5,7 @@
 #include "Characters/Player/PlayerMovementComponent.h"
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
-#include "Items/Weapons/WeaponSystemComponent.h"
+#include "Items/InventorySystemComponent.h"
 #include "GameModes/DefaultGameMode.h"
 #include "Instance/DefaultGameInstance.h"
 #include "Data/PlayerSoundData.h"
@@ -58,7 +58,7 @@ ACharacterPlayer::ACharacterPlayer()
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 
 	// <WeaponSystem>
-	WeaponSystem = CreateDefaultSubobject<UWeaponSystemComponent>(TEXT("WeaponSystem"));
+	InventorySystem = CreateDefaultSubobject<UInventorySystemComponent>(TEXT("WeaponSystem"));
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel8, ECR_Ignore);
 	ArmMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -159,17 +159,17 @@ UCapsuleComponent* ACharacterPlayer::GetCapsuleComponent()
 
 bool ACharacterPlayer::HasWeapon() const
 {
-	if (WeaponSystem)
+	if (InventorySystem)
 	{
-		return WeaponSystem->GetCurrentWeapon() != nullptr;
+		return InventorySystem->GetCurrentWeapon() != nullptr;
 	}
 	return false;
 }
 EWeaponStateType ACharacterPlayer::GetWeaponStateType() const
 {
-	if (WeaponSystem)
+	if (InventorySystem)
 	{
-		return WeaponSystem->GetCurrWeaponStateType();
+		return InventorySystem->GetCurrWeaponStateType();
 	}
 	else
 	{
