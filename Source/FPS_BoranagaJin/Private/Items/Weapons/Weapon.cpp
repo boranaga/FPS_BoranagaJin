@@ -77,9 +77,11 @@ AWeapon::AWeapon()
 
 	//---------------------------------------------------------------------------------
 	LeftAmmoInCurrentMag = MaxAmmoPerMag;
+
+	bIsStackable = false;
 }
 
-void AWeapon::InitWeapon(ACharacterPlayer* NewCharacter)
+void AWeapon::InitItem(ACharacterPlayer* NewCharacter)
 {
 	Character = NewCharacter;
 	if (Character)

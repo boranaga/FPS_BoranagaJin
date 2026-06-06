@@ -119,7 +119,7 @@ public:
 
 	TArray<FInputBindingHandle*> InputActionBindingHandles;
 
-	virtual void InitWeapon(ACharacterPlayer* NewCharacter);
+	virtual void InitItem(ACharacterPlayer* NewCharacter) override;
 	void InitializeCamera(ACharacterPlayer* NewCharacter);
 	virtual void InitializeUI();
 protected:
@@ -203,9 +203,9 @@ public:
 	void ChangeState(UWeaponBaseState* NewState);
 
 protected:
-	/** The Character holding this weapon*/
-	UPROPERTY()
-	ACharacterPlayer* Character = nullptr;
+	///** The Character holding this weapon*/
+	//UPROPERTY()
+	//ACharacterPlayer* Character = nullptr;
 
 	UPROPERTY()
 	APlayerController* CharacterController = nullptr;

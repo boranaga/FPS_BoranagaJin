@@ -19,6 +19,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapo
 class ACharacterPlayer;
 class AItem;
 class AWeapon;
+class AItemPickUp;
 class AWeaponPickUp;
 class UInteractionWidget;
 
@@ -82,6 +83,7 @@ protected:
 protected:
 	void InitInventory();
 	bool AddItem(AItem* NewItem, int32 AddCount = 1);
+	bool AddItemFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
 	bool RemoveItem(EItemName ItemName, int32 RemoveCount = 1);
 	bool RemoveItemAtSlot(int32 SlotIndex, int32 RemoveCount = 1);
 	bool SwapSlots(int32 FromIndex, int32 ToIndex);
@@ -89,6 +91,17 @@ protected:
 	int32 FindItemSlot(EItemName ItemName) const;
 	int32 FindEmptySlot() const;
 	const TArray<FInventorySlot>& GetInventorySlots() const;
+#pragma endregion
+#pragma region PickUpItem
+protected:
+	bool SearchItems();
+	void PickUpItem();
+	bool ObtainItem(AItemPickUp* NewItemPickUp);
+
+protected:
+	UPROPERTY()
+	AItemPickUp* OverlappedItem;
+
 #pragma endregion
 #pragma region WeaponOwnership
 protected:
@@ -108,11 +121,11 @@ protected:
 #pragma region SearchWeapon
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchWeaponRadius = 150.f;
+	float SearchItemRadius = 150.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchWeaponViewportRatio_Width = 0.7;
+	float SearchItemViewportRatio_Width = 0.7;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchWeaponViewportRatio_Height = 0.7;
+	float SearchItemViewportRatio_Height = 0.7;
 	UPROPERTY()
 	AWeaponPickUp* OverlappedWeapon;
 protected:
@@ -124,7 +137,7 @@ protected:
 public:
 	void PickUpWeapon();
 	bool ObtainNewWeapon(AWeaponPickUp* NewWeaponPickUp);
-	bool ObtainAmmo(AWeaponPickUp* MagazinePickUp);
+	bool ObtainAmmo(AItemPickUp* MagazinePickUp);
 #pragma endregion
 #pragma region Zoom
 protected:
@@ -188,7 +201,6 @@ public:
 
 	virtual void SwitchToOtherWeapon() override;
 	void ChangeWeapon(int32 WeaponIndex);
-	void AddNewWeaponToInventory(AWeapon* NewWeapon);
 #pragma endregion
 
 #pragma region Control

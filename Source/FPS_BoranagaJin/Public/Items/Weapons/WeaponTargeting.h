@@ -25,7 +25,7 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 
-	virtual void InitWeapon(ACharacterPlayer* NewCharacter) override;
+	virtual void InitItem(ACharacterPlayer* NewCharacter) override;
 
 	virtual void InitializeUI() override;
 

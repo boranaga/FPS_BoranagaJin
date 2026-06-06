@@ -43,7 +43,7 @@ AWeapon* AWeaponPickUp::SpawnWeapon(ACharacterPlayer* Character)
 			FActorSpawnParameters ActorSpawnParams;
 			ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			NewWeapon = GetWorld()->SpawnActor<AWeapon>(WeaponClass, GetActorTransform(), ActorSpawnParams);
-			NewWeapon->InitWeapon(Character);
+			NewWeapon->InitItem(Character);
 		}
 	}
 	return NewWeapon;

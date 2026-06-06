@@ -40,7 +40,7 @@ void AWeaponTargeting::Tick(float DeltaTime)
 	UpdateTargetingSkillUI(); //TODO: Should Update UI When even TargetingSkillTimer is not activated
 }
 
-void AWeaponTargeting::InitWeapon(ACharacterPlayer* NewCharacter)
+void AWeaponTargeting::InitItem(ACharacterPlayer* NewCharacter)
 {
 	Character = NewCharacter;
 	if (Character)

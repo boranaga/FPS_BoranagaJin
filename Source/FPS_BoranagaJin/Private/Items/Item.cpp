@@ -2,6 +2,7 @@
 
 
 #include "Items/Item.h"
+#include "Characters/Player/CharacterPlayer.h"
 
 
 // Sets default values
@@ -24,6 +25,11 @@ void AItem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+}
+
+void AItem::InitItem(ACharacterPlayer* NewCharacter)
+{
+	Character = NewCharacter;
 }
 
 
