@@ -53,6 +53,9 @@ void UUIManagerComponent::InitUIManagerComponent()
 		CharacterPlayer->OnStaminaUpdated.AddDynamic(this, &UUIManagerComponent::SetStaminaBarPercent);
 		CharacterPlayer->OnInteractionUIPopUpDelegate.AddDynamic(this, &UUIManagerComponent::PlayPopUpInteractionWidgetAnim);
 		CharacterPlayer->OnInteractionUIUpdatedDelegate.AddDynamic(this, &UUIManagerComponent::UpdateInteractionUI);
+
+		CharacterPlayer->OnInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateInventorySlots);
+		CharacterPlayer->OnInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateInventorySlots);
 	}
 }
 

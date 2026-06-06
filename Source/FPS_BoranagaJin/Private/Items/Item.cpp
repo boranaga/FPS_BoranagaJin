@@ -2,6 +2,7 @@
 
 
 #include "Items/Item.h"
+#include "Data/ItemData.h"
 #include "Characters/Player/CharacterPlayer.h"
 
 
@@ -30,6 +31,20 @@ void AItem::Tick(float DeltaTime)
 void AItem::InitItem(ACharacterPlayer* NewCharacter)
 {
 	Character = NewCharacter;
+
+	LoadItemData();
+}
+
+void AItem::LoadItemData()
+{
+	if (ItemDataTable.IsNull() || ItemRowName.IsNone()) return;
+	LoadedItemTable = ItemDataTable.LoadSynchronous();
+	if (!LoadedItemTable) return;
+
+	FItemData* ItemData = LoadedItemTable->FindRow<FItemData>(ItemRowName, TEXT("LoadItemData"));
+	if (!ItemData) return;
+
+	ItemImage = ItemData->ItemImage;
 }
 
 

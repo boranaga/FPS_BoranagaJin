@@ -22,6 +22,9 @@ public:
 	EItemName ItemName = EItemName::ItemName_None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FName ItemID;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 Count = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -66,6 +69,7 @@ public:
 		{
 			Items.Add(InItem);
  			ItemName = InItem->GetItemName();
+			ItemID = InItem->GetItemID();
 			Count = AddCount;
 			bOccupied = true;
 			return true;

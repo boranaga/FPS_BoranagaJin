@@ -28,6 +28,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionUIPopUp);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool, bFlag, FVector, NewLocation);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryCreated, int32, InventoryCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, const TArray<FInventorySlot>&, Inventory);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
@@ -75,6 +77,8 @@ public:
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
 	FOnInteractionUIPopUp OnInteractionUIPopUpDelegate;
 	FOnInteractionUIUpdated OnInteractionUIUpdatedDelegate;
+	FOnInventoryCreated OnInventoryCreatedDelegate;
+	FOnInventoryUpdated OnInventoryUpdatedDelegate;
 
 
 	//virtual void GravityLaunchPlayer(const FVector& Direction, float ForceAmount) override;

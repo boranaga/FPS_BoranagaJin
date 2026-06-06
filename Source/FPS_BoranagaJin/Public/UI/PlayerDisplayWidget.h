@@ -4,6 +4,10 @@
 #include "BaseUIWidget.h"
 #include "PlayerDisplayWidget.generated.h"
 
+class UInventoryUIWidget;
+
+struct FInventorySlot;
+
 UCLASS()
 class FPS_BORANAGAJIN_API UPlayerDisplayWidget : public UBaseUIWidget
 {
@@ -19,4 +23,14 @@ protected:
 	void ShowMouseCursor();
 	void HideMouseCursor();
 	void DisplayInventory();
+public:
+	UFUNCTION()
+	void CreateInventorySlots(int32 InventorySlotCount);
+	UFUNCTION()
+	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
+protected:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InventoryUIWidget")
+	TSubclassOf<UInventoryUIWidget> InventoryUIWidgetClass;
+	UPROPERTY(meta = (BindWidget))
+	UInventoryUIWidget* InventoryUIWidget = nullptr;
 };

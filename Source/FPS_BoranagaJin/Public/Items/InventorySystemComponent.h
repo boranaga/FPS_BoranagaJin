@@ -80,6 +80,9 @@ protected:
 	UPROPERTY()
 	TArray<FInventorySlot> ItemInventory;
 	TMap<EItemName, int32> ItemIndices;
+
+	FTimerHandle InitInventoryUITimerHandle;
+
 protected:
 	void InitInventory();
 	bool AddItem(AItem* NewItem, int32 AddCount = 1);
@@ -91,6 +94,8 @@ protected:
 	int32 FindItemSlot(EItemName ItemName) const;
 	int32 FindEmptySlot() const;
 	const TArray<FInventorySlot>& GetInventorySlots() const;
+protected:
+	void InitInventoryUI();
 #pragma endregion
 #pragma region PickUpItem
 protected:

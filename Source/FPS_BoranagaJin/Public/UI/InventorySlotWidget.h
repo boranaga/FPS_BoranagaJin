@@ -31,10 +31,11 @@ public:
 public:
 	UPROPERTY(EditAnywhere, Category = Weapon)
 	TSoftObjectPtr<UDataTable> ItemDataTable;
-	UPROPERTY(EditAnywhere, Category = Weapon)
-	FName ItemRowName;
-
 	UPROPERTY() UDataTable* LoadedItemTable = nullptr;
+protected:
+	void LoadItemDataTable();
+public:
+	void SetItemSlotData(FName ItemDataRowName, int32 InItemQuantity = 1);
 protected:
 	EItemName ItemName;
 	int32 ItemQuantity;

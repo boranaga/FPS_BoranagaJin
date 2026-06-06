@@ -85,6 +85,7 @@ protected:
 	TMap<EUIType, UBaseUIWidget*> UIWidgets;
 protected:
 	void InitUILayersMap();
+public:
 	void RegisterUIWidget(UBaseUIWidget* NewUIWidget);
 	
 

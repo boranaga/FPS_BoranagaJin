@@ -2,6 +2,9 @@
 
 
 #include "UI/PlayerDisplayWidget.h"
+#include "UI/InventoryUIWidget.h"
+
+#include "Items/InventorySlot.h"
 
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -10,6 +13,9 @@ void UPlayerDisplayWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 	SetUIType(EUIType::UIType_Inventory);
+
+	//InventoryUIWidget = CreateWidget<UInventoryUIWidget>(GetWorld(), InventoryUIWidgetClass);
+	//InventoryUIWidget->AddToViewport();
 }
 
 void UPlayerDisplayWidget::NativeConstruct()
@@ -51,4 +57,21 @@ void UPlayerDisplayWidget::HideMouseCursor()
 
 void UPlayerDisplayWidget::DisplayInventory()
 {
+}
+
+
+void UPlayerDisplayWidget::CreateInventorySlots(int32 InventorySlotCount)
+{
+	if (InventoryUIWidget)
+	{
+		InventoryUIWidget->CreateInventorySlots(InventorySlotCount);
+	}
+}
+
+void UPlayerDisplayWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)
+{
+	if (InventoryUIWidget)
+	{
+		InventoryUIWidget->UpdateInventorySlots(Inventory);
+	}
 }

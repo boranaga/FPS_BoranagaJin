@@ -8,6 +8,8 @@ class UInventorySlotWidget;
 
 class UWrapBox;
 
+struct FInventorySlot;
+
 UCLASS()
 class FPS_BORANAGAJIN_API UInventoryUIWidget : public UBaseUIWidget
 {
@@ -20,7 +22,18 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InventorySlotWidget")
 	TSubclassOf<UInventorySlotWidget> InventorySlotWidgetClass;
-
 protected:
-	void CreateInventorySlots();
+	UPROPERTY()
+	TArray<UInventorySlotWidget*> InventorySlotWidgets;
+
+//	UPROPERTY(EditAnywhere, Category = Weapon)
+//	TSoftObjectPtr<UDataTable> ItemDataTable;
+//	UPROPERTY() UDataTable* LoadedItemTable = nullptr;
+//protected:
+//	void LoadItemDataTable();
+public:
+	UFUNCTION()
+	void CreateInventorySlots(int32 InventorySlotCount);
+	UFUNCTION()
+	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
 };

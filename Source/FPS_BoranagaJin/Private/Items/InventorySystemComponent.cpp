@@ -160,7 +160,14 @@ void UInventorySystemComponent::InitInventory()
 	{
 		Slot.ClearSlot();
 	}
-	//UE_LOG(LogTemp, Error, TEXT("Inventory Num: %d"), ItemInventory.Num());
+
+	GetWorld()->GetTimerManager().SetTimer(
+		InitInventoryUITimerHandle,
+		this,
+		&UInventorySystemComponent::InitInventoryUI,
+		1.0f,
+		false
+	);
 }
 
 bool UInventorySystemComponent::AddItem(AItem* NewItem, int32 AddCount)
@@ -344,6 +351,12 @@ const TArray<FInventorySlot>& UInventorySystemComponent::GetInventorySlots() con
 	return ItemInventory;
 }
 
+void UInventorySystemComponent::InitInventoryUI()
+{
+	PlayerOwner->OnInventoryCreatedDelegate.Broadcast(MaxItemSlotsCount);
+	PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+}
+
 bool UInventorySystemComponent::SearchItems()
 {
 	TArray<TEnumAsByte<EObjectTypeQuery>> traceObjectTypes;
@@ -448,6 +461,7 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	if (AddItemFromPickUp(NewItemPickUp))
 	{
 		NewItemPickUp->DestroyItemPickUp();
+		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 		return true;
 	}
 	else

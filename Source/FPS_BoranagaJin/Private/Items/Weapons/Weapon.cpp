@@ -83,7 +83,8 @@ AWeapon::AWeapon()
 
 void AWeapon::InitItem(ACharacterPlayer* NewCharacter)
 {
-	Character = NewCharacter;
+	Super::InitItem(NewCharacter);
+	//Character = NewCharacter;
 	if (Character)
 	{
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
