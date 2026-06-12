@@ -100,6 +100,18 @@ public:
 
 		return true;
 	}
+
+	AItem* GetItem(int32 ItemIdx = 0)
+	{
+		if (!IsEmpty() && Count != 0)
+		{
+			return Items[ItemIdx];
+		}
+		else
+		{
+			return nullptr;
+		}
+	}
 };
 
 UCLASS()

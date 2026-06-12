@@ -5,6 +5,7 @@
 #include "UI/StaminaWidget.h"
 #include "UI/PlayerDisplayWidget.h"
 #include "UI/InteractionWidget.h"
+#include "UI/ThrowableWeaponInventoryWidget.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
 
@@ -41,6 +42,8 @@ void UUIManagerComponent::InitUIManagerComponent()
 			if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
 			{
 				EnhancedInputComponent->BindAction(TabAction, ETriggerEvent::Started, this, &UUIManagerComponent::OnTabToggled);
+				EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Started, this, &UUIManagerComponent::OpenThrowableWeaponInventory);
+				EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Completed, this, &UUIManagerComponent::CloseThrowableWeaponInventory);
 			}
 
 		}
@@ -54,8 +57,14 @@ void UUIManagerComponent::InitUIManagerComponent()
 		CharacterPlayer->OnInteractionUIPopUpDelegate.AddDynamic(this, &UUIManagerComponent::PlayPopUpInteractionWidgetAnim);
 		CharacterPlayer->OnInteractionUIUpdatedDelegate.AddDynamic(this, &UUIManagerComponent::UpdateInteractionUI);
 
-		CharacterPlayer->OnInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateInventorySlots);
-		CharacterPlayer->OnInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateInventorySlots);
+		CharacterPlayer->OnInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateItemInventorySlots);
+		CharacterPlayer->OnInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateItemInventorySlots);
+
+		CharacterPlayer->OnWeaponInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateWeaponInventorySlots);
+		CharacterPlayer->OnWeaponInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateWeaponInventorySlots);
+
+		CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
+		CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
 	}
 }
 
@@ -106,6 +115,17 @@ void UUIManagerComponent::BeginPlay()
 			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
 			RegisterUIWidget(InteractionWidget);
 			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+
+	if (ThrowableWeaponInventoryWidgetClass)
+	{
+		ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(GetWorld(), ThrowableWeaponInventoryWidgetClass);
+		if (ThrowableWeaponInventoryWidget)
+		{
+			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), ThrowableWeaponInventoryWidget->GetUIType());
+			RegisterUIWidget(ThrowableWeaponInventoryWidget);
+			ThrowableWeaponInventoryWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -231,6 +251,18 @@ void UUIManagerComponent::CloseInventory()
 void UUIManagerComponent::OnTabToggled()
 {
 	bIsInventoryOpened ? CloseInventory() : OpenInventory();
+}
+
+void UUIManagerComponent::OpenThrowableWeaponInventory()
+{
+	if (!ThrowableWeaponInventoryWidget) return;
+	ThrowableWeaponInventoryWidget->OpenUI();
+}
+
+void UUIManagerComponent::CloseThrowableWeaponInventory()
+{
+	if (!ThrowableWeaponInventoryWidget) return;
+	ThrowableWeaponInventoryWidget->CloseUI();
 }
 
 void UUIManagerComponent::InitStaminaBar(float maxstamina)
@@ -413,8 +445,9 @@ void UUIManagerComponent::InitUILayersMap()
 {
 	UILayers.Add(EUIType::UIType_Stamina, 0);
 	UILayers.Add(EUIType::UIType_Interaction, 1);
-	UILayers.Add(EUIType::UIType_Inventory, 3);
 	UILayers.Add(EUIType::UIType_WeaponAim, 2);
+	UILayers.Add(EUIType::UIType_Inventory, 3);
+	UILayers.Add(EUIType::UIType_ThrowableWeaponInventory, 4);
 }
 
 void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)

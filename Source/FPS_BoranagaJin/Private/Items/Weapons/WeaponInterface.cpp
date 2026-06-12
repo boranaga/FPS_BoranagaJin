@@ -26,6 +26,10 @@ void IWeaponInterface::SwitchToOtherWeapon()
 {
 }
 
+void IWeaponInterface::SwitchToOtherThrowableWeapon()
+{
+}
+
 void IWeaponInterface::AddArmRecoil(FArmRecoilParams* armrecoil, float AdditionalRecoilAmountX, float AdditionalRecoilAmountY, float AdditionalRecoilAmountZ)
 {
 }

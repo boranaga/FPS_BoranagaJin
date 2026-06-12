@@ -19,6 +19,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapo
 class ACharacterPlayer;
 class AItem;
 class AWeapon;
+class AThrowableWeapon;
 class AItemPickUp;
 class AWeaponPickUp;
 class UInteractionWidget;
@@ -75,55 +76,41 @@ private:
 #pragma endregion
 #pragma region ItemInventory
 protected:
+	UPROPERTY(EditAnywhere)
 	int32 MaxItemSlotsCount = 10;
+	UPROPERTY(EditAnywhere)
+	int32 MaxWeaponSlotsCount = 3;
+	UPROPERTY(EditAnywhere)
+	int32 MaxThrowableWeaponSlotsCount = 3;
 	
 	UPROPERTY()
 	TArray<FInventorySlot> ItemInventory;
-	TMap<EItemName, int32> ItemIndices;
+	UPROPERTY()
+	TArray<FInventorySlot> WeaponInventory;
+	UPROPERTY()
+	TArray<FInventorySlot> ThrowableWeaponInventory;
 
 	FTimerHandle InitInventoryUITimerHandle;
 
 protected:
 	void InitInventory();
-	bool AddItem(AItem* NewItem, int32 AddCount = 1);
+	bool AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable = true, int32 AddCount = 1);
 	bool AddItemFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
-	bool RemoveItem(EItemName ItemName, int32 RemoveCount = 1);
-	bool RemoveItemAtSlot(int32 SlotIndex, int32 RemoveCount = 1);
-	bool SwapSlots(int32 FromIndex, int32 ToIndex);
-	bool IsValidSlotIndex(int32 SlotIndex) const;
-	int32 FindItemSlot(EItemName ItemName) const;
-	int32 FindEmptySlot() const;
+	bool AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
+	bool AddThrowableWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
+	bool RemoveItem(TArray<FInventorySlot>& TargetInventory, EItemName ItemName, int32 RemoveCount = 1);
+	bool RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount = 1);
+	bool SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex);
+	bool IsValidSlotIndex(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex) const;
+	int32 FindItemSlot(const TArray<FInventorySlot>& TargetInventory, EItemName ItemName) const;
+	int32 FindEmptySlot(const TArray<FInventorySlot>& TargetInventory) const;
 	const TArray<FInventorySlot>& GetInventorySlots() const;
+
+	void PrintInventory() const;
 protected:
 	void InitInventoryUI();
 #pragma endregion
 #pragma region PickUpItem
-protected:
-	bool SearchItems();
-	void PickUpItem();
-	bool ObtainItem(AItemPickUp* NewItemPickUp);
-
-protected:
-	UPROPERTY()
-	AItemPickUp* OverlappedItem;
-
-#pragma endregion
-#pragma region WeaponOwnership
-protected:
-	UPROPERTY(VisibleAnywhere)
-	TMap<EWeaponName, bool> OwnedWeapons;
-public:
-	TMap<EWeaponName, bool> GetOwnerShipMap() const { return OwnedWeapons; }
-public:
-	//void UnlockWeapon(EWeaponName NewWeaponName);
-protected:
-	void LoadWSCData();
-	//void InitStartingWeapons();
-	//void InitStartingWeapons_Ordering();
-	void InitStartingWeapons_New();
-	void SaveInventory();
-#pragma endregion
-#pragma region SearchWeapon
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
 	float SearchItemRadius = 150.f;
@@ -131,18 +118,28 @@ protected:
 	float SearchItemViewportRatio_Width = 0.7;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
 	float SearchItemViewportRatio_Height = 0.7;
-	UPROPERTY()
-	AWeaponPickUp* OverlappedWeapon;
 protected:
-	bool SearchWeapon();
 	TTuple<FVector2D, bool> GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const;
 	bool IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width = 0.0f, float ScreenRatio_Height = 0.0f) const;
-#pragma endregion
-#pragma region Interaction
+protected:
+	bool SearchItems();
+	void PickUpItem();
+	bool ObtainItem(AItemPickUp* NewItemPickUp);
 public:
-	void PickUpWeapon();
-	bool ObtainNewWeapon(AWeaponPickUp* NewWeaponPickUp);
 	bool ObtainAmmo(AItemPickUp* MagazinePickUp);
+protected:
+	UPROPERTY()
+	AItemPickUp* OverlappedItem;
+#pragma endregion
+#pragma region WeaponOwnership
+protected:
+	UPROPERTY(VisibleAnywhere)
+	TMap<EWeaponName, bool> OwnedWeapons;
+public:
+	TMap<EWeaponName, bool> GetOwnerShipMap() const { return OwnedWeapons; }
+protected:
+	void LoadWSCData();
+	void SaveInventory();
 #pragma endregion
 #pragma region Zoom
 protected:
@@ -176,27 +173,15 @@ public:
 
 	FTransform GetWeaponAimSocketRelativeTransform();
 #pragma endregion
-#pragma region SwitchWeapon
+#pragma region WeaponInventory
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapons")
-	TArray<AWeapon*> WeaponInventory;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	AWeapon* CurrentWeapon = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-	int32 CurrentWeaponIndex = 0;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SkillWeapons")
-	TArray<AWeapon*> SkillWeaponInventory;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SkillWeapon")
-	AWeapon* CurrentSkillWeapon = nullptr;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SkillWeapon")
-	int32 CurrentSkillWeaponIndex = 0;
-
+	int32 CurrWeaponIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrentWeapon; }
-	AWeapon* GetCurrentSkillWeapon() { return CurrentSkillWeapon; }
 	int32 GetWeaponNum() { return WeaponInventory.Num(); }
-	int32 GetSkillWeaponNum() { return SkillWeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
 	EWeaponStateType GetCurrWeaponStateType() const;
 
@@ -207,7 +192,24 @@ public:
 	virtual void SwitchToOtherWeapon() override;
 	void ChangeWeapon(int32 WeaponIndex);
 #pragma endregion
+#pragma region ThrowableWeaponInventory
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ThrowableWeapon")
+	AThrowableWeapon* CurrThrowableWeapon = nullptr;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ThrowableWeapon")
+	int32 CurrThrowableWeaponIdx = 0;
+public:
+	AThrowableWeapon* GetCurrentThrowableWeapon() { return CurrThrowableWeapon; }
+	int32 GetThrowableWeaponNum() { return ThrowableWeaponInventory.Num(); }
+	EWeaponStateType GetCurrThrowableWeaponStateType() const;
 
+	void SwitchToPreviousThrowableWeapon();
+	void SwitchToNextThrowableWeapon();
+	void SwitchToIndexThrowableWeapon(int32 idx);
+
+	virtual void SwitchToOtherThrowableWeapon() override;
+	void ChangeThrowableWeapon(int32 WeaponIndex);
+#pragma endregion
 #pragma region Control
 protected:
 	UPROPERTY()

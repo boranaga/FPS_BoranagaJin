@@ -11,6 +11,8 @@ class AFPSPlayerController;
 class ACharacterPlayer;
 class UBaseUIWidget;
 class UStaminaWidget;
+class UThrowableWeaponInventoryWidget;
+
 class UPlayerDisplayWidget;
 class UInteractionWidget;
 
@@ -56,6 +58,8 @@ private:
 	UInputAction* ESCAction = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* TabAction = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* VAction = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* RightMouseAction = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Input")
@@ -103,6 +107,18 @@ protected:
 	void OnTabToggled();
 protected:
 	bool bIsInventoryOpened = false;
+
+#pragma endregion
+#pragma region ThrowableWeaponInventory
+protected:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "PlayerDisplayWidget")
+	TSubclassOf<UThrowableWeaponInventoryWidget> ThrowableWeaponInventoryWidgetClass;
+	UPROPERTY()
+	UThrowableWeaponInventoryWidget* ThrowableWeaponInventoryWidget = nullptr;
+protected:
+	void OpenThrowableWeaponInventory();
+	void CloseThrowableWeaponInventory();
+
 
 #pragma endregion
 #pragma region StaminaBar

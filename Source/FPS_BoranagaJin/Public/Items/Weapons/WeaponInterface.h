@@ -33,6 +33,8 @@ public:
 
 	virtual void SwitchToOtherWeapon();
 
+	virtual void SwitchToOtherThrowableWeapon();
+
 	//<ArmRecoilAnimation>
 	virtual void AddArmRecoil(FArmRecoilParams* armrecoil = nullptr, float AdditionalRecoilAmountX = 0.f, float AdditionalRecoilAmountY = 0.f, float AdditionalRecoilAmountZ = 0.f);
 	virtual void AddSkillWeaponRecoil(FArmRecoilParams* armrecoil = nullptr, float AdditionalRecoilAmountX = 0.f, float AdditionalRecoilAmountY = 0.f, float AdditionalRecoilAmountZ = 0.f);

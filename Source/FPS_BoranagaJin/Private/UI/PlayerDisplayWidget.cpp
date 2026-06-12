@@ -60,18 +60,34 @@ void UPlayerDisplayWidget::DisplayInventory()
 }
 
 
-void UPlayerDisplayWidget::CreateInventorySlots(int32 InventorySlotCount)
+void UPlayerDisplayWidget::CreateItemInventorySlots(int32 InventorySlotCount)
 {
-	if (InventoryUIWidget)
+	if (ItemInventoryUIWidget)
 	{
-		InventoryUIWidget->CreateInventorySlots(InventorySlotCount);
+		ItemInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
 	}
 }
 
-void UPlayerDisplayWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)
+void UPlayerDisplayWidget::UpdateItemInventorySlots(const TArray<FInventorySlot>& Inventory)
 {
-	if (InventoryUIWidget)
+	if (ItemInventoryUIWidget)
 	{
-		InventoryUIWidget->UpdateInventorySlots(Inventory);
+		ItemInventoryUIWidget->UpdateInventorySlots(Inventory);
+	}
+}
+
+void UPlayerDisplayWidget::CreateWeaponInventorySlots(int32 InventorySlotCount)
+{
+	if (WeaponInventoryUIWidget)
+	{
+		WeaponInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
+	}
+}
+
+void UPlayerDisplayWidget::UpdateWeaponInventorySlots(const TArray<FInventorySlot>& Inventory)
+{
+	if (WeaponInventoryUIWidget)
+	{
+		WeaponInventoryUIWidget->UpdateInventorySlots(Inventory);
 	}
 }

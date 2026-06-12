@@ -13,6 +13,7 @@ enum class EUIType : uint8
 	UIType_AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	UIType_Stamina UMETA(DisplayName = "StaminaWidget"),
 	UIType_Inventory UMETA(DisplayName = "InventoryWidget"),
+	UIType_ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
 	UIType_Interaction UMETA(DisplayName = "InteractionWidget")
 };
 ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::UIType_Base, EUIType::UIType_Interaction);

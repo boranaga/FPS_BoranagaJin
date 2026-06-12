@@ -39,6 +39,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 	bool bIsWeapon = false;
 	UPROPERTY(EditAnywhere)
+	bool bIsThrowableWeapon = false;
+	UPROPERTY(EditAnywhere)
 	bool bIsMagazine = false;
 	UPROPERTY(EditAnywhere)
 	bool bIsStackable = true;
@@ -48,6 +50,7 @@ public:
 	EItemName GetItemName() const { return ItemName; }
 	EWeaponName GetWeaponName() const { return WeaponName; }
 	bool IsWeapon() const { return bIsWeapon; }
+	bool IsThrowableWeapon() const { return bIsThrowableWeapon; }
 	bool IsMagazine() const { return bIsMagazine; }
 	bool IsStackable() const { return bIsStackable; }
 	int32 GetAmmo() const { return NumAmmo; }

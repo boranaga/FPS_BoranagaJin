@@ -2,11 +2,11 @@
 
 
 #include "Items/InventorySystemComponent.h"
-#include "Items/Item.h"
+#//include "Items/Item.h"
 #include "Items/InventorySlot.h"
 #include "Items/ItemPickUp.h"
 #include "Items/Weapons/Weapon.h"
-#include "Items/Weapons/WeaponPickUp.h"
+#include "Items/Weapons/ThrowableWeapon.h"
 #include "Characters/Player/CharacterPlayer.h"
 
 #include "Items/Weapons/WeaponName.h"
@@ -41,18 +41,12 @@ void UInventorySystemComponent::BeginPlay()
 	LoadWSCData();
 
 	InitInventory();
-
-	//InitStartingWeapons_Ordering();
-	InitStartingWeapons_New();
-
-	//InitInteractionUI();
 }
 
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	//SearchWeapon(); //TODO: 굳이 Tick으로 할 이유가 없을 듯. 필요시에 트리거로 작동하도록 해야함
-	SearchItems();
+	SearchItems(); //TODO: 탐색 조건 넣기
 	//CalculateScreenCenterWorldPositionAndDirection(ScreenCenterWorldLocation, ScreenCenterWorldDirection);
 	CalculateTargetRightHandPosition();
 }
@@ -92,71 +86,23 @@ void UInventorySystemComponent::InitializePlayerReference()
 		}
 	}
 }
-//bool UWeaponSystemComponent::IsSceneCaptureActive()
-//{
-//	return bUseSceneCapture;
-//}
-//void UWeaponSystemComponent::UnlockWeapon(EWeaponName NewWeaponName)
-//{
-//	//UE_LOG(LogTemp, Error, TEXT("UWeaponSystemComponent::UnlockWeapon(EWeaponName NewWeaponName)"));
-//	if (!DTWSC) return;
-//	const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-//
-//	for (int32 i = 0; i < WeaponInventory.Num(); i++)
-//	{
-//		if (WeaponInventory[i]->GetWeaponName() == NewWeaponName)
-//		{
-//			int32 PrevIdx = CurrentWeaponIndex;
-//			CurrentWeaponIndex = i;
-//			CurrentWeapon = WeaponInventory[i];
-//			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//			OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//
-//			return;
-//		}
-//	}
-//
-//	for (int32 i = 0; i < SkillWeaponInventory.Num(); i++)
-//	{
-//		if (SkillWeaponInventory[i]->GetWeaponName() == NewWeaponName)
-//		{
-//			int32 PrevIdx = CurrentSkillWeaponIndex;
-//			CurrentSkillWeaponIndex = i;
-//			CurrentSkillWeapon = SkillWeaponInventory[i];
-//			return;
-//		}
-//	}
-//
-//	UWorld* World = GetWorld();
-//	if (!World) return;
-//	const TSubclassOf<AWeapon>* NewWeaponClass = WeaponClasses.Find(NewWeaponName);
-//	if (!NewWeaponClass) return;
-//	FActorSpawnParameters ActorSpawnParams;
-//	ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//	AWeapon* NewWeapon = World->SpawnActor<AWeapon>(NewWeaponClass->Get(), FTransform(), ActorSpawnParams);
-//	if (!NewWeapon) return;
-//	NewWeapon->InitWeapon(Cast<ACharacterPlayer>(GetOwner()));
-//	AddNewWeaponToInventory(NewWeapon);
-//
-//	OwnedWeapons.FindOrAdd(NewWeaponName) = true;
-//
-//	SaveInventory();
-//
-//	if (CurrentWeapon == nullptr)
-//	{
-//		int32 PrevIdx = CurrentWeaponIndex;
-//		CurrentWeaponIndex = WeaponInventory.Num() - 1;
-//		CurrentWeapon = NewWeapon;
-//		CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//		OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//	}
-//}
 
 void UInventorySystemComponent::InitInventory()
 {
 	ItemInventory.SetNum(MaxItemSlotsCount);
-
 	for (FInventorySlot& Slot : ItemInventory)
+	{
+		Slot.ClearSlot();
+	}
+
+	WeaponInventory.SetNum(MaxWeaponSlotsCount);
+	for (FInventorySlot& Slot : WeaponInventory)
+	{
+		Slot.ClearSlot();
+	}
+
+	ThrowableWeaponInventory.SetNum(MaxThrowableWeaponSlotsCount);
+	for (FInventorySlot& Slot : ThrowableWeaponInventory)
 	{
 		Slot.ClearSlot();
 	}
@@ -170,7 +116,7 @@ void UInventorySystemComponent::InitInventory()
 	);
 }
 
-bool UInventorySystemComponent::AddItem(AItem* NewItem, int32 AddCount)
+bool UInventorySystemComponent::AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable, int32 AddCount)
 {
 	if (NewItem == nullptr) return false;
 
@@ -179,30 +125,32 @@ bool UInventorySystemComponent::AddItem(AItem* NewItem, int32 AddCount)
 		return false;
 	}
 
-	for (FInventorySlot& Slot : ItemInventory)
+	if (bIsStackable)
 	{
-		if (Slot.CanStack(NewItem->GetItemName()))
+		for (FInventorySlot& Slot : TargetInventory)
 		{
-			Slot.AddItem(NewItem, AddCount);
-			return true;
+			if (Slot.CanStack(NewItem->GetItemName()))
+			{
+				Slot.AddItem(NewItem, AddCount);
+				return true;
+			}
 		}
 	}
 
-	const int32 EmptySlotIndex = FindEmptySlot();
+	const int32 EmptySlotIndex = FindEmptySlot(TargetInventory);
 
 	if (EmptySlotIndex == INDEX_NONE)
 	{
 		return false;
 	}
 
-	ItemInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
+	TargetInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
 	return true;
 }
 
 bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
 {
 	if (NewItemPickUp == nullptr) return false;
-
 	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
 	{
 		return false;
@@ -214,82 +162,148 @@ bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* NewItemPickUp, in
 		{
 			if (Slot.CanStack(NewItemPickUp->GetItemName()))
 			{
-				AItem* NewItem = NewItemPickUp->SpawnItem(PlayerOwner);
+				AItem* NewItem = Cast<AItem>(NewItemPickUp->SpawnItem(PlayerOwner));
 				if (!NewItem) { return false; }
-
 				Slot.AddItem(NewItem, AddCount);
 				return true;
 			}
 		}
 	}
 
-	const int32 EmptySlotIndex = FindEmptySlot();
-
+	const int32 EmptySlotIndex = FindEmptySlot(ItemInventory);
 	if (EmptySlotIndex == INDEX_NONE)
 	{
 		return false;
 	}
 
-	if (NewItemPickUp->IsWeapon())
+	AItem* NewItem = Cast<AItem>(NewItemPickUp->SpawnItem(PlayerOwner));
+	if (!NewItem) { return false; }
+
+	return ItemInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
+}
+
+bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
+{
+	if (NewItemPickUp == nullptr) return false;
+	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
 	{
-		AWeapon* NewWeapon = Cast<AWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
-		if (!NewWeapon) { return false; }
+		return false;
+	}
 
-		if (NewWeapon->IsSkillWeapon())
+	//TODO: 이 옵션을 위한 bool 변수 처리가 있어야 Stackable과 다른 처리가 가능할 듯
+	int32 WeaponIdx = FindItemSlot(WeaponInventory, NewItemPickUp->GetItemName());
+	if (WeaponIdx != INDEX_NONE)
+	{
+		if (!WeaponInventory[WeaponIdx].IsEmpty())
 		{
-			SkillWeaponInventory.AddUnique(NewWeapon);
-			CurrentSkillWeapon = NewWeapon;
-			CurrentSkillWeapon->EquipWeapon(PlayerOwner, true);
-
-			OnSkillWeaponEquipped.Broadcast(CurrentSkillWeapon);
-		}
-		else
-		{
-			WeaponInventory.AddUnique(NewWeapon);
-			if (!CurrentWeapon)
+			AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[WeaponIdx].GetItem(0));
+			if (Weapon)
 			{
-				CurrentWeapon = NewWeapon;
-				CurrentWeapon->SwitchWeapon(PlayerOwner, true);
+				Weapon->AddAmmo(NewItemPickUp->GetAmmo());
+				return true;
 			}
-			OnWeaponPickedUp.Broadcast(NewItemPickUp->GetWeaponName());
 		}
-		ItemInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
+	}
+
+	if (NewItemPickUp->IsStackable())
+	{
+		for (FInventorySlot& Slot : WeaponInventory)
+		{
+			if (Slot.CanStack(NewItemPickUp->GetItemName()))
+			{
+				AWeapon* NewWeapon = Cast<AWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
+				if (!NewWeapon) { return false; }
+
+				Slot.AddItem(NewWeapon, AddCount);
+				return true;
+			}
+		}
+	}
+
+	const int32 EmptySlotIndex = FindEmptySlot(WeaponInventory);
+	if (EmptySlotIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	AWeapon* NewWeapon = Cast<AWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
+	if (!NewWeapon) { return false; }
+
+	if (WeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount))
+	{
+		if (!CurrentWeapon)
+		{
+			CurrentWeapon = NewWeapon;
+			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
+		}
 		return true;
 	}
 	else
 	{
-		AItem* NewItem = NewItemPickUp->SpawnItem(PlayerOwner);
-		if (!NewItem) { return false; }
-		ItemInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
-		return true;
+		return false;
 	}
 }
 
-bool UInventorySystemComponent::RemoveItem(EItemName ItemName, int32 RemoveCount)
+bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
+{
+	if (NewItemPickUp == nullptr) return false;
+	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
+	{
+		return false;
+	}
+
+	if (NewItemPickUp->IsStackable())
+	{
+		for (FInventorySlot& Slot : ThrowableWeaponInventory)
+		{
+			if (Slot.CanStack(NewItemPickUp->GetItemName()))
+			{
+				AThrowableWeapon* NewWeapon = Cast<AThrowableWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
+				if (!NewWeapon) { return false; }
+
+				Slot.AddItem(NewWeapon, AddCount);
+				return true;
+			}
+		}
+	}
+
+	const int32 EmptySlotIndex = FindEmptySlot(ThrowableWeaponInventory);
+	if (EmptySlotIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	AThrowableWeapon* NewWeapon = Cast<AThrowableWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
+	if (!NewWeapon) { return false; }
+
+	return ThrowableWeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
+}
+
+bool UInventorySystemComponent::RemoveItem(TArray<FInventorySlot>& TargetInventory, EItemName ItemName, int32 RemoveCount)
 {
 	if (ItemName == EItemName::ItemName_None || RemoveCount <= 0)
 	{
 		return false;
 	}
 
-	const int32 SlotIndex = FindItemSlot(ItemName);
+	const int32 SlotIndex = FindItemSlot(TargetInventory, ItemName);
 
 	if (SlotIndex == INDEX_NONE)
 	{
 		return false;
 	}
 
-	return RemoveItemAtSlot(SlotIndex, RemoveCount);
+	return RemoveItemAtSlot(TargetInventory, SlotIndex, RemoveCount);
 }
 
-bool UInventorySystemComponent::RemoveItemAtSlot(int32 SlotIndex, int32 RemoveCount)
+bool UInventorySystemComponent::RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount)
 {
-	if (!IsValidSlotIndex(SlotIndex) || RemoveCount <= 0)
+	if (!IsValidSlotIndex(TargetInventory, SlotIndex) || RemoveCount <= 0)
 	{
 		return false;
 	}
 
-	FInventorySlot& Slot = ItemInventory[SlotIndex];
+	FInventorySlot& Slot = TargetInventory[SlotIndex];
 
 	if (Slot.IsEmpty())
 	{
@@ -299,9 +313,9 @@ bool UInventorySystemComponent::RemoveItemAtSlot(int32 SlotIndex, int32 RemoveCo
 	return Slot.RemoveItem(RemoveCount);
 }
 
-bool UInventorySystemComponent::SwapSlots(int32 FromIndex, int32 ToIndex)
+bool UInventorySystemComponent::SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex)
 {
-	if (!IsValidSlotIndex(FromIndex) || !IsValidSlotIndex(ToIndex))
+	if (!IsValidSlotIndex(TargetInventory, FromIndex) || !IsValidSlotIndex(TargetInventory, ToIndex))
 	{
 		return false;
 	}
@@ -311,38 +325,36 @@ bool UInventorySystemComponent::SwapSlots(int32 FromIndex, int32 ToIndex)
 		return false;
 	}
 
-	ItemInventory.Swap(FromIndex, ToIndex);
+	TargetInventory.Swap(FromIndex, ToIndex);
 	return true;
 }
 
-bool UInventorySystemComponent::IsValidSlotIndex(int32 SlotIndex) const
+bool UInventorySystemComponent::IsValidSlotIndex(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex) const
 {
-	return ItemInventory.IsValidIndex(SlotIndex);
+	return TargetInventory.IsValidIndex(SlotIndex);
 }
 
-int32 UInventorySystemComponent::FindItemSlot(EItemName ItemName) const
+int32 UInventorySystemComponent::FindItemSlot(const TArray<FInventorySlot>& TargetInventory, EItemName ItemName) const
 {
-	for (int32 i = 0; i < ItemInventory.Num(); ++i)
+	for (int32 i = 0; i < TargetInventory.Num(); ++i)
 	{
-		if (ItemInventory[i].IsSameItem(ItemName))
+		if (TargetInventory[i].IsSameItem(ItemName))
 		{
 			return i;
 		}
 	}
-
 	return INDEX_NONE;
 }
 
-int32 UInventorySystemComponent::FindEmptySlot() const
+int32 UInventorySystemComponent::FindEmptySlot(const TArray<FInventorySlot>& TargetInventory) const
 {
-	for (int32 i = 0; i < ItemInventory.Num(); ++i)
+	for (int32 i = 0; i < TargetInventory.Num(); ++i)
 	{
-		if (ItemInventory[i].IsEmpty())
+		if (TargetInventory[i].IsEmpty())
 		{
 			return i;
 		}
 	}
-
 	return INDEX_NONE;
 }
 
@@ -351,10 +363,43 @@ const TArray<FInventorySlot>& UInventorySystemComponent::GetInventorySlots() con
 	return ItemInventory;
 }
 
+void UInventorySystemComponent::PrintInventory() const
+{
+	UE_LOG(LogTemp, Warning, TEXT("========== Inventory =========="));
+
+	for (int32 i = 0; i < ItemInventory.Num(); ++i)
+	{
+		const FInventorySlot& Slot = ItemInventory[i];
+
+		if (Slot.IsEmpty())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[%02d] Empty"),
+				i);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[%02d] ItemID=%s Count=%d"),
+				i,
+				*Slot.ItemID.ToString(),
+				Slot.Count);
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("==============================="));
+}
+
 void UInventorySystemComponent::InitInventoryUI()
 {
 	PlayerOwner->OnInventoryCreatedDelegate.Broadcast(MaxItemSlotsCount);
 	PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+
+	PlayerOwner->OnWeaponInventoryCreatedDelegate.Broadcast(MaxWeaponSlotsCount);
+	PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+
+	PlayerOwner->OnThrowableWeaponInventoryCreatedDelegate.Broadcast(MaxThrowableWeaponSlotsCount);
+	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 }
 
 bool UInventorySystemComponent::SearchItems()
@@ -417,6 +462,7 @@ void UInventorySystemComponent::PickUpItem()
 			}
 			else
 			{
+				//ObtainItem(OverlappedItem);
 				ObtainItem(OverlappedItem);
 			}
 		}
@@ -425,48 +471,47 @@ void UInventorySystemComponent::PickUpItem()
 
 bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 {
-	if (!NewItemPickUp || !PlayerOwner)
-	{
-		return false;
-	}
+	if (!NewItemPickUp || !PlayerOwner) { return false; }
+	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None) { return false; }
 
 	if (NewItemPickUp->IsWeapon())
 	{
-		const EItemName NewItemName = NewItemPickUp->GetItemName();
-		const EWeaponName NewWeaponName = NewItemPickUp->GetWeaponName();
-		const int32 NewAmmo = NewItemPickUp->GetAmmo();
-
-		auto TryAddAmmoIfAlreadyOwned = [&](TArray<AWeapon*>& Inventory) -> bool
-			{
-				for (AWeapon* Weapon : Inventory)
-				{
-					if (Weapon && Weapon->GetWeaponName() == NewWeaponName)
-					{
-						if (Weapon->AddAmmo(NewAmmo))
-						{
-							NewItemPickUp->DestroyItemPickUp();
-						}
-						return true;
-					}
-				}
-				return false;
-			};
-
-		if (TryAddAmmoIfAlreadyOwned(WeaponInventory) || TryAddAmmoIfAlreadyOwned(SkillWeaponInventory))
+		if (AddWeaponFromPickUp(NewItemPickUp))
+		{
+			NewItemPickUp->DestroyItemPickUp();
+			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+			return true;
+		}
+		else
 		{
 			return false;
 		}
 	}
-
-	if (AddItemFromPickUp(NewItemPickUp))
+	else if (NewItemPickUp->IsThrowableWeapon())
 	{
-		NewItemPickUp->DestroyItemPickUp();
-		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
-		return true;
+		if (AddThrowableWeaponFromPickUp(NewItemPickUp))
+		{
+			NewItemPickUp->DestroyItemPickUp();
+			PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
 	}
 	else
 	{
-		return false;
+		if (AddItemFromPickUp(NewItemPickUp))
+		{
+			NewItemPickUp->DestroyItemPickUp();
+			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
 	}
 }
 
@@ -493,438 +538,6 @@ void UInventorySystemComponent::LoadWSCData()
 	//	if (FPHUD) { FPHUD->AddToViewport(); }
 	//}
 }
-//void UWeaponSystemComponent::InitStartingWeapons()
-//{
-//	if (!DTWSC) return;
-//	const TMap<EWeaponName, bool> WeaponOwnerShipMap = DTWSC->WeaponOwnerShipMap;
-//	const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-//
-//	UCustomGameInstance* GameInstance = Cast<UCustomGameInstance>(GetWorld()->GetGameInstance());
-//
-//	for (auto& Elem : WeaponOwnerShipMap)
-//	{
-//		bool bDoesGameInstanceHasWeapon = false;
-//		if (GameInstance)
-//		{
-//			if (GameInstance->OwnedWeapons.Contains(Elem.Key))
-//			{
-//				if (GameInstance->OwnedWeapons[Elem.Key])
-//				{
-//					bDoesGameInstanceHasWeapon = true;
-//					//UE_LOG(LogTemp, Error, TEXT("bDoesGameInstanceHasWeapon"));
-//				}
-//			}
-//		}
-//
-//		if (Elem.Value || bDoesGameInstanceHasWeapon)
-//		{
-//			UWorld* World = GetWorld();
-//			if (!World) return;
-//			if (!WeaponClasses.Find(Elem.Key)) continue;
-//			FActorSpawnParameters ActorSpawnParams;
-//			ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//			AWeapon* NewWeapon = World->SpawnActor<AWeapon>(WeaponClasses.Find(Elem.Key)->Get(), FTransform(), ActorSpawnParams);
-//			if (!NewWeapon) continue;
-//			NewWeapon->InitWeapon(Cast<ACharacterPlayer>(GetOwner()));
-//
-//			AddNewWeaponToInventory(NewWeapon);
-//
-//			if (!GameInstance) return;
-//			if (GameInstance->OwnedWeapons.Contains(Elem.Key))
-//			{
-//				GameInstance->OwnedWeapons[Elem.Key] = true;
-//			}
-//			else
-//			{
-//				GameInstance->OwnedWeapons.Emplace(Elem.Key, true);
-//			}
-//		}
-//	}
-//
-//	for (int32 i = 0; i < WeaponInventory.Num(); i++)
-//	{
-//		if (WeaponInventory[i]->GetWeaponName() == DTWSC->StartingWeaponName)
-//		{
-//			//CurrentWeaponIndex = i;
-//			//ChangeWeapon(CurrentWeaponIndex);
-//			//CurrentWeaponIndex = 0;
-//			//SwitchToIndex(i);
-//
-//			int32 PrevIdx = CurrentWeaponIndex;
-//			CurrentWeaponIndex = i;
-//			CurrentWeapon = WeaponInventory[i];
-//			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//			OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//
-//			return;
-//		}
-//	}
-//
-//	AWeapon* NewWeapon;
-//
-//	if (DTWSC->WeaponClasses.Contains(DTWSC->StartingWeaponName))
-//	{
-//		UWorld* const World = GetWorld();
-//		if (World != nullptr && PlayerOwner != nullptr)
-//		{
-//			FActorSpawnParameters ActorSpawnParams;
-//			ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//			NewWeapon = GetWorld()->SpawnActor<AWeapon>(DTWSC->WeaponClasses[DTWSC->StartingWeaponName], PlayerOwner->GetActorTransform(), ActorSpawnParams);
-//			NewWeapon->InitWeapon(PlayerOwner);
-//		}
-//	}
-//
-//	WeaponInventory.AddUnique(NewWeapon);
-//
-//	if (CurrentWeapon == nullptr)
-//	{
-//		//CurrentWeapon = NewWeapon;
-//		//CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//
-//		int32 PrevIdx = CurrentWeaponIndex;
-//		CurrentWeaponIndex = WeaponInventory.Num() - 1;
-//		CurrentWeapon = NewWeapon;
-//		CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//		OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//	}
-//}
-
-//void UWeaponSystemComponent::InitStartingWeapons_Ordering()
-//{
-//	// if (!DTWSC) return;
-//	// const TMap<EWeaponName, bool> WeaponOwnerShipMap = DTWSC->WeaponOwnerShipMap;
-//	// const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-//	//
-//	// UCustomGameInstance* GameInstance = Cast<UCustomGameInstance>(GetWorld()->GetGameInstance());
-//	//
-//	// for (EWeaponName WeaponName : TEnumRange<EWeaponName>())
-//	// {
-//	// 	bool bDoesGameInstanceHasWeapon = false;
-//	// 	if (GameInstance)
-//	// 	{
-//	// 		if (GameInstance->OwnedWeapons.Contains(WeaponName))
-//	// 		{
-//	// 			if (GameInstance->OwnedWeapons[WeaponName])
-//	// 			{
-//	// 				bDoesGameInstanceHasWeapon = true;
-//	// 				//UE_LOG(LogTemp, Error, TEXT("bDoesGameInstanceHasWeapon"));
-//	// 			}
-//	// 		}
-//	// 	}
-//	//
-//	// 	if (WeaponOwnerShipMap[WeaponName] || bDoesGameInstanceHasWeapon)
-//	// 	{
-//	// 		UWorld* World = GetWorld();
-//	// 		if (!World) return;
-//	// 		if (!WeaponClasses.Find(WeaponName)) continue;
-//	// 		FActorSpawnParameters ActorSpawnParams;
-//	// 		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//	// 		AWeapon* NewWeapon = World->SpawnActor<AWeapon>(WeaponClasses.Find(WeaponName)->Get(), FTransform(), ActorSpawnParams);
-//	// 		if (!NewWeapon) continue;
-//	// 		NewWeapon->InitWeapon(Cast<ACharacterPlayer>(GetOwner()));
-//	//
-//	// 		AddNewWeaponToInventory(NewWeapon);
-//	//
-//	// 		if (!GameInstance) return;
-//	// 		if (GameInstance->OwnedWeapons.Contains(WeaponName))
-//	// 		{
-//	// 			GameInstance->OwnedWeapons[WeaponName] = true;
-//	// 		}
-//	// 		else
-//	// 		{
-//	// 			GameInstance->OwnedWeapons.Emplace(WeaponName, true);
-//	// 		}
-//	// 	}
-//	// }
-//	//
-//	//
-//	//
-//	// for (int32 i = 0; i < WeaponInventory.Num(); i++)
-//	// {
-//	// 	//UE_LOG(LogTemp, Error, TEXT("(int32 i = 0; i < WeaponInventory.Num(); i++)"));
-//	//
-//	// 	//UE_LOG(LogTemp, Log, TEXT("Weapon: %s"), *UEnum::GetValueAsString(WeaponInventory[i]->GetWeaponName()));
-//	//
-//	// 	if (WeaponInventory[i]->GetWeaponName() == DTWSC->StartingWeaponName)
-//	// 	{
-//	// 		//UE_LOG(LogTemp, Error, TEXT("Already has Starting weapon"));
-//	// 		//CurrentWeaponIndex = i;
-//	// 		//ChangeWeapon(CurrentWeaponIndex);
-//	// 		//CurrentWeaponIndex = 0;
-//	// 		//SwitchToIndex(i);
-//	//
-//	// 		int32 PrevIdx = CurrentWeaponIndex;
-//	// 		CurrentWeaponIndex = i;
-//	// 		CurrentWeapon = WeaponInventory[i];
-//	// 		CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//	// 		OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//	// 		return;
-//	// 	}
-//	// }
-//	//
-//	// //AWeapon* NewWeapon;
-//	//
-//	// //if (DTWSC->WeaponClasses.Contains(DTWSC->StartingWeaponName))
-//	// //{
-//	// //	UWorld* const World = GetWorld();
-//	// //	if (World != nullptr && PlayerOwner != nullptr)
-//	// //	{
-//	// //		FActorSpawnParameters ActorSpawnParams;
-//	// //		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//	// //		NewWeapon = GetWorld()->SpawnActor<AWeapon>(DTWSC->WeaponClasses[DTWSC->StartingWeaponName], PlayerOwner->GetActorTransform(), ActorSpawnParams);
-//	// //		NewWeapon->InitWeapon(PlayerOwner);
-//	// //	}
-//	// //}
-//	//
-//	// //WeaponInventory.AddUnique(NewWeapon);
-//	//
-//	// //if (CurrentWeapon == nullptr)
-//	// //{
-//	// //	//CurrentWeapon = NewWeapon;
-//	// //	//CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//	//
-//	// //	int32 PrevIdx = CurrentWeaponIndex;
-//	// //	CurrentWeaponIndex = WeaponInventory.Num() - 1;
-//	// //	CurrentWeapon = NewWeapon;
-//	// //	CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//	// //	OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//	// //}
-//
-//	//  weapon save data changed
-//
-//	//UE_LOG(LogTemp, Error, TEXT("UWeaponSystemComponent::InitStartingWeapons_Ordering()"));
-//
-//	if (!DTWSC)
-//	{
-//		return;
-//	}
-//	const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-//
-//
-//	UCheckpointSubsystem* CheckpointSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UCheckpointSubsystem>();
-//	if (!CheckpointSubsystem) { return; }
-//	UCustumSaveGame* CurrentSave = CheckpointSubsystem->GetCurrentSave();
-//
-//	const bool bIsValidContinue = (CurrentSave && CurrentSave->OwnedWeapons.Num() > 0);
-//
-//	const TMap<EWeaponName, bool>& WeaponOwnerShipMap = (bIsValidContinue)
-//		? CurrentSave->OwnedWeapons
-//		: DTWSC->WeaponOwnerShipMap;
-//
-//	for (EWeaponName WeaponName : TEnumRange<EWeaponName>())
-//	{
-//		const FString WeaponNameString = UEnum::GetValueAsString(WeaponName);
-//		const bool* bIsOwnedPtr = WeaponOwnerShipMap.Find(WeaponName);
-//
-//		if (bIsOwnedPtr && *bIsOwnedPtr)
-//		{
-//			UWorld* World = GetWorld();
-//			if (!World)
-//			{
-//				continue;
-//			}
-//
-//			const TSubclassOf<AWeapon>* WeaponClassPtr = WeaponClasses.Find(WeaponName);
-//			if (!WeaponClassPtr || !(*WeaponClassPtr))
-//			{
-//				continue;
-//			}
-//
-//			FActorSpawnParameters ActorSpawnParams;
-//			ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//			AWeapon* NewWeapon = World->SpawnActor<AWeapon>(*WeaponClassPtr, FTransform(), ActorSpawnParams);
-//
-//			if (!NewWeapon)
-//			{
-//				continue;
-//			}
-//
-//			NewWeapon->InitWeapon(Cast<ACharacterPlayer>(GetOwner()));
-//			AddNewWeaponToInventory(NewWeapon);
-//			OwnedWeapons.FindOrAdd(WeaponName) = true;
-//		}
-//	}
-//
-//	SaveInventory();
-//
-//	for (int32 i = 0; i < WeaponInventory.Num(); i++)
-//	{
-//		if (WeaponInventory[i] && WeaponInventory[i]->GetWeaponName() == DTWSC->StartingWeaponName)
-//		{
-//			int32 PrevIdx = CurrentWeaponIndex;
-//			CurrentWeaponIndex = i;
-//			CurrentWeapon = WeaponInventory[i];
-//			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//
-//			OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//			return;
-//		}
-//	}
-//}
-
-//void UWeaponSystemComponent::InitStartingWeapons_Fuck()
-//{
-//	if (!DTWSC)
-//	{
-//		return;
-//	}
-//	const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-//
-//	TMap<EWeaponName, bool> NewWeaponOwnerShip;
-//
-//	FName CurrentMapName = FName(*UGameplayStatics::GetCurrentLevelName(this, true));
-//
-//	if (CurrentMapName == FName("new_rhkdwls5") || CurrentMapName == FName("rhkdwls5_partition"))
-//	{
-//		UE_LOG(LogTemp, Error, TEXT("Level 1"));
-//
-//		OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_Rifle) = true;
-//		OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_ShotGun) = true;
-//	}
-//	else
-//	{
-//		UE_LOG(LogTemp, Error, TEXT("incorrect Name"));
-//
-//		OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_Rifle) = true;
-//		OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_ShotGun) = true;
-//		OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_MissileLauncher) = true;
-//	}
-//
-//
-//	//const TMap<EWeaponName, bool>& WeaponOwnerShipMap = (bIsValidContinue)
-//	//	? CurrentSave->OwnedWeapons
-//	//	: DTWSC->WeaponOwnerShipMap;
-//
-//	for (EWeaponName WeaponName : TEnumRange<EWeaponName>())
-//	{
-//		const bool* bIsOwnedPtr = OwnedWeapons.Find(WeaponName);
-//		if (bIsOwnedPtr && *bIsOwnedPtr)
-//		{
-//			UWorld* World = GetWorld();
-//			if (!World)
-//			{
-//				continue;
-//			}
-//
-//			const TSubclassOf<AWeapon>* WeaponClassPtr = WeaponClasses.Find(WeaponName);
-//			if (!WeaponClassPtr || !(*WeaponClassPtr))
-//			{
-//				continue;
-//			}
-//
-//			FActorSpawnParameters ActorSpawnParams;
-//			ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-//			AWeapon* NewWeapon = World->SpawnActor<AWeapon>(*WeaponClassPtr, FTransform(), ActorSpawnParams);
-//
-//			if (!NewWeapon)
-//			{
-//				continue;
-//			}
-//
-//			NewWeapon->InitWeapon(Cast<ACharacterPlayer>(GetOwner()));
-//			AddNewWeaponToInventory(NewWeapon);
-//			OwnedWeapons.FindOrAdd(WeaponName) = true;
-//		}
-//	}
-//
-//	//SaveInventory();
-//
-//	for (int32 i = 0; i < WeaponInventory.Num(); i++)
-//	{
-//		if (WeaponInventory[i] && WeaponInventory[i]->GetWeaponName() == DTWSC->StartingWeaponName)
-//		{
-//			int32 PrevIdx = CurrentWeaponIndex;
-//			CurrentWeaponIndex = i;
-//			CurrentWeapon = WeaponInventory[i];
-//			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-//
-//			OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-//			return;
-//		}
-//	}
-//}
-
-void UInventorySystemComponent::InitStartingWeapons_New()
-{
-	//if (!DTWSC)
-	//{
-	//	return;
-	//}
-	//const TMap<EWeaponName, TSubclassOf<AWeapon>> WeaponClasses = DTWSC->WeaponClasses;
-
-	//TMap<EWeaponName, bool> NewWeaponOwnerShip;
-
-	//FName CurrentMapName = FName(*UGameplayStatics::GetCurrentLevelName(this, true));
-
-	//if (CurrentMapName == FName("new_rhkdwls5") || CurrentMapName == FName("rhkdwls5_partition"))
-	//{
-	//	UE_LOG(LogTemp, Error, TEXT("Level 1"));
-
-	//	OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_Rifle) = true;
-	//	OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_ShotGun) = true;
-	//}
-	//else
-	//{
-	//	UE_LOG(LogTemp, Error, TEXT("incorrect Name"));
-
-	//	OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_Rifle) = true;
-	//	OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_ShotGun) = true;
-	//	OwnedWeapons.FindOrAdd(EWeaponName::WeaponName_MissileLauncher) = true;
-	//}
-
-
-	////const TMap<EWeaponName, bool>& WeaponOwnerShipMap = (bIsValidContinue)
-	////	? CurrentSave->OwnedWeapons
-	////	: DTWSC->WeaponOwnerShipMap;
-
-	//for (EWeaponName WeaponName : TEnumRange<EWeaponName>())
-	//{
-	//	const bool* bIsOwnedPtr = OwnedWeapons.Find(WeaponName);
-	//	if (bIsOwnedPtr && *bIsOwnedPtr)
-	//	{
-	//		UWorld* World = GetWorld();
-	//		if (!World)
-	//		{
-	//			continue;
-	//		}
-
-	//		const TSubclassOf<AWeapon>* WeaponClassPtr = WeaponClasses.Find(WeaponName);
-	//		if (!WeaponClassPtr || !(*WeaponClassPtr))
-	//		{
-	//			continue;
-	//		}
-
-	//		FActorSpawnParameters ActorSpawnParams;
-	//		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	//		AWeapon* NewWeapon = World->SpawnActor<AWeapon>(*WeaponClassPtr, FTransform(), ActorSpawnParams);
-
-	//		if (!NewWeapon)
-	//		{
-	//			continue;
-	//		}
-
-	//		NewWeapon->InitWeapon(Cast<APawnPlayer>(GetOwner()));
-	//		AddNewWeaponToInventory(NewWeapon);
-	//		OwnedWeapons.FindOrAdd(WeaponName) = true;
-	//	}
-	//}
-
-	////SaveInventory();
-
-	//for (int32 i = 0; i < WeaponInventory.Num(); i++)
-	//{
-	//	if (WeaponInventory[i] && WeaponInventory[i]->GetWeaponName() == DTWSC->StartingWeaponName)
-	//	{
-	//		int32 PrevIdx = CurrentWeaponIndex;
-	//		CurrentWeaponIndex = i;
-	//		CurrentWeapon = WeaponInventory[i];
-	//		CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-
-	//		OnWeaponSwitched.Broadcast(PrevIdx, CurrentWeaponIndex);
-	//		return;
-	//	}
-	//}
-}
 
 void UInventorySystemComponent::SaveInventory()
 {
@@ -937,69 +550,7 @@ void UInventorySystemComponent::SaveInventory()
 
 	//------------------------------------
 }
-#pragma endregion
 
-#pragma region SearchWeapon
-bool UInventorySystemComponent::SearchWeapon()
-{
-	TArray<TEnumAsByte<EObjectTypeQuery>> traceObjectTypes;
-	traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Visibility)); //TODO: Customize Collision Channel
-
-	TArray<AActor*> ignoreActors;
-	ignoreActors.Init(PlayerOwner, 1);
-
-	FVector sphereSpwanLocation = PlayerOwner->GetActorLocation();
-
-	TArray<AActor*> overlappedActors;
-
-	bool bIsWeaponInViewPort = UKismetSystemLibrary::SphereOverlapActors(GetWorld(), sphereSpwanLocation, SearchItemRadius, traceObjectTypes, nullptr, ignoreActors, overlappedActors);
-
-	float MinDistanceToWeapon = SearchItemRadius;
-	AWeaponPickUp* NearestWeapon = nullptr;
-
-	for (AActor* overlappedActor : overlappedActors)
-	{
-		AWeaponPickUp* WeaponObject = Cast<AWeaponPickUp>(overlappedActor);
-		if (WeaponObject != nullptr)
-		{
-			if (IsInViewport(GetScreenPositionOfWorldLocation(WeaponObject->GetActorLocation()).Get<0>(), SearchItemViewportRatio_Width, SearchItemViewportRatio_Height))
-			{
-				float DistanceToWeapon = PlayerOwner->GetDistanceTo(WeaponObject);
-				if (DistanceToWeapon < MinDistanceToWeapon)
-				{
-					MinDistanceToWeapon = DistanceToWeapon;
-					NearestWeapon = WeaponObject;
-
-					// TODO: Overlapped weapon UI on/off
-				}
-			}
-		}
-	}
-
-	if (OverlappedWeapon == nullptr && NearestWeapon != nullptr)
-	{
-		//InteractionWidget->PlayPopUpAnim();
-		PlayerOwner->OnInteractionUIPopUpDelegate.Broadcast();
-	}
-
-	OverlappedWeapon = NearestWeapon;
-
-	if (OverlappedWeapon != nullptr)
-	{
-		//InteractionWidget->PlayPopUpAnim();
-		//UpdateInteractionUI(true, OverlappedWeapon->GetActorLocation());
-		PlayerOwner->OnInteractionUIUpdatedDelegate.Broadcast(true, OverlappedWeapon->GetActorLocation());
-	}
-	else
-	{
-		//InteractionWidget->PlayPopUpAnimReverse();
-		//UpdateInteractionUI(false);
-		PlayerOwner->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
-	}
-
-
-	return bIsWeaponInViewPort;
-}
 
 TTuple<FVector2D, bool> UInventorySystemComponent::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
 {
@@ -1103,115 +654,28 @@ bool UInventorySystemComponent::IsInViewport(FVector2D ActorScreenPosition, floa
 	}
 }
 
-#pragma region Interaction
-
-void UInventorySystemComponent::PickUpWeapon()
-{
-	if (OverlappedWeapon != nullptr)
-	{
-		if (CurrentWeapon == nullptr || (CurrentWeapon != nullptr && CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Idle))
-		{
-			if (OverlappedWeapon->IsMagazine())
-			{
-				ObtainAmmo(OverlappedItem);
-			}
-			else
-			{
-				ObtainNewWeapon(OverlappedWeapon);
-			}
-		}
-	}
-}
-bool UInventorySystemComponent::ObtainNewWeapon(AWeaponPickUp* NewWeaponPickUp)
-{
-	if (!NewWeaponPickUp || !PlayerOwner)
-	{
-		return false;
-	}
-	const EWeaponName NewWeaponName = NewWeaponPickUp->GetWeaponName();
-	const int32 NewAmmo = NewWeaponPickUp->GetAmmo();
-
-	auto TryAddAmmoIfAlreadyOwned = [&](TArray<AWeapon*>& Inventory) -> bool
-		{
-			for (AWeapon* Weapon : Inventory)
-			{
-				if (Weapon && Weapon->GetWeaponName() == NewWeaponName)
-				{
-					//UE_LOG(LogTemp, Warning, TEXT("Already Possess"));
-					if (Weapon->AddAmmo(NewAmmo))
-					{
-						NewWeaponPickUp->DestroyWeaponPickUp();
-					}
-					return true;
-				}
-			}
-			return false;
-		};
-
-	if (TryAddAmmoIfAlreadyOwned(WeaponInventory) || TryAddAmmoIfAlreadyOwned(SkillWeaponInventory))
-	{
-		return false;
-	}
-
-	AWeapon* NewWeapon = NewWeaponPickUp->SpawnWeapon(PlayerOwner);
-	if (!NewWeapon) { return false; }
-	NewWeaponPickUp->DestroyWeaponPickUp();
-
-	if (NewWeapon->IsSkillWeapon())
-	{
-		SkillWeaponInventory.AddUnique(NewWeapon);
-		CurrentSkillWeapon = NewWeapon;
-		CurrentSkillWeapon->EquipWeapon(PlayerOwner, true);
-
-		OnSkillWeaponEquipped.Broadcast(CurrentSkillWeapon);
-	}
-	else
-	{
-		WeaponInventory.AddUnique(NewWeapon);
-		if (!CurrentWeapon)
-		{
-			CurrentWeapon = NewWeapon;
-			CurrentWeapon->SwitchWeapon(PlayerOwner, true);
-		}
-		OnWeaponPickedUp.Broadcast(NewWeaponPickUp->GetWeaponName());
-	}
-
-	OwnedWeapons.FindOrAdd(NewWeaponName) = true;
-	SaveInventory();
-
-	return true;
-}
 
 bool UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)
 {
-	for (AWeapon* WeaponInPossession : WeaponInventory)
+	int32 WeaponIdx = FindItemSlot(WeaponInventory, MagazinePickUp->GetItemName());
+	if (WeaponIdx != INDEX_NONE)
 	{
-		if (WeaponInPossession->GetWeaponName() == MagazinePickUp->GetWeaponName())
+		if (!WeaponInventory[WeaponIdx].IsEmpty())
 		{
-			if (WeaponInPossession->AddAmmo(MagazinePickUp->GetAmmo()))
+			AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[WeaponIdx].GetItem(0));
+			if (Weapon)
 			{
-				MagazinePickUp->DestroyItemPickUp();
-				return true;
-			}
-		}
-	}
-
-	for (AWeapon* WeaponInPossession : SkillWeaponInventory)
-	{
-		if (WeaponInPossession->GetWeaponName() == MagazinePickUp->GetWeaponName())
-		{
-			if (WeaponInPossession->AddAmmo(MagazinePickUp->GetAmmo()))
-			{
-				MagazinePickUp->DestroyItemPickUp();
-				return true;
+				if (Weapon->AddAmmo(MagazinePickUp->GetAmmo()))
+				{
+					MagazinePickUp->DestroyItemPickUp();
+					return true;
+				}
 			}
 		}
 	}
 
 	return false;
 }
-
-#pragma endregion
 
 void UInventorySystemComponent::ZoomIn(bool bZoomIn)
 {
@@ -1231,8 +695,6 @@ bool UInventorySystemComponent::IsWeaponModifyingCamFov()
 	}
 	return false;
 }
-
-#pragma endregion
 
 #pragma region Aiming
 
@@ -1293,75 +755,154 @@ EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 	if (CurrentWeapon) return CurrentWeapon->GetCurrentState()->GetWeaponStateType();
 	else return EWeaponStateType::WeaponStateType_None;
 }
+
 void UInventorySystemComponent::SwitchToPreviousWeapon()
 {
-	if (IsCurrentSkillWeaponTargeting()
-		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
 	if (WeaponInventory.Num() > 1)
 	{
-		const int32 PrevIndex = CurrentWeaponIndex;
+		const int32 PrevIndex = CurrWeaponIdx;
 
-		CurrentWeaponIndex--;
-		if (CurrentWeaponIndex < 0)
+		CurrWeaponIdx--;
+		if (CurrWeaponIdx < 0)
 		{
-			CurrentWeaponIndex = WeaponInventory.Num() + CurrentWeaponIndex;
+			CurrWeaponIdx = WeaponInventory.Num() + CurrWeaponIdx;
 		}
-		ChangeWeapon(CurrentWeaponIndex);
+		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrentWeaponIndex);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrentWeaponIndex);
+		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
+
 void UInventorySystemComponent::SwitchToNextWeapon()
 {
-	if (IsCurrentSkillWeaponTargeting()
-		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
 	if (WeaponInventory.Num() > 1)
 	{
-		const int32 PrevIndex = CurrentWeaponIndex;
+		const int32 PrevIndex = CurrWeaponIdx;
 
-		CurrentWeaponIndex = (CurrentWeaponIndex + 1) % WeaponInventory.Num();
-		ChangeWeapon(CurrentWeaponIndex);
+		CurrWeaponIdx = (CurrWeaponIdx + 1) % WeaponInventory.Num();
+		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrentWeaponIndex);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrentWeaponIndex);
+		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
+
 void UInventorySystemComponent::SwitchToIndex(int32 idx)
 {
-	if (IsCurrentSkillWeaponTargeting()
-		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
-	if (WeaponInventory.IsValidIndex(idx) && CurrentWeaponIndex != idx)
+	if (WeaponInventory.IsValidIndex(idx) && CurrWeaponIdx != idx)
 	{
-		const int32 PrevIndex = CurrentWeaponIndex;
-		CurrentWeaponIndex = idx;
-		ChangeWeapon(CurrentWeaponIndex);
+		const int32 PrevIndex = CurrWeaponIdx;
+		CurrWeaponIdx = idx;
+		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrentWeaponIndex);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrentWeaponIndex);
+		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
 void UInventorySystemComponent::SwitchToOtherWeapon()
 {
-	WeaponInventory[CurrentWeaponIndex]->SwitchWeapon(PlayerOwner, true);
-	CurrentWeapon = WeaponInventory[CurrentWeaponIndex];
+	AWeapon* OtherWeapon = Cast<AWeapon>(WeaponInventory[CurrWeaponIdx].GetItem(0));
+	if (OtherWeapon)
+	{
+		OtherWeapon->SwitchWeapon(PlayerOwner, true);
+		CurrentWeapon = OtherWeapon;
+	}
 }
+
 void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
 {
-	if (WeaponInventory.IsValidIndex(WeaponIndex))
+	if (WeaponInventory.IsValidIndex(WeaponIndex) && !WeaponInventory[WeaponIndex].IsEmpty())
 	{
 		if (IsValid(CurrentWeapon))
 		{
 			CurrentWeapon->SwitchWeapon(PlayerOwner, false);
+		}
+	}
+}
+EWeaponStateType UInventorySystemComponent::GetCurrThrowableWeaponStateType() const
+{
+	if (CurrThrowableWeapon) return CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType();
+	else return EWeaponStateType::WeaponStateType_None;
+}
+void UInventorySystemComponent::SwitchToPreviousThrowableWeapon()
+{
+	if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+		|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+		return;
+	}
+	if (ThrowableWeaponInventory.Num() > 1)
+	{
+		const int32 PrevIndex = CurrThrowableWeaponIdx;
+
+		CurrThrowableWeaponIdx--;
+		if (CurrThrowableWeaponIdx < 0)
+		{
+			CurrThrowableWeaponIdx = ThrowableWeaponInventory.Num() + CurrThrowableWeaponIdx;
+		}
+		ChangeThrowableWeapon(CurrThrowableWeaponIdx);
+
+		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrentThrowableWeaponIndex);
+		//OnWeaponSwitched.Broadcast(PrevIndex, CurrentThrowableWeaponIndex);
+	}
+}
+void UInventorySystemComponent::SwitchToNextThrowableWeapon()
+{
+	if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+		|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+		return;
+	}
+	if (ThrowableWeaponInventory.Num() > 1)
+	{
+		const int32 PrevIndex = CurrThrowableWeaponIdx;
+
+		CurrThrowableWeaponIdx = (CurrThrowableWeaponIdx + 1) % ThrowableWeaponInventory.Num();
+		ChangeThrowableWeapon(CurrThrowableWeaponIdx);
+
+		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrentThrowableWeaponIndex);
+		OnWeaponSwitched.Broadcast(PrevIndex, CurrThrowableWeaponIdx);
+	}
+}
+void UInventorySystemComponent::SwitchToIndexThrowableWeapon(int32 idx)
+{
+	//if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	//	|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+	//	return;
+	//}
+	//if (ThrowableWeaponInventory.IsValidIndex(idx) && CurrThrowableWeaponIdx != idx)
+	//{
+	//	const int32 PrevIndex = CurrThrowableWeaponIdx;
+	//	CurrThrowableWeaponIdx = idx;
+	//	ChangeWeapon(CurrThrowableWeaponIdx);
+
+	//	UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrThrowableWeaponIdx);
+	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrThrowableWeaponIdx);
+	//}
+}
+void UInventorySystemComponent::SwitchToOtherThrowableWeapon()
+{
+	//ThrowableWeaponInventory[CurrThrowableWeaponIdx]->SwitchWeapon(PlayerOwner, true);
+	//CurrThrowableWeapon = ThrowableWeaponInventory[CurrThrowableWeaponIdx];
+}
+void UInventorySystemComponent::ChangeThrowableWeapon(int32 WeaponIndex)
+{
+	if (ThrowableWeaponInventory.IsValidIndex(WeaponIndex))
+	{
+		if (IsValid(CurrThrowableWeapon))
+		{
+			CurrThrowableWeapon->SwitchWeapon(PlayerOwner, false);
 		}
 	}
 }

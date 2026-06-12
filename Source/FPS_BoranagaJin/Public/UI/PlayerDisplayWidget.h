@@ -25,12 +25,20 @@ protected:
 	void DisplayInventory();
 public:
 	UFUNCTION()
-	void CreateInventorySlots(int32 InventorySlotCount);
+	void CreateItemInventorySlots(int32 InventorySlotCount);
 	UFUNCTION()
-	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
+	void UpdateItemInventorySlots(const TArray<FInventorySlot>& Inventory);
+	UFUNCTION()
+	void CreateWeaponInventorySlots(int32 InventorySlotCount);
+	UFUNCTION()
+	void UpdateWeaponInventorySlots(const TArray<FInventorySlot>& Inventory);
 protected:
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "InventoryUIWidget")
-	TSubclassOf<UInventoryUIWidget> InventoryUIWidgetClass;
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "ItemInventoryUIWidget")
+	TSubclassOf<UInventoryUIWidget> ItemInventoryUIWidgetClass;
 	UPROPERTY(meta = (BindWidget))
-	UInventoryUIWidget* InventoryUIWidget = nullptr;
+	UInventoryUIWidget* ItemInventoryUIWidget = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "WeaponInventoryUIWidget")
+	TSubclassOf<UInventoryUIWidget> WeaponInventoryUIWidgetClass;
+	UPROPERTY(meta = (BindWidget))
+	UInventoryUIWidget* WeaponInventoryUIWidget = nullptr;
 };

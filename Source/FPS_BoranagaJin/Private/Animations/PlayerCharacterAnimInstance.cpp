@@ -190,12 +190,12 @@ void UPlayerCharacterAnimInstance::UpdateWeapon()
 				ArmRecoil_LowerArm = *PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_LowerArm();
 			}
 
-			if (CurrentSkillWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon())
-			{
-				// <SkillWeaponSocket>
-				SkillWeaponSocketTransform_Active = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Active();
-				SkillWeaponSocketTransform_Inactive = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Inactive();
-			}
+			//if (CurrentSkillWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon())
+			//{
+			//	// <SkillWeaponSocket>
+			//	SkillWeaponSocketTransform_Active = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Active();
+			//	SkillWeaponSocketTransform_Inactive = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Inactive();
+			//}
 		}
 
 
@@ -289,7 +289,7 @@ void UPlayerCharacterAnimInstance::SetTargetRightHandTransform()
 		{
 			//FTransform RootTransform = Character->GetMesh()->GetBoneTransform(FName(TEXT("ik_hand_root")), ERelativeTransformSpace::RTS_World);
 			FTransform RootTransform = PlayerCharacter->GetArmMesh()->GetComponentTransform();
-
+			
 			FTransform CameraTransform = PlayerCharacter->GetCameraComponent()->GetComponentTransform();
 			FTransform WeaponAimSocketTransform = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetWeaponMesh()->GetSocketTransform(FName(TEXT("Aim")));
 			FTransform RightHandTransform = PlayerCharacter->GetArmMesh()->GetBoneTransform(FName(TEXT("hand_r")));
@@ -333,7 +333,7 @@ FTransform UPlayerCharacterAnimInstance::GetTargetLeftHandTransfrom() //TODO: ¼ö
 	if (PlayerCharacter)
 	{
 		CurrentWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon();
-		CurrentSkillWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon();
+		//CurrentSkillWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon();
 		if (CurrentWeapon)
 		{
 			return CurrentWeapon->GetWeaponMesh()->GetSocketTransform(FName("LeftHand"));
