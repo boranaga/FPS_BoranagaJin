@@ -4,6 +4,16 @@
 #include "GameFramework/Actor.h"
 #include "UIType.generated.h"
 
+UENUM(BlueprintType)
+enum class EUIZOrder : uint8
+{
+	Stamina = 0,
+	Interaction = 1,
+	WeaponAim = 2,
+	Inventory = 100,
+	ItemTool = 101,
+	ThrowableWeaponInventory = 102,
+};
 
 UENUM(BlueprintType)
 enum class EUIType : uint8

@@ -4,13 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Components/TimelineComponent.h"
+//#include "Components/TimelineComponent.h"
 
 #include "Characters/DamageInterface.h"
 #include "Characters/DamageParams.h"
 #include "EnemyActions.h"
-//#include "Utilities/EnemyPatrolRoute.h"
-
 #include "EnemyBase.generated.h"
 
 class AEnemyBaseAIController;
@@ -66,19 +64,19 @@ protected:
 	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Patrol Route", meta = (AllowPrivateAccess = "true"))
 	//TObjectPtr<AEnemyPatrolRoute> PatrolRoute;
 
-	UPROPERTY(VisibleDefaultsOnly)
-	TObjectPtr<UTimelineComponent> HitColorTimeline;
-	FOnTimelineFloat OnHitColorTimelineFloat;
+	//UPROPERTY(VisibleDefaultsOnly)
+	//TObjectPtr<UTimelineComponent> HitColorTimeline;
+	//FOnTimelineFloat OnHitColorTimelineFloat;
 
-	UPROPERTY(VisibleDefaultsOnly)
-	TObjectPtr<UTimelineComponent> DissolveTimeline;
-	FOnTimelineFloat OnDissolveColorTimelineFloat;
+	//UPROPERTY(VisibleDefaultsOnly)
+	//TObjectPtr<UTimelineComponent> DissolveTimeline;
+	//FOnTimelineFloat OnDissolveColorTimelineFloat;
 
-	UPROPERTY(EditDefaultsOnly)
-	TObjectPtr<UCurveFloat> HitColorCurve;
+	//UPROPERTY(EditDefaultsOnly)
+	//TObjectPtr<UCurveFloat> HitColorCurve;
 
-	UPROPERTY(EditDefaultsOnly)
-	TObjectPtr<UCurveFloat> DissolveColorCurve;
+	//UPROPERTY(EditDefaultsOnly)
+	//TObjectPtr<UCurveFloat> DissolveColorCurve;
 
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<USoundBase> DeathSound;
@@ -98,18 +96,13 @@ protected:
 
 	bool bCanInflictDamage = true;
 
-	// [protected functions]
-	// Called when the game starts or when spawned
+
 	virtual void BeginPlay() override;
-
 	virtual void Tick(float DeltaSeconds) override;
-
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	virtual void OnDamagedTriggered();
-
 	virtual void OnDeathTriggered();
-
 	virtual void OnHitEnded(UAnimMontage* AnimMontage, bool bInterrupted);
 
 	virtual void UpdateHealthBarValue();

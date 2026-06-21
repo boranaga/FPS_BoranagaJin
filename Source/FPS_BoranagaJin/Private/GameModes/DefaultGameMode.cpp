@@ -2,6 +2,8 @@
 
 
 #include "GameModes/DefaultGameMode.h"
+#include "ObjectPoolSubsystem.h"
+
 
 //#include "ActorComponents/DamageComponent/ACDamageSystem.h"
 //#include "Characters/PawnBasePlayer/PawnPlayer.h"
@@ -15,6 +17,14 @@
 void ADefaultGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (UObjectPoolSubsystem* Pool =
+		GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
+	{
+		//Pool->PrewarmPool(ProjectileClass, 50);
+		//Pool->PrewarmPool(ItemPickupClass, 30);
+	}
+	//----------------------
 
 	//UE_LOG(LogTemp, Error, TEXT("ALevelGameMode::BeginPlay()"));
 

@@ -4,6 +4,7 @@
 #include "Items/ItemPickUp.h"
 #include "Items/Item.h"
 #include "Items/PickUpComponent.h"
+#include "ObjectPoolSubsystem.h"
 
 AItemPickUp::AItemPickUp()
 {
@@ -38,7 +39,47 @@ AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character)
 	return NewItem;
 }
 
+void AItemPickUp::DeactivateItemPickUp()
+{
+	SetActorLocation(PoolLocation);
+	ItemMesh->SetVisibility(false);
+}
+
+void AItemPickUp::ActivateItemPickUp(FVector location)
+{
+	SetActorLocation(location);
+	ItemMesh->SetVisibility(true);
+}
+
 void AItemPickUp::DestroyItemPickUp()
 {
 	Destroy();
+}
+
+void AItemPickUp::SetOwningPool(UObjectPoolSubsystem* NewPool)
+{
+	OwningPool = NewPool;
+}
+
+void AItemPickUp::OnActivateFromPool()
+{
+	bIsActiveInPool = true;
+}
+
+void AItemPickUp::OnDeactivateToPool()
+{
+	bIsActiveInPool = false;
+}
+
+bool AItemPickUp::IsActiveInPool() const
+{
+	return bIsActiveInPool;
+}
+
+void AItemPickUp::DeactivateItemPickUp_Pool()
+{
+	if (OwningPool)
+	{
+		OwningPool->ReturnToPool(this);
+	}
 }

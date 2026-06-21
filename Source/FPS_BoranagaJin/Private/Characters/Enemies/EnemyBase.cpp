@@ -2,6 +2,8 @@
 
 
 #include "Characters/Enemies/EnemyBase.h"
+#include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
+
 #include "Characters/Player/CharacterPlayer.h"
 //#include "ActorComponents/DamageComponent/ACEnemyDamageSystem.h"
 //#include "ActorComponents/UISystem/ACKillLogManager.h"
@@ -23,6 +25,11 @@
 
 AEnemyBase::AEnemyBase()
 {
+	//AIControllerClass = AEnemyBaseAIController::StaticClass();
+	//AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	//-------------------------------------
+
 	// Damage system comp
 	//DamageSystemComp = CreateDefaultSubobject<UACEnemyDamageSystem>(TEXT("DamageSystemComponent"));
 	//AddOwnedComponent(DamageSystemComp);
@@ -56,9 +63,8 @@ AEnemyBase::AEnemyBase()
 
 	GetCapsuleComponent()->SetCollisionProfileName("EnemyPawnOverlap");
 
-	HitColorTimeline = CreateDefaultSubobject<UTimelineComponent>("HitColorTimeline");
-
-	DissolveTimeline = CreateDefaultSubobject<UTimelineComponent>("DissolveColorTimeline");
+	//HitColorTimeline = CreateDefaultSubobject<UTimelineComponent>("HitColorTimeline");
+	//DissolveTimeline = CreateDefaultSubobject<UTimelineComponent>("DissolveColorTimeline");
 
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel8, ECollisionResponse::ECR_Block); // <JaeHyeong>
 
@@ -70,18 +76,18 @@ void AEnemyBase::BeginPlay()
 
 	InitializeEnemy();
 
-	// Initialize hit color timeline component.
-	if (HitColorCurve)
-	{
-		OnHitColorTimelineFloat.BindUFunction(this, FName("UpdateHitColor"));
-		HitColorTimeline->AddInterpFloat(HitColorCurve, OnHitColorTimelineFloat);
-	}
+	//// Initialize hit color timeline component.
+	//if (HitColorCurve)
+	//{
+	//	OnHitColorTimelineFloat.BindUFunction(this, FName("UpdateHitColor"));
+	//	HitColorTimeline->AddInterpFloat(HitColorCurve, OnHitColorTimelineFloat);
+	//}
 
-	if (DissolveColorCurve)
-	{
-		OnDissolveColorTimelineFloat.BindUFunction(this, FName("UpdateDissolveColor"));
-		DissolveTimeline->AddInterpFloat(DissolveColorCurve, OnDissolveColorTimelineFloat);
-	}
+	//if (DissolveColorCurve)
+	//{
+	//	OnDissolveColorTimelineFloat.BindUFunction(this, FName("UpdateDissolveColor"));
+	//	DissolveTimeline->AddInterpFloat(DissolveColorCurve, OnDissolveColorTimelineFloat);
+	//}
 
 	BindKillLogOnDeath();
 

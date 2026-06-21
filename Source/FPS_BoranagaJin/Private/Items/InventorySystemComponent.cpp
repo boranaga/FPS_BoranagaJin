@@ -478,7 +478,8 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddWeaponFromPickUp(NewItemPickUp))
 		{
-			NewItemPickUp->DestroyItemPickUp();
+			//NewItemPickUp->DestroyItemPickUp();
+			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
 			return true;
 		}
@@ -491,7 +492,8 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddThrowableWeaponFromPickUp(NewItemPickUp))
 		{
-			NewItemPickUp->DestroyItemPickUp();
+			//NewItemPickUp->DestroyItemPickUp();
+			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 			return true;
 		}
@@ -504,7 +506,8 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddItemFromPickUp(NewItemPickUp))
 		{
-			NewItemPickUp->DestroyItemPickUp();
+			//NewItemPickUp->DestroyItemPickUp();
+			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 			return true;
 		}
@@ -667,7 +670,8 @@ bool UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)
 			{
 				if (Weapon->AddAmmo(MagazinePickUp->GetAmmo()))
 				{
-					MagazinePickUp->DestroyItemPickUp();
+					//MagazinePickUp->DestroyItemPickUp();
+					MagazinePickUp->DeactivateItemPickUp();
 					return true;
 				}
 			}
