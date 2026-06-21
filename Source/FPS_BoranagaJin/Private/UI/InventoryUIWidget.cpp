@@ -118,11 +118,11 @@ void UInventoryUIWidget::SwapInventorySlots(int32 FromIndex, int32 ToIndex)
 
 	//--------------------------------
 
-	OwnerUIManager->RequestSwapInventorySlots(FName("ItemInventory"), FromIndex, ToIndex);
+	OwnerUIManager->RequestSwapInventorySlots(InventoryName, FromIndex, ToIndex);
 }
 
-void UInventoryUIWidget::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
+void UInventoryUIWidget::RequestSwapInventorySlots(FName InInventoryName, int32 FromIndex, int32 ToIndex)
 {
-	OwnerUIManager->RequestSwapInventorySlots(InventoryName, FromIndex, ToIndex);
+	OwnerUIManager->RequestSwapInventorySlots(InInventoryName, FromIndex, ToIndex);
 }
 

@@ -32,10 +32,13 @@ protected:
 //protected:
 //	void LoadItemDataTable();
 public:
+	UPROPERTY(EditAnywhere)
+	FName InventoryName;
+public:
 	UFUNCTION()
 	void CreateInventorySlots(int32 InventorySlotCount);
 	UFUNCTION()
 	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
 	void SwapInventorySlots(int32 FromIndex, int32 ToIndex);
-	void RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
+	void RequestSwapInventorySlots(FName InInventoryName, int32 FromIndex, int32 ToIndex);
 };

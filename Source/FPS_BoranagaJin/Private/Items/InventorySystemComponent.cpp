@@ -409,17 +409,37 @@ void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int3
 {
 	//TODO: InventoryName에 맞춰서 수정하도록
 
-	if (!SwapSlots(ItemInventory, FromIndex, ToIndex))
+
+	if (InventoryName == FName("ItemInventory"))
 	{
-		return;
+		if (!SwapSlots(ItemInventory, FromIndex, ToIndex))
+		{
+			return;
+		}
+
+		if (PlayerOwner)
+		{
+			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+		}
+
+		PrintInventory();
+	}
+	else if (InventoryName == FName("WeaponInventory"))
+	{
+		if (!SwapSlots(WeaponInventory, FromIndex, ToIndex))
+		{
+			return;
+		}
+
+		if (PlayerOwner)
+		{
+			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+		}
+
+		PrintInventory();
 	}
 
-	if (PlayerOwner)
-	{
-		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
-	}
 
-	PrintInventory();
 }
 
 bool UInventorySystemComponent::SearchItems()

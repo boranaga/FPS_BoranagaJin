@@ -64,6 +64,7 @@ void UPlayerDisplayWidget::CreateItemInventorySlots(int32 InventorySlotCount)
 {
 	if (ItemInventoryUIWidget)
 	{
+		ItemInventoryUIWidget->InventoryName = FName("ItemInventory");
 		ItemInventoryUIWidget->SetOwnerUIManager(OwnerUIManager);
 		ItemInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
 	}
@@ -81,6 +82,7 @@ void UPlayerDisplayWidget::CreateWeaponInventorySlots(int32 InventorySlotCount)
 {
 	if (WeaponInventoryUIWidget)
 	{
+		WeaponInventoryUIWidget->InventoryName = FName("WeaponInventory");
 		WeaponInventoryUIWidget->SetOwnerUIManager(OwnerUIManager);
 		WeaponInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
 	}

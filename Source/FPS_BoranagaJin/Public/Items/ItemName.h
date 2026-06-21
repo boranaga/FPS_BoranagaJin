@@ -13,6 +13,7 @@ enum class EItemName : uint8
 	ItemName_RocketLauncher UMETA(DisplayName = "RocketLauncher"),
 	ItemName_Grenade UMETA(DisplayName = "Grenade"),
 	ItemName_Dummy UMETA(DisplayName = "DummyItem"),
+	ItemName_Dummy_2 UMETA(DisplayName = "DummyItem_2"),
 	ItemName_None UMETA(DisplayName = "None")
 };
 ENUM_RANGE_BY_FIRST_AND_LAST(EItemName, EItemName::ItemName_Base, EItemName::ItemName_None);
