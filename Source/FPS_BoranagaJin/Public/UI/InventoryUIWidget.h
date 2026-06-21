@@ -36,4 +36,6 @@ public:
 	void CreateInventorySlots(int32 InventorySlotCount);
 	UFUNCTION()
 	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
+	void SwapInventorySlots(int32 FromIndex, int32 ToIndex);
+	void RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
 };

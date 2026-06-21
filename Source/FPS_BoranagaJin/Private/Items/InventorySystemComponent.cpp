@@ -41,6 +41,9 @@ void UInventorySystemComponent::BeginPlay()
 	LoadWSCData();
 
 	InitInventory();
+
+
+	PlayerOwner->OnInventorySwapRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::SwapItemInventorySlots);
 }
 
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -400,6 +403,23 @@ void UInventorySystemComponent::InitInventoryUI()
 
 	PlayerOwner->OnThrowableWeaponInventoryCreatedDelegate.Broadcast(MaxThrowableWeaponSlotsCount);
 	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+}
+
+void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
+{
+	//TODO: InventoryName에 맞춰서 수정하도록
+
+	if (!SwapSlots(ItemInventory, FromIndex, ToIndex))
+	{
+		return;
+	}
+
+	if (PlayerOwner)
+	{
+		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+	}
+
+	PrintInventory();
 }
 
 bool UInventorySystemComponent::SearchItems()

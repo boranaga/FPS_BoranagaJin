@@ -2,8 +2,10 @@
 
 
 #include "UI/InventorySlotWidget.h"
+#include "UI/InventoryUIWidget.h"
 #include "UI/ItemToolWidget.h"
 #include "UI/UIType.h"
+#include "UI/InventoryDragDropOperation.h"
 #include "Data/ItemData.h"
 
 #include "Components/Button.h"
@@ -14,6 +16,7 @@
 #include "Components/CanvasPanelSlot.h"
 
 #include "Blueprint/SlateBlueprintLibrary.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 
 void UInventorySlotWidget::NativePreConstruct()
 {
@@ -90,6 +93,89 @@ void UInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
     Super::NativeTick(MyGeometry, InDeltaTime);
 }
 
+FReply UInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+
+    //if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    //{
+    //    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+
+    //    return UWidgetBlueprintLibrary::DetectDragIfPressed(
+    //        InMouseEvent,
+    //        this,
+    //        EKeys::LeftMouseButton
+    //    ).NativeReply;
+    //}
+
+    return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+FReply UInventorySlotWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+
+        return UWidgetBlueprintLibrary::DetectDragIfPressed(
+            InMouseEvent,
+            this,
+            EKeys::LeftMouseButton
+        ).NativeReply;
+    }
+
+    return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void UInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
+{
+    Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
+
+    UInventoryDragDropOperation* DragOperation = NewObject<UInventoryDragDropOperation>();
+
+    if (!DragOperation)
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDragDetected)"));
+
+    DragOperation->DraggedSlotWidget = this;
+    DragOperation->FromIndex = Index;
+
+    // 드래그 중 보이는 위젯
+    DragOperation->DefaultDragVisual = this;
+    DragOperation->Pivot = EDragPivot::MouseDown;
+
+    OutOperation = DragOperation;
+}
+
+bool UInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    UInventoryDragDropOperation* DragOperation = Cast<UInventoryDragDropOperation>(InOperation);
+
+    if (!DragOperation)
+    {
+        return false;
+    }
+
+    if (!OwnerInventoryWidget)
+    {
+        return false;
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDrop"));
+
+    const int32 FromIndex = DragOperation->FromIndex;
+    const int32 ToIndex = Index;
+
+    OwnerInventoryWidget->SwapInventorySlots(FromIndex, ToIndex);
+
+    return true;
+}
+
 void UInventorySlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
     Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
@@ -124,33 +210,31 @@ void UInventorySlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
 }
 
-FReply UInventorySlotWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
-{
-    //if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
-    //{
-    //    UE_LOG(LogTemp, Log, TEXT("Right Mouse Button Down"));
-
-    //    // 우클릭 처리
-    //    return FReply::Handled();
-    //}
-
-    //return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
-
-
-    //if (InMouseEvent.IsMouseButtonDown(EKeys::RightMouseButton))
-    //{
-    //    DisplayItemTool();
-
-    //    return FReply::Handled();
-    //}
-
-    return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
-}
-
 void UInventorySlotWidget::LoadItemDataTable()
 {
     if (ItemDataTable.IsNull()) return;
     LoadedItemTable = ItemDataTable.LoadSynchronous();
+}
+
+void UInventorySlotWidget::ClearItemSlotData()
+{
+    ItemQuantity = 0;
+    ItemName = EItemName::ItemName_None;
+
+    if (TextItemQuantity)
+    {
+        TextItemQuantity->SetText(FText::GetEmpty());
+    }
+
+    if (ItemIcon)
+    {
+        ItemIcon->SetBrushFromTexture(nullptr);
+    }
+
+    if (OverlayInventorySlot)
+    {
+        OverlayInventorySlot->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }
 
 void UInventorySlotWidget::SetItemSlotData(FName ItemDataRowName, int32 InItemQuantity)

@@ -232,6 +232,14 @@ bool UUIManagerComponent::IsInViewport(FVector2D ActorScreenPosition, float Scre
 	}
 }
 
+void UUIManagerComponent::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
+{
+	if (CharacterPlayer)
+	{
+		CharacterPlayer->OnInventorySwapRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
+	}
+}
+
 void UUIManagerComponent::OpenInventory()
 {
 	if (!PlayerDisplayWidget) return;
@@ -454,4 +462,5 @@ void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)
 {
 	UIWidgets.Add(NewUIWidget->GetUIType(), NewUIWidget);
 	NewUIWidget->AddToViewport(*UILayers.Find(NewUIWidget->GetUIType()));
+	NewUIWidget->SetOwnerUIManager(this);
 }

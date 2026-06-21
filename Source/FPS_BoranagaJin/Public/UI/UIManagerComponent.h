@@ -107,7 +107,8 @@ protected:
 	void OnTabToggled();
 protected:
 	bool bIsInventoryOpened = false;
-
+public:
+	void RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
 protected:
@@ -118,8 +119,6 @@ protected:
 protected:
 	void OpenThrowableWeaponInventory();
 	void CloseThrowableWeaponInventory();
-
-
 #pragma endregion
 #pragma region StaminaBar
 protected:

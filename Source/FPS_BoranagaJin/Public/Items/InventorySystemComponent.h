@@ -109,6 +109,10 @@ protected:
 	void PrintInventory() const;
 protected:
 	void InitInventoryUI();
+
+public:	
+	UFUNCTION()
+	void SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
 #pragma endregion
 #pragma region PickUpItem
 protected:
