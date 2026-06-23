@@ -4,14 +4,13 @@
 #include "GameModes/DefaultGameMode.h"
 #include "ObjectPoolSubsystem.h"
 
+#include "Engine/PlayerStartPIE.h"
+#include "Kismet/GameplayStatics.h"
 
 //#include "ActorComponents/DamageComponent/ACDamageSystem.h"
 //#include "Characters/PawnBasePlayer/PawnPlayer.h"
-#include "Engine/PlayerStartPIE.h"
-//#include "Instance/CheckpointSubsystem.h"
-#include "Kismet/GameplayStatics.h"
 //#include "SaveGame/SaveGame.h"
-
+//#include "Instance/CheckpointSubsystem.h"
 
 
 void ADefaultGameMode::BeginPlay()
@@ -21,6 +20,8 @@ void ADefaultGameMode::BeginPlay()
 	if (UObjectPoolSubsystem* Pool =
 		GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
 	{
+		UE_LOG(LogTemp, Warning, TEXT("UObjectPoolSubsystem Created!!!"));
+
 		//Pool->PrewarmPool(ProjectileClass, 50);
 		//Pool->PrewarmPool(ItemPickupClass, 30);
 	}

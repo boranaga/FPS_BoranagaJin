@@ -113,6 +113,8 @@ protected:
 public:	
 	UFUNCTION()
 	void SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
+	UFUNCTION()
+	void DropItemInventorySlot(FName InventoryName, int32 SlotIndex);
 #pragma endregion
 #pragma region PickUpItem
 protected:

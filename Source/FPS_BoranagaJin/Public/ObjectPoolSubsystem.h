@@ -31,6 +31,8 @@ public:
 		const FRotator& Rotation
 	);
 
+	AActor* ExtractActorFromPool(AActor* );
+
 	template<typename T>
 	T* SpawnFromPool(
 		TSubclassOf<T> ActorClass,

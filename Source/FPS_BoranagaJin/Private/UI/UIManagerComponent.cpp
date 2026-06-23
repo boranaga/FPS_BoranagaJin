@@ -232,6 +232,14 @@ bool UUIManagerComponent::IsInViewport(FVector2D ActorScreenPosition, float Scre
 	}
 }
 
+void UUIManagerComponent::RequestDropInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+	if (CharacterPlayer)
+	{
+		CharacterPlayer->OnInventorySlotDropRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+	}
+}
+
 void UUIManagerComponent::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
 {
 	if (CharacterPlayer)

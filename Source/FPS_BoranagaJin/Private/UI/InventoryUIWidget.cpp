@@ -16,6 +16,12 @@ void UInventoryUIWidget::NativePreConstruct()
 	//LoadItemDataTable();
 }
 
+void UInventoryUIWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	CachedGeometry = MyGeometry;
+}
+
 //void UInventoryUIWidget::LoadItemDataTable()
 //{
 //	if (ItemDataTable.IsNull()) return;
@@ -57,8 +63,6 @@ void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inve
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
 				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Count);
-
-				UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
 			}
 		}
 	}
@@ -86,43 +90,28 @@ void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inve
 	}
 }
 
-void UInventoryUIWidget::SwapInventorySlots(int32 FromIndex, int32 ToIndex)
+void UInventoryUIWidget::RequestSwapInventorySlots(int32 FromIndex, int32 ToIndex)
 {
-	//if (FromIndex == ToIndex)
-	//{
-	//	return;
-	//}
-
-	//if (!InventorySlotWidgets.IsValidIndex(FromIndex) ||
-	//	!InventorySlotWidgets.IsValidIndex(ToIndex))
-	//{
-	//	return;
-	//}
-
-	//InventorySlotWidgets.Swap(FromIndex, ToIndex);
-
-	//WrapBoxInventory->ClearChildren();
-
-	//for (int32 i = 0; i < InventorySlotWidgets.Num(); i++)
-	//{
-	//	UInventorySlotWidget* SlotWidget = InventorySlotWidgets[i];
-
-	//	if (!SlotWidget)
-	//	{
-	//		continue;
-	//	}
-
-	//	SlotWidget->SetIndex(i);
-	//	WrapBoxInventory->AddChildToWrapBox(SlotWidget);
-	//}
-
-	//--------------------------------
-
+	if (!OwnerUIManager) return;
 	OwnerUIManager->RequestSwapInventorySlots(InventoryName, FromIndex, ToIndex);
 }
 
-void UInventoryUIWidget::RequestSwapInventorySlots(FName InInventoryName, int32 FromIndex, int32 ToIndex)
+void UInventoryUIWidget::RequestDropInventorySlot(int32 SlotIndex)
 {
-	OwnerUIManager->RequestSwapInventorySlots(InInventoryName, FromIndex, ToIndex);
+	if (!OwnerUIManager) return;
+	OwnerUIManager->RequestDropInventorySlot(InventoryName, SlotIndex);
+}
+
+bool UInventoryUIWidget::IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const
+{
+	const FVector2D LocalPosition =
+		CachedGeometry.AbsoluteToLocal(ScreenPosition);
+
+	const FVector2D Size = CachedGeometry.GetLocalSize();
+
+	return LocalPosition.X >= 0.f &&
+		LocalPosition.Y >= 0.f &&
+		LocalPosition.X <= Size.X &&
+		LocalPosition.Y <= Size.Y;
 }
 

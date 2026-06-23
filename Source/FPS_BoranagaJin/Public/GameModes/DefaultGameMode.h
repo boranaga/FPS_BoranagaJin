@@ -22,7 +22,6 @@ protected:
 	//UPROPERTY(EditDefaultsOnly)
 	//float PlayerMinimumRespawnHealth = 20.f;
 public:
-
 	virtual void BeginPlay() override;
 
 	//void RespawnToLastCheckpoint(ACharacterPlayer* Player);

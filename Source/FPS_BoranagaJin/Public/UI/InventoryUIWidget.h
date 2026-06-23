@@ -16,6 +16,10 @@ class FPS_BORANAGAJIN_API UInventoryUIWidget : public UBaseUIWidget
 	GENERATED_BODY()
 public:
 	virtual void NativePreConstruct() override;
+protected:
+	FGeometry CachedGeometry;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
 public:
 	UPROPERTY(meta = (BindWidget))
 	UWrapBox* WrapBoxInventory;
@@ -39,6 +43,7 @@ public:
 	void CreateInventorySlots(int32 InventorySlotCount);
 	UFUNCTION()
 	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
-	void SwapInventorySlots(int32 FromIndex, int32 ToIndex);
-	void RequestSwapInventorySlots(FName InInventoryName, int32 FromIndex, int32 ToIndex);
+	void RequestSwapInventorySlots(int32 FromIndex, int32 ToIndex);
+	void RequestDropInventorySlot(int32 SlotIndex);
+	bool IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const;
 };

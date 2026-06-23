@@ -39,6 +39,34 @@ void UObjectPoolSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
+AActor* UObjectPoolSubsystem::ExtractActorFromPool(AActor* TargetActor)
+{
+	if (!IsValid(TargetActor))
+	{
+		return nullptr;
+	}
+
+	for (auto& Pair : ActorPools)
+	{
+		FActorPool& Pool = Pair.Value;
+
+		int32 FoundIndex =
+			Pool.AvailableActors.IndexOfByKey(TargetActor);
+
+		if (FoundIndex != INDEX_NONE)
+		{
+			AActor* Result =
+				Pool.AvailableActors[FoundIndex];
+
+			Pool.AvailableActors.RemoveAtSwap(FoundIndex);
+
+			return Result;
+		}
+	}
+
+	return nullptr;
+}
+
 void UObjectPoolSubsystem::PrewarmPool(
 	TSubclassOf<AActor> ActorClass,
 	int32 Count

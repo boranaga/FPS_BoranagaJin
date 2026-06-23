@@ -152,6 +152,24 @@ void UInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, con
     OutOperation = DragOperation;
 }
 
+void UInventorySlotWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    Super::NativeOnDragCancelled(InDragDropEvent, InOperation);
+
+    UInventoryDragDropOperation* DragOperation =
+        Cast<UInventoryDragDropOperation>(InOperation);
+
+    if (!DragOperation) { return; }
+    if (!OwnerInventoryWidget) { return; }
+
+    const FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
+    const bool bInsideInventory = OwnerInventoryWidget->IsScreenPositionInsideInventory(ScreenPosition);
+    if (!bInsideInventory)
+    {
+        OwnerInventoryWidget->RequestDropInventorySlot(DragOperation->FromIndex);
+    }
+}
+
 bool UInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
     UInventoryDragDropOperation* DragOperation = Cast<UInventoryDragDropOperation>(InOperation);
@@ -171,7 +189,7 @@ bool UInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDrag
     const int32 FromIndex = DragOperation->FromIndex;
     const int32 ToIndex = Index;
 
-    OwnerInventoryWidget->SwapInventorySlots(FromIndex, ToIndex);
+    OwnerInventoryWidget->RequestSwapInventorySlots(FromIndex, ToIndex);
 
     return true;
 }

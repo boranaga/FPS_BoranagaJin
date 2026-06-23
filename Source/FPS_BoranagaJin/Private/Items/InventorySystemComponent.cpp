@@ -44,6 +44,7 @@ void UInventorySystemComponent::BeginPlay()
 
 
 	PlayerOwner->OnInventorySwapRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::SwapItemInventorySlots);
+	PlayerOwner->OnInventorySlotDropRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::DropItemInventorySlot);
 }
 
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -407,16 +408,34 @@ void UInventorySystemComponent::InitInventoryUI()
 
 void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
 {
-	//TODO: InventoryName에 맞춰서 수정하도록
-
-
 	if (InventoryName == FName("ItemInventory"))
 	{
-		if (!SwapSlots(ItemInventory, FromIndex, ToIndex))
+		if (!SwapSlots(ItemInventory, FromIndex, ToIndex)) { return; }
+		if (PlayerOwner)
 		{
-			return;
+			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 		}
+	}
+	else if (InventoryName == FName("WeaponInventory"))
+	{
+		if (!SwapSlots(WeaponInventory, FromIndex, ToIndex)) { return; }
+		if (PlayerOwner)
+		{
+			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+		}
+	}
+}
 
+void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+	if (InventoryName == FName("ItemInventory"))
+	{
+		if (!ItemInventory.IsValidIndex(SlotIndex)) { return; }
+		if (ItemInventory[SlotIndex].IsEmpty()) { return; }
+
+		// TODO: 나중에 월드에 Pickup Actor Spawn하려면 여기에서 처리
+		// TODO: Object pooling으로 ItemPickUp 불러오기
+		ItemInventory[SlotIndex].ClearSlot();
 		if (PlayerOwner)
 		{
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
@@ -426,20 +445,18 @@ void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int3
 	}
 	else if (InventoryName == FName("WeaponInventory"))
 	{
-		if (!SwapSlots(WeaponInventory, FromIndex, ToIndex))
-		{
-			return;
-		}
+		if (!WeaponInventory.IsValidIndex(SlotIndex)) { return; }
+		if (WeaponInventory[SlotIndex].IsEmpty()) { return; }
 
+		// TODO: 나중에 월드에 Pickup Actor Spawn하려면 여기에서 처리
+		// TODO: Object pooling으로 ItemPickUp 불러오기
+		WeaponInventory[SlotIndex].ClearSlot();
 		if (PlayerOwner)
 		{
 			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+			//TODO: 여기서 무기 버릴 때 처리를 해야함
 		}
-
-		PrintInventory();
 	}
-
-
 }
 
 bool UInventorySystemComponent::SearchItems()

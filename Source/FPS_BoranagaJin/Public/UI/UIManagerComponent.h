@@ -109,6 +109,7 @@ protected:
 	bool bIsInventoryOpened = false;
 public:
 	void RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
+	void RequestDropInventorySlot(FName InventoryName, int32 SlotIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
 protected:
