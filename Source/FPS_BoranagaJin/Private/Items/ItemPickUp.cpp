@@ -20,6 +20,8 @@ AItemPickUp::AItemPickUp()
 void AItemPickUp::BeginPlay()
 {
 	Super::BeginPlay();
+
+
 }
 
 AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character)

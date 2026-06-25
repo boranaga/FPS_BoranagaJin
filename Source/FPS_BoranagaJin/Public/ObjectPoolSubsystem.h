@@ -4,6 +4,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "ObjectPoolSubsystem.generated.h"
 
+class IPoolableActorInterface;
+
 USTRUCT()
 struct FActorPool
 {
@@ -11,6 +13,9 @@ struct FActorPool
 
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> AvailableActors;
+
+	UPROPERTY()
+	TSet<TObjectPtr<AActor>> AvailableActorSet;
 
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> ActiveActors;
@@ -31,8 +36,6 @@ public:
 		const FRotator& Rotation
 	);
 
-	AActor* ExtractActorFromPool(AActor* );
-
 	template<typename T>
 	T* SpawnFromPool(
 		TSubclassOf<T> ActorClass,
@@ -40,23 +43,29 @@ public:
 		const FRotator& Rotation
 	)
 	{
-		return Cast<T>(SpawnFromPool(
-			TSubclassOf<AActor>(ActorClass),
-			Location,
-			Rotation
-		));
+		return Cast<T>(
+			SpawnFromPool(
+				TSubclassOf<AActor>(ActorClass),
+				Location,
+				Rotation
+			)
+		);
 	}
 
 	void ReturnToPool(AActor* Actor);
 
-	void PrewarmPool(
-		TSubclassOf<AActor> ActorClass,
-		int32 Count
-	);
+	void PrewarmPool(TSubclassOf<AActor> ActorClass, int32 Count);
+
+	bool IsActorInAvailablePool(AActor* Actor) const;
+
+	AActor* ExtractActorFromAvailablePool(AActor* Actor);
 
 private:
 	UPROPERTY()
 	TMap<TSubclassOf<AActor>, FActorPool> ActorPools;
+
+	UPROPERTY()
+	TMap<TObjectPtr<AActor>, TSubclassOf<AActor>> ActorToPoolClassMap;
 
 	AActor* CreateNewActor(TSubclassOf<AActor> ActorClass);
 
@@ -67,4 +76,12 @@ private:
 	);
 
 	void DeactivateActor(AActor* Actor);
+
+	void AddToAvailablePool(FActorPool& Pool, AActor* Actor);
+
+	bool RemoveFromAvailablePool(FActorPool& Pool, AActor* Actor);
+
+	void AddToActivePool(FActorPool& Pool, AActor* Actor);
+
+	bool RemoveFromActivePool(FActorPool& Pool, AActor* Actor);
 };

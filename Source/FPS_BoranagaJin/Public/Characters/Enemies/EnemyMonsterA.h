@@ -19,13 +19,10 @@ class FPS_BORANAGAJIN_API AEnemyMonsterA : public AEnemyBase
 	UPROPERTY()
 	const ACharacterPlayer* Player;
 
-	void RotateTowardPlayer();
 
 protected:
 	virtual void BeginPlay() override;
 
 public:
 	AEnemyMonsterA();
-
-	virtual void Attack(ACharacterPlayer* Player) override;
 };

@@ -30,41 +30,18 @@ void UObjectPoolSubsystem::Deinitialize()
 				Actor->Destroy();
 			}
 		}
+
+		Pool.AvailableActors.Empty();
+		Pool.AvailableActorSet.Empty();
+		Pool.ActiveActors.Empty();
 	}
 
 	ActorPools.Empty();
+	ActorToPoolClassMap.Empty();
 
 	UE_LOG(LogTemp, Warning, TEXT("ObjectPoolSubsystem Deinitialized"));
 
 	Super::Deinitialize();
-}
-
-AActor* UObjectPoolSubsystem::ExtractActorFromPool(AActor* TargetActor)
-{
-	if (!IsValid(TargetActor))
-	{
-		return nullptr;
-	}
-
-	for (auto& Pair : ActorPools)
-	{
-		FActorPool& Pool = Pair.Value;
-
-		int32 FoundIndex =
-			Pool.AvailableActors.IndexOfByKey(TargetActor);
-
-		if (FoundIndex != INDEX_NONE)
-		{
-			AActor* Result =
-				Pool.AvailableActors[FoundIndex];
-
-			Pool.AvailableActors.RemoveAtSwap(FoundIndex);
-
-			return Result;
-		}
-	}
-
-	return nullptr;
 }
 
 void UObjectPoolSubsystem::PrewarmPool(
@@ -83,11 +60,13 @@ void UObjectPoolSubsystem::PrewarmPool(
 	{
 		AActor* NewActor = CreateNewActor(ActorClass);
 
-		if (NewActor)
+		if (!NewActor)
 		{
-			DeactivateActor(NewActor);
-			Pool.AvailableActors.Add(NewActor);
+			continue;
 		}
+
+		DeactivateActor(NewActor);
+		AddToAvailablePool(Pool, NewActor);
 	}
 }
 
@@ -113,7 +92,10 @@ AActor* UObjectPoolSubsystem::SpawnFromPool(
 		if (!IsValid(Actor))
 		{
 			Actor = nullptr;
+			continue;
 		}
+
+		Pool.AvailableActorSet.Remove(Actor);
 	}
 
 	if (!Actor)
@@ -127,7 +109,7 @@ AActor* UObjectPoolSubsystem::SpawnFromPool(
 	}
 
 	ActivateActor(Actor, Location, Rotation);
-	Pool.ActiveActors.Add(Actor);
+	AddToActivePool(Pool, Actor);
 
 	return Actor;
 }
@@ -139,20 +121,93 @@ void UObjectPoolSubsystem::ReturnToPool(AActor* Actor)
 		return;
 	}
 
-	TSubclassOf<AActor> ActorClass = Actor->GetClass();
+	TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor);
 
-	FActorPool* Pool = ActorPools.Find(ActorClass);
-	if (!Pool)
+	if (!PoolClass)
 	{
-		Actor->Destroy(); //TODO: 이렇게 마음대로 Destroy 해버려도 되는 부분인가?
+		Actor->Destroy();
 		return;
 	}
 
-	Pool->ActiveActors.Remove(Actor);
+	FActorPool* Pool = ActorPools.Find(*PoolClass);
+
+	if (!Pool)
+	{
+		Actor->Destroy();
+		ActorToPoolClassMap.Remove(Actor);
+		return;
+	}
+
+	if (Pool->AvailableActorSet.Contains(Actor))
+	{
+		return;
+	}
+
+	RemoveFromActivePool(*Pool, Actor);
 
 	DeactivateActor(Actor);
 
-	Pool->AvailableActors.Add(Actor);
+	AddToAvailablePool(*Pool, Actor);
+}
+
+bool UObjectPoolSubsystem::IsActorInAvailablePool(AActor* Actor) const
+{
+	if (!IsValid(Actor))
+	{
+		return false;
+	}
+
+	const TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor);
+
+	if (!PoolClass)
+	{
+		return false;
+	}
+
+	const FActorPool* Pool = ActorPools.Find(*PoolClass);
+
+	if (!Pool)
+	{
+		return false;
+	}
+
+	return Pool->AvailableActorSet.Contains(Actor);
+}
+
+AActor* UObjectPoolSubsystem::ExtractActorFromAvailablePool(AActor* Actor)
+{
+	if (!IsValid(Actor))
+	{
+		return nullptr;
+	}
+
+	TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor);
+
+	if (!PoolClass)
+	{
+		return nullptr;
+	}
+
+	FActorPool* Pool = ActorPools.Find(*PoolClass);
+
+	if (!Pool)
+	{
+		return nullptr;
+	}
+
+	if (!Pool->AvailableActorSet.Contains(Actor))
+	{
+		return nullptr;
+	}
+
+	const bool bRemoved = RemoveFromAvailablePool(*Pool, Actor);
+
+	if (!bRemoved)
+	{
+		return nullptr;
+	}
+
+	return Actor;
 }
 
 AActor* UObjectPoolSubsystem::CreateNewActor(
@@ -179,6 +234,8 @@ AActor* UObjectPoolSubsystem::CreateNewActor(
 	{
 		return nullptr;
 	}
+
+	ActorToPoolClassMap.Add(NewActor, ActorClass);
 
 	if (IPoolableActorInterface* Poolable =
 		Cast<IPoolableActorInterface>(NewActor))
@@ -228,6 +285,78 @@ void UObjectPoolSubsystem::DeactivateActor(AActor* Actor)
 	}
 
 	Actor->SetActorHiddenInGame(true);
-	Actor->SetActorEnableCollision(false); //TODO: 이건 안해도 되지 않나?
+	Actor->SetActorEnableCollision(false);
 	Actor->SetActorTickEnabled(false);
+}
+
+void UObjectPoolSubsystem::AddToAvailablePool(
+	FActorPool& Pool,
+	AActor* Actor
+)
+{
+	if (!IsValid(Actor))
+	{
+		return;
+	}
+
+	if (Pool.AvailableActorSet.Contains(Actor))
+	{
+		return;
+	}
+
+	Pool.AvailableActors.Add(Actor);
+	Pool.AvailableActorSet.Add(Actor);
+}
+
+bool UObjectPoolSubsystem::RemoveFromAvailablePool(
+	FActorPool& Pool,
+	AActor* Actor
+)
+{
+	if (!IsValid(Actor))
+	{
+		return false;
+	}
+
+	if (!Pool.AvailableActorSet.Contains(Actor))
+	{
+		return false;
+	}
+
+	Pool.AvailableActorSet.Remove(Actor);
+
+	const int32 RemovedCount = Pool.AvailableActors.RemoveSwap(Actor);
+
+	return RemovedCount > 0;
+}
+
+void UObjectPoolSubsystem::AddToActivePool(
+	FActorPool& Pool,
+	AActor* Actor
+)
+{
+	if (!IsValid(Actor))
+	{
+		return;
+	}
+
+	if (!Pool.ActiveActors.Contains(Actor))
+	{
+		Pool.ActiveActors.Add(Actor);
+	}
+}
+
+bool UObjectPoolSubsystem::RemoveFromActivePool(
+	FActorPool& Pool,
+	AActor* Actor
+)
+{
+	if (!IsValid(Actor))
+	{
+		return false;
+	}
+
+	const int32 RemovedCount = Pool.ActiveActors.RemoveSwap(Actor);
+
+	return RemovedCount > 0;
 }
