@@ -7,6 +7,7 @@
 
 class AEnemyBase;
 class AEnemyBaseAIController;
+class AEnemyPatrolPoint;
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class FPS_BORANAGAJIN_API UEnemyStateMachineComponent : public UActorComponent
@@ -41,6 +42,23 @@ private:
 
 	float LastAttackTime = -999.f;
 
+// <Patrol Point>
+private:
+	UPROPERTY(EditInstanceOnly, Category = "Enemy|Patrol")
+	TArray<AEnemyPatrolPoint*> PatrolPoints;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Patrol")
+	float PatrolWaitTime = 1.5f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Patrol")
+	float PatrolAcceptanceRadius = 100.f;
+
+	int32 CurrentPatrolIndex = 0;
+
+	bool bIsWaitingAtPatrolPoint = false;
+
+	FTimerHandle PatrolWaitTimerHandle;
+
 public:
 	void SetTarget(AActor* NewTarget);
 	void ClearTarget();
@@ -69,4 +87,11 @@ private:
 	void Task_MoveToTarget();
 	void Task_AttackTarget();
 	void Task_StopMovement();
+
+// <Patrol Point>
+private:
+	void MoveToCurrentPatrolPoint();
+	void SelectNextPatrolPoint();
+	void OnPatrolWaitFinished();
+	bool IsAtCurrentPatrolPoint() const;
 };

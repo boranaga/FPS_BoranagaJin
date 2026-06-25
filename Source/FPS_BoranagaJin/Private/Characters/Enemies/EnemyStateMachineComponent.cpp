@@ -1,6 +1,7 @@
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
+#include "Characters/Enemies/EnemyPatrolPoint.h"
 #include "Kismet/GameplayStatics.h"
 
 UEnemyStateMachineComponent::UEnemyStateMachineComponent()
@@ -19,9 +20,16 @@ void UEnemyStateMachineComponent::BeginPlay()
 		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
 	}
 
-	TargetActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	TargetActor = nullptr;
 
-	SetState(EEnemyStateType::Idle);
+	if (PatrolPoints.Num() > 0)
+	{
+		SetState(EEnemyStateType::Patrol);
+	}
+	else
+	{
+		SetState(EEnemyStateType::Idle);
+	}
 }
 
 void UEnemyStateMachineComponent::TickComponent(
@@ -70,6 +78,8 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 
 	case EEnemyStateType::Patrol:
 		UE_LOG(LogTemp, Warning, TEXT("Enter Patrol"));
+		bIsWaitingAtPatrolPoint = false;
+		MoveToCurrentPatrolPoint();
 		break;
 
 	case EEnemyStateType::Chase:
@@ -96,6 +106,11 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 		break;
 
 	case EEnemyStateType::Patrol:
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(PatrolWaitTimerHandle);
+		}
+		bIsWaitingAtPatrolPoint = false;
 		break;
 
 	case EEnemyStateType::Chase:
@@ -161,7 +176,32 @@ void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
 		return;
 	}
 
-	// 나중에 Patrol Point 이동 구현
+	if (PatrolPoints.Num() <= 0)
+	{
+		SetState(EEnemyStateType::Idle);
+		return;
+	}
+
+	if (bIsWaitingAtPatrolPoint)
+	{
+		return;
+	}
+
+	if (IsAtCurrentPatrolPoint())
+	{
+		bIsWaitingAtPatrolPoint = true;
+		Task_StopMovement();
+
+		GetWorld()->GetTimerManager().SetTimer(
+			PatrolWaitTimerHandle,
+			this,
+			&UEnemyStateMachineComponent::OnPatrolWaitFinished,
+			PatrolWaitTime,
+			false
+		);
+
+		return;
+	}
 }
 
 void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
@@ -279,4 +319,58 @@ void UEnemyStateMachineComponent::Task_StopMovement()
 	if (!AIController) return;
 
 	AIController->StopAIMovement();
+}
+
+void UEnemyStateMachineComponent::MoveToCurrentPatrolPoint()
+{
+	if (!AIController) return;
+	if (PatrolPoints.Num() <= 0) return;
+	if (!PatrolPoints.IsValidIndex(CurrentPatrolIndex)) return;
+
+	AEnemyPatrolPoint* PatrolPoint = PatrolPoints[CurrentPatrolIndex];
+	if (!PatrolPoint) return;
+
+	AIController->MoveToLocationPoint(PatrolPoint->GetActorLocation());
+}
+
+void UEnemyStateMachineComponent::SelectNextPatrolPoint()
+{
+	if (PatrolPoints.Num() <= 0) return;
+
+	CurrentPatrolIndex++;
+
+	if (CurrentPatrolIndex >= PatrolPoints.Num())
+	{
+		CurrentPatrolIndex = 0;
+	}
+}
+
+void UEnemyStateMachineComponent::OnPatrolWaitFinished()
+{
+	bIsWaitingAtPatrolPoint = false;
+
+	if (CurrentState != EEnemyStateType::Patrol)
+	{
+		return;
+	}
+
+	SelectNextPatrolPoint();
+	MoveToCurrentPatrolPoint();
+}
+
+bool UEnemyStateMachineComponent::IsAtCurrentPatrolPoint() const
+{
+	if (!Enemy) return false;
+	if (PatrolPoints.Num() <= 0) return false;
+	if (!PatrolPoints.IsValidIndex(CurrentPatrolIndex)) return false;
+
+	const AEnemyPatrolPoint* PatrolPoint = PatrolPoints[CurrentPatrolIndex];
+	if (!PatrolPoint) return false;
+
+	const float Distance = FVector::Dist(
+		Enemy->GetActorLocation(),
+		PatrolPoint->GetActorLocation()
+	);
+
+	return Distance <= PatrolAcceptanceRadius;
 }

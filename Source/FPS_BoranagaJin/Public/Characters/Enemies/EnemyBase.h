@@ -22,6 +22,9 @@ protected:
 	UEnemyStateMachineComponent* StateMachineComponent;
 
 public:
+	UEnemyStateMachineComponent* GetStateMachineComponent() const { return StateMachineComponent; };
+
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
 	float MaxHealth = 100.f;
 
