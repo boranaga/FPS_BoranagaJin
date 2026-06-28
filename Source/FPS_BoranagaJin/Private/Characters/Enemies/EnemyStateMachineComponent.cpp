@@ -94,6 +94,9 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 	case EEnemyStateType::Dead:
 		UE_LOG(LogTemp, Warning, TEXT("Enter Dead"));
 		Task_StopMovement();
+		ClearTarget();
+
+		SetComponentTickEnabled(false);
 		break;
 	}
 }
@@ -131,6 +134,7 @@ void UEnemyStateMachineComponent::UpdateState(float DeltaTime)
 	if (Enemy->IsDead())
 	{
 		SetState(EEnemyStateType::Dead);
+		return;
 	}
 
 	switch (CurrentState)
@@ -192,6 +196,8 @@ void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
 		bIsWaitingAtPatrolPoint = true;
 		Task_StopMovement();
 
+		UE_LOG(LogTemp, Error, TEXT("IsAtCurrentPatrolPoint()"));
+
 		GetWorld()->GetTimerManager().SetTimer(
 			PatrolWaitTimerHandle,
 			this,
@@ -226,14 +232,14 @@ void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 {
 	if (!HasTarget())
 	{
-		SetState(EEnemyStateType::Idle);
+		SetState(EEnemyStateType::Patrol);
 		return;
 	}
 
 	if (ShouldLoseTarget())
 	{
 		ClearTarget();
-		SetState(EEnemyStateType::Idle);
+		SetState(EEnemyStateType::Patrol);
 		return;
 	}
 
@@ -242,6 +248,10 @@ void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 		SetState(EEnemyStateType::Chase);
 		return;
 	}
+
+	Task_StopMovement();
+
+	RotateToTarget(DeltaTime);
 
 	if (CanAttack())
 	{
@@ -335,6 +345,8 @@ void UEnemyStateMachineComponent::MoveToCurrentPatrolPoint()
 
 void UEnemyStateMachineComponent::SelectNextPatrolPoint()
 {
+	UE_LOG(LogTemp, Warning, TEXT("UEnemyStateMachineComponent::SelectNextPatrolPoint()"));
+
 	if (PatrolPoints.Num() <= 0) return;
 
 	CurrentPatrolIndex++;
@@ -347,6 +359,8 @@ void UEnemyStateMachineComponent::SelectNextPatrolPoint()
 
 void UEnemyStateMachineComponent::OnPatrolWaitFinished()
 {
+	UE_LOG(LogTemp, Warning, TEXT("UEnemyStateMachineComponent::OnPatrolWaitFinished()"));
+
 	bIsWaitingAtPatrolPoint = false;
 
 	if (CurrentState != EEnemyStateType::Patrol)
@@ -373,4 +387,25 @@ bool UEnemyStateMachineComponent::IsAtCurrentPatrolPoint() const
 	);
 
 	return Distance <= PatrolAcceptanceRadius;
+}
+
+void UEnemyStateMachineComponent::RotateToTarget(float DeltaTime)
+{
+	if (!Enemy || !HasTarget()) return;
+
+	FVector Direction = TargetActor->GetActorLocation() - Enemy->GetActorLocation();
+	Direction.Z = 0.f;
+
+	if (Direction.IsNearlyZero()) return;
+
+	const FRotator TargetRotation = Direction.Rotation();
+
+	const FRotator NewRotation = FMath::RInterpTo(
+		Enemy->GetActorRotation(),
+		TargetRotation,
+		DeltaTime,
+		Enemy->AttackRotationSpeed
+	);
+
+	Enemy->SetActorRotation(NewRotation);
 }

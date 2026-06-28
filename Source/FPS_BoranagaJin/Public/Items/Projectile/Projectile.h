@@ -6,7 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Engine/DataTable.h"
 
-#include "Characters/EDamageType.h"
+#include "Characters/GameDamageType.h"
 
 #include "Data/ProjectileData.h"
 
@@ -137,7 +137,7 @@ public:
 	void DeactiveProjectile();
 
 	void ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation);
-	void ApplyDamage(AActor* OtherActor, float DamageAmount, EDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType = SurfaceType1, const FVector ImpulseDirection = FVector::ZeroVector, const FVector ImpactPoint = FVector::ZeroVector);
+	void ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType = SurfaceType1, const FVector ImpulseDirection = FVector::ZeroVector, const FVector ImpactPoint = FVector::ZeroVector);
 	bool SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors);
 
 	UFUNCTION()

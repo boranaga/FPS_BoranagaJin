@@ -114,3 +114,12 @@ void AEnemyBaseAIController::StopAIMovement()
 {
 	StopMovement();
 }
+
+void AEnemyBaseAIController::DisablePerception()
+{
+	if (AIPerceptionComponent)
+	{
+		AIPerceptionComponent->Deactivate();
+		AIPerceptionComponent->SetComponentTickEnabled(false);
+	}
+}

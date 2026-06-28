@@ -7,7 +7,6 @@
 #include "Characters/DamageParams.h"
 #include "DamageInterface.generated.h"
 
-// This class does not need to be modified.
 UINTERFACE(MinimalAPI)
 class UDamageInterface : public UInterface
 {
@@ -18,7 +17,10 @@ class FPS_BORANAGAJIN_API IDamageInterface
 {
 	GENERATED_BODY()
 
-	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
-	virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) = 0;
+	//virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) = 0;
+
+	virtual float ReceiveDamage(const FDamageParams& DamageData) = 0;
+
+	virtual bool IsDead() const = 0;
 };

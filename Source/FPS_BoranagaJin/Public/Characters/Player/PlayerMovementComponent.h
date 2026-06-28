@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Characters/EDamageType.h"
+#include "Characters/GameDamageType.h"
 #include "GameFramework/PawnMovementComponent.h"
 #include "Characters/Player/MovementTriggerEnums.h"
 #include "PlayerMovementComponent.generated.h"
@@ -137,7 +137,7 @@ public:
 
 	bool GetIsInvincible() const { return bIsInvincible; }
 
-	void NotifyDamageData(EDamageType DamageType, const FVector& DamageDirection, float DamageForce);
+	void NotifyDamageData(EGameDamageType DamageType, const FVector& DamageDirection, float DamageForce);
 
 	void NotifyGravityLaunchForce(const FVector& Direction, float ForceAmount);
 
@@ -417,7 +417,7 @@ protected:
 #pragma region Damage
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Damage")
-	EDamageType ReceivedDamageType;
+	EGameDamageType ReceivedDamageType;
 
 	bool bDamageSlowDebuff = false;
 

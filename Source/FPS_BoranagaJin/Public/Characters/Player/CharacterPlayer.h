@@ -77,7 +77,12 @@ public:
 	// for damage system comp and interactions with enemies
 	//UACDamageSystem* GetDamageSystemComponent() const { return DamageSystemComponent; }
 	//UACPlayerAttackTokens* GetAttackTokensComponent() const { return AttackTokensComponent; }
-	virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) override;
+	//virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) override;
+	virtual float ReceiveDamage(const FDamageParams& DamageInfo) override;
+	virtual bool IsDead() const override;
+
+private:
+	float CurrentHealth = 100.f;
 
 public:
 	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;

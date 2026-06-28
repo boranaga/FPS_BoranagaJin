@@ -404,7 +404,7 @@ void AProjectile::ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterL
 				{
 					DamageAmount = ((MaxExplosionRadius - DistanceToTarget) / MaxExplosionRadius) * MaxExplosiveDamage;
 				}
-				ApplyDamage(OverlappedActor, DamageAmount, EDamageType::Explosion, true, NAME_None);
+				ApplyDamage(OverlappedActor, DamageAmount, EGameDamageType::Explosion, true, NAME_None);
 				if (OnBodyShot.IsBound())
 				{
 					OnBodyShot.Execute();
@@ -419,7 +419,7 @@ void AProjectile::ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterL
 		}
 	}
 }
-void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EDamageType DamageType, bool bCanForceDamage,
+void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage,
 	const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType, const FVector ImpulseDirection, const FVector ImpactPoint)
 {
 	FDamageParams Damage; //TODO: 착탄 위치
@@ -431,9 +431,12 @@ void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EDamageTyp
 	Damage.SurfaceType = SurfaceType;
 	Damage.ImpactPoint = ImpactPoint;
 
+	Damage.DamageCauser = this->ProjectileOwner;
+
 	if (OtherActor->GetClass()->ImplementsInterface(UDamageInterface::StaticClass()))
 	{
-		Cast<IDamageInterface>(OtherActor)->TakeDamage(Damage, this->ProjectileOwner);
+		//Cast<IDamageInterface>(OtherActor)->TakeDamage(Damage, this->ProjectileOwner);
+		Cast<IDamageInterface>(OtherActor)->ReceiveDamage(Damage);
 	}
 }
 bool AProjectile::SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors)
@@ -496,7 +499,7 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 
 				if (HeadShotAdditionalDamage > 0.f && CheckHeadHit(Hit))
 				{
-					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage, EDamageType::Melee, false, Hit.BoneName, UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactNormal, Hit.ImpactPoint);
+					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage, EGameDamageType::Melee, false, Hit.BoneName, UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactNormal, Hit.ImpactPoint);
 
 					if (OnHeadShot.IsBound())
 					{
@@ -505,7 +508,7 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 				}
 				else
 				{
-					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage, EDamageType::Melee, false, Hit.BoneName, UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactNormal, Hit.ImpactPoint);
+					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage, EGameDamageType::Melee, false, Hit.BoneName, UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactNormal, Hit.ImpactPoint);
 					//UE_LOG(LogTemp, Error, TEXT("bone11-1: %s"), *Hit.BoneName.ToString());
 					if (Cast<ACharacter>(OtherActor))
 					{
@@ -583,7 +586,7 @@ void AProjectile::OnComponentBeginOverlap(UPrimitiveComponent* OverlappedCompone
 				if (HeadShotAdditionalDamage > 0.f && CheckHeadOvelap(OtherActor, SweepResult))
 				{
 					SpawnImpactEffect(SweepResult.ImpactPoint, SweepResult.ImpactNormal.Rotation());
-					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage, EDamageType::Melee, false, SweepResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(SweepResult.PhysMaterial.Get()), SweepResult.ImpactNormal, SweepResult.ImpactPoint);
+					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage, EGameDamageType::Melee, false, SweepResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(SweepResult.PhysMaterial.Get()), SweepResult.ImpactNormal, SweepResult.ImpactPoint);
 
 					if (OnHeadShot.IsBound())
 					{
@@ -593,7 +596,7 @@ void AProjectile::OnComponentBeginOverlap(UPrimitiveComponent* OverlappedCompone
 				else
 				{
 					SpawnImpactEffect(SweepResult.ImpactPoint, SweepResult.ImpactNormal.Rotation());
-					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage, EDamageType::Melee, false, SweepResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(SweepResult.PhysMaterial.Get()), SweepResult.ImpactNormal, SweepResult.ImpactPoint);
+					ApplyDamage(OtherActor, DefaultDamage + AdditionalDamage, EGameDamageType::Melee, false, SweepResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(SweepResult.PhysMaterial.Get()), SweepResult.ImpactNormal, SweepResult.ImpactPoint);
 					//UE_LOG(LogTemp, Error, TEXT("Projectile Overlapped!!!"));
 					if (Cast<ACharacter>(OtherActor))
 					{
@@ -826,7 +829,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 						{
 							SpawnImpactEffect(HitResult.ImpactPoint, (-HitResult.ImpactNormal).Rotation());
 							ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage,
-								EDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
+								EGameDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
 
 							if (OnHeadShot.IsBound())
 							{
@@ -836,7 +839,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 						else
 						{
 							SpawnImpactEffect(HitResult.ImpactPoint, (-HitResult.ImpactNormal).Rotation());
-							ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage, EDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
+							ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage, EGameDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
 							//UE_LOG(LogTemp, Error, TEXT("bone11-2: %s"), *HitResult.BoneName.ToString());
 							if (OnBodyShot.IsBound())
 							{
@@ -986,7 +989,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 				if (HeadShotAdditionalDamage > 0.f && CheckHeadHit(HitResult))
 				{
 					ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage + HeadShotAdditionalDamage,
-						EDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
+						EGameDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
 
 					if (OnHeadShot.IsBound())
 					{
@@ -995,7 +998,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 				}
 				else
 				{
-					ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage, EDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
+					ApplyDamage(HitResult.GetActor(), DefaultDamage + AdditionalDamage, EGameDamageType::Melee, false, HitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()), TraceDirection, HitResult.ImpactPoint);
 					//UE_LOG(LogTemp, Error, TEXT("bone11-2: %s"), *HitResult.BoneName.ToString());
 					if (OnBodyShot.IsBound())
 					{
@@ -1096,7 +1099,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 
 			//TODO: Impact Point 설정하기
 			ApplyDamage(AutoAimHitEnemy, DefaultDamage + AdditionalDamage,
-				EDamageType::Melee, false, AutoAimHitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(AutoAimHitResult.PhysMaterial.Get()), TraceDirection);
+				EGameDamageType::Melee, false, AutoAimHitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(AutoAimHitResult.PhysMaterial.Get()), TraceDirection);
 
 			if (OnBodyShot.IsBound())
 			{

@@ -37,4 +37,6 @@ public:
 	void MoveToTarget(AActor* Target);
 	void MoveToLocationPoint(const FVector& Location);
 	void StopAIMovement();
+
+	void DisablePerception();
 };

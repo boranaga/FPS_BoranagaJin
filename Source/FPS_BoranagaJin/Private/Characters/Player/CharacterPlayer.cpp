@@ -187,6 +187,29 @@ void ACharacterPlayer::SetLookInputVector2DZero()
 	PlayerLookInputVector2D = FVector2D::ZeroVector;
 }
 
+float ACharacterPlayer::ReceiveDamage(const FDamageParams& DamageInfo)
+{
+	if (IsDead())
+	{
+		return 0.f;
+	}
+
+	CurrentHealth -= DamageInfo.DamageAmount;
+
+	if (CurrentHealth <= 0.f)
+	{
+		CurrentHealth = 0.f;
+		// Player Dead Ã³¸®
+	}
+
+	return DamageInfo.DamageAmount;
+}
+
+bool ACharacterPlayer::IsDead() const
+{
+	return CurrentHealth <= 0.f;
+}
+
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -535,68 +558,68 @@ void ACharacterPlayer::OnDamaged()
 {
 }
 
-bool ACharacterPlayer::TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser)
-{
-	//if (MovementComponent->GetIsInvincible())
-	//{
-	//	return false;
-	//}
-
-	//if (UIManager)
-	//{
-	//	UIManager->ShowDamageIndicator(DamageCauser);
-	//}
-
-	//GetPlayerMovementComponent()->NotifyDamageData(DamageData.DamageType, DamageData.ImpulseDirection, DamageData.ImpulseMagnitude);
-
-	//if (DamageCauser)
-	//{
-	//	USoundBase* HitSound = nullptr;
-	//	if (AEnemyBase* Enemy = Cast<AEnemyBase>(DamageCauser))
-	//	{
-	//		FName EnemyType = Enemy->GetEnemyType();
-	//		if (EnemyType == "Melee")
-	//		{
-	//			HitSound = PlayerSound_DataAsset->MeleeEnemyHitSound;
-	//		}
-	//		else if (EnemyType == "Rifle")
-	//		{
-	//			HitSound = PlayerSound_DataAsset->RifleEnemyHitSound;
-	//		}
-	//		else if (EnemyType == "Charger")
-	//		{
-	//			HitSound = PlayerSound_DataAsset->ChargerEnemyHitSound;
-	//		}
-	//		else if (EnemyType == "Turret")
-	//		{
-	//			HitSound = PlayerSound_DataAsset->TurretEnemyHitSound;
-	//		}
-	//	}
-	//	else if (ACharacterBossProto* Boss = Cast<ACharacterBossProto>(DamageCauser))
-	//	{
-	//		switch (DamageData.DamageType)
-	//		{
-	//		case EDamageType::Charge:
-	//			HitSound = PlayerSound_DataAsset->BossDownedHitSound;
-	//			break;
-	//		default:
-	//			HitSound = PlayerSound_DataAsset->BossNormalHitSound;
-	//			break;
-	//		}
-	//	}
-
-	//	if (HitSound)
-	//	{
-	//		UGameplayStatics::PlaySoundAtLocation(GetWorld(), HitSound, GetActorLocation());
-	//	}
-	//}
-
-
-
-	//return GetDamageSystemComponent()->TakeDamage(DamageData, DamageCauser);
-	//------------------------------------
-	return false;
-}
+//bool ACharacterPlayer::TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser)
+//{
+//	//if (MovementComponent->GetIsInvincible())
+//	//{
+//	//	return false;
+//	//}
+//
+//	//if (UIManager)
+//	//{
+//	//	UIManager->ShowDamageIndicator(DamageCauser);
+//	//}
+//
+//	//GetPlayerMovementComponent()->NotifyDamageData(DamageData.DamageType, DamageData.ImpulseDirection, DamageData.ImpulseMagnitude);
+//
+//	//if (DamageCauser)
+//	//{
+//	//	USoundBase* HitSound = nullptr;
+//	//	if (AEnemyBase* Enemy = Cast<AEnemyBase>(DamageCauser))
+//	//	{
+//	//		FName EnemyType = Enemy->GetEnemyType();
+//	//		if (EnemyType == "Melee")
+//	//		{
+//	//			HitSound = PlayerSound_DataAsset->MeleeEnemyHitSound;
+//	//		}
+//	//		else if (EnemyType == "Rifle")
+//	//		{
+//	//			HitSound = PlayerSound_DataAsset->RifleEnemyHitSound;
+//	//		}
+//	//		else if (EnemyType == "Charger")
+//	//		{
+//	//			HitSound = PlayerSound_DataAsset->ChargerEnemyHitSound;
+//	//		}
+//	//		else if (EnemyType == "Turret")
+//	//		{
+//	//			HitSound = PlayerSound_DataAsset->TurretEnemyHitSound;
+//	//		}
+//	//	}
+//	//	else if (ACharacterBossProto* Boss = Cast<ACharacterBossProto>(DamageCauser))
+//	//	{
+//	//		switch (DamageData.DamageType)
+//	//		{
+//	//		case EDamageType::Charge:
+//	//			HitSound = PlayerSound_DataAsset->BossDownedHitSound;
+//	//			break;
+//	//		default:
+//	//			HitSound = PlayerSound_DataAsset->BossNormalHitSound;
+//	//			break;
+//	//		}
+//	//	}
+//
+//	//	if (HitSound)
+//	//	{
+//	//		UGameplayStatics::PlaySoundAtLocation(GetWorld(), HitSound, GetActorLocation());
+//	//	}
+//	//}
+//
+//
+//
+//	//return GetDamageSystemComponent()->TakeDamage(DamageData, DamageCauser);
+//	//------------------------------------
+//	return false;
+//}
 
 //void ACharacterPlayer::GravityLaunchPlayer(const FVector& Direction, float ForceAmount)
 //{

@@ -1701,7 +1701,7 @@ bool UPlayerMovementComponent::IsGrounded()
 	return true;
 }
 
-void UPlayerMovementComponent::NotifyDamageData(EDamageType DamageType, const FVector& DamageDirection, float DamageForce)
+void UPlayerMovementComponent::NotifyDamageData(EGameDamageType DamageType, const FVector& DamageDirection, float DamageForce)
 {
 	ReceivedDamageType = DamageType;
 	LastDamagedWorldTime = GetWorld()->GetTimeSeconds();
@@ -1710,7 +1710,7 @@ void UPlayerMovementComponent::NotifyDamageData(EDamageType DamageType, const FV
 
 	switch (DamageType)
 	{
-	case EDamageType::Charge:
+	case EGameDamageType::Charge:
 		if (CurrentMovementState == EMovementState::EMS_Move ||
 			CurrentMovementState == EMovementState::EMS_Airborne)
 		{

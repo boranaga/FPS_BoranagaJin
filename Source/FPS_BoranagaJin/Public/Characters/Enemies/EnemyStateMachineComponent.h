@@ -94,4 +94,8 @@ private:
 	void SelectNextPatrolPoint();
 	void OnPatrolWaitFinished();
 	bool IsAtCurrentPatrolPoint() const;
+
+// <Attack>
+private:
+	void RotateToTarget(float DeltaTime);
 };

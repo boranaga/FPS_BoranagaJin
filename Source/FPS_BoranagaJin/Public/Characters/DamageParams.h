@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "EDamageType.h"
+#include "GameDamageType.h"
 #include "DamageParams.generated.h"
 
 USTRUCT(Atomic, BlueprintType)
@@ -16,7 +16,13 @@ public:
 	float DamageAmount = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EDamageType DamageType = EDamageType::None;
+	EGameDamageType DamageType = EGameDamageType::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	AActor* DamageCauser = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	AController* InstigatorController = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bCanForceDamage = false;
@@ -35,6 +41,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector ImpactPoint = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector HitDirection = FVector::ZeroVector;
 };
 
 UCLASS()
