@@ -9,6 +9,9 @@ class AEnemyBase;
 class AEnemyBaseAIController;
 class AEnemyPatrolPoint;
 
+class UHealthComponent;
+class UStaminaComponent;
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class FPS_BORANAGAJIN_API UEnemyStateMachineComponent : public UActorComponent
 {
@@ -41,6 +44,27 @@ private:
 	EEnemyStateType CurrentState = EEnemyStateType::Idle;
 
 	float LastAttackTime = -999.f;
+
+// <Stamina and Health>
+private:
+	UPROPERTY()
+	TObjectPtr<UHealthComponent> HealthComponent;
+
+	UPROPERTY()
+	TObjectPtr<UStaminaComponent> StaminaComponent;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Stamina")
+	float AttackStaminaCost = 20.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Stamina")
+	float ChaseStaminaCostPerSecond = 5.f;
+
+// <Idle>
+private:
+	FTimerHandle IdleToPatrolTimerHandle;
+	float IdleToPatrolTime = 4.f;
+private:
+	void OnIdleFinished();
 
 // <Patrol Point>
 private:
@@ -98,4 +122,9 @@ private:
 // <Attack>
 private:
 	void RotateToTarget(float DeltaTime);
+
+#pragma region Debuging
+public:
+	void DrawDebug() const;
+#pragma endregion
 };

@@ -2,7 +2,12 @@
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
 #include "Characters/Enemies/EnemyPatrolPoint.h"
+#include "Characters/HealthComponent.h"
+#include "Characters/StaminaComponent.h"
+
 #include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
+#include "UObject/EnumProperty.h"
 
 UEnemyStateMachineComponent::UEnemyStateMachineComponent()
 {
@@ -18,6 +23,18 @@ void UEnemyStateMachineComponent::BeginPlay()
 	if (Enemy)
 	{
 		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
+		HealthComponent = Enemy->GetHealthComponent();
+		StaminaComponent = Enemy->GetStaminaComponent();
+
+
+		if (HealthComponent)
+		{
+			UE_LOG(LogTemp, Error, TEXT("HealthComponent"));
+		}
+		if (StaminaComponent)
+		{
+			UE_LOG(LogTemp, Error, TEXT("StaminaComponent"));
+		}
 	}
 
 	TargetActor = nullptr;
@@ -41,6 +58,12 @@ void UEnemyStateMachineComponent::TickComponent(
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	UpdateState(DeltaTime);
+}
+
+void UEnemyStateMachineComponent::OnIdleFinished()
+{
+	// TODO: 일단 무조건 Patrol인데, 조건 추가해야할듯
+	SetState(EEnemyStateType::Patrol);
 }
 
 void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
@@ -74,6 +97,13 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 	case EEnemyStateType::Idle:
 		UE_LOG(LogTemp, Warning, TEXT("Enter Idle"));
 		Task_StopMovement();
+		GetWorld()->GetTimerManager().SetTimer(
+			IdleToPatrolTimerHandle,
+			this,
+			&UEnemyStateMachineComponent::OnIdleFinished,
+			IdleToPatrolTime,
+			false
+		);
 		break;
 
 	case EEnemyStateType::Patrol:
@@ -106,8 +136,11 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 	switch (OldState)
 	{
 	case EEnemyStateType::Idle:
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(IdleToPatrolTimerHandle);
+		}
 		break;
-
 	case EEnemyStateType::Patrol:
 		if (GetWorld())
 		{
@@ -169,7 +202,8 @@ void UEnemyStateMachineComponent::UpdateIdle(float DeltaTime)
 		return;
 	}
 
-	// 나중에 Idle 시간이 지나면 Patrol로 전환 가능
+	// Idle To Patrol 전환은 일단 EnterState에서 타이머로 해결했음
+
 }
 
 void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
@@ -215,8 +249,25 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 	if (!HasTarget() || ShouldLoseTarget())
 	{
 		ClearTarget();
-		SetState(EEnemyStateType::Idle);
+		SetState(EEnemyStateType::Patrol);
 		return;
+	}
+
+	if (HealthComponent && HealthComponent->IsDead())
+	{
+		SetState(EEnemyStateType::Dead);
+		return;
+	}
+
+	if (StaminaComponent)
+	{
+		const float ChaseCost = ChaseStaminaCostPerSecond * DeltaTime;
+
+		if (!StaminaComponent->ConsumeStamina(ChaseCost))
+		{
+			SetState(EEnemyStateType::Patrol);
+			return;
+		}
 	}
 
 	if (IsTargetInAttackRange())
@@ -250,11 +301,21 @@ void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 	}
 
 	Task_StopMovement();
-
 	RotateToTarget(DeltaTime);
 
 	if (CanAttack())
 	{
+		if (StaminaComponent && !StaminaComponent->CanConsume(AttackStaminaCost))
+		{
+			SetState(EEnemyStateType::Chase);
+			return;
+		}
+
+		if (StaminaComponent)
+		{
+			StaminaComponent->ConsumeStamina(AttackStaminaCost);
+		}
+
 		Task_AttackTarget();
 	}
 }
@@ -408,4 +469,64 @@ void UEnemyStateMachineComponent::RotateToTarget(float DeltaTime)
 	);
 
 	Enemy->SetActorRotation(NewRotation);
+}
+
+void UEnemyStateMachineComponent::DrawDebug() const
+{
+	if (!Enemy)
+	{
+		return;
+	}
+
+	const UEnum* Enum = StaticEnum<EEnemyStateType>();
+
+	const FString StateString = Enum
+		? Enum->GetNameStringByValue(static_cast<int64>(CurrentState))
+		: TEXT("Unknown");
+
+	const FVector BaseLocation = Enemy->GetActorLocation() + FVector(0.f, 0.f, 140.f);
+
+	DrawDebugString(
+		GetWorld(),
+		BaseLocation,
+		FString::Printf(TEXT("State : %s"), *StateString),
+		nullptr,
+		FColor::Cyan,
+		0.f,
+		true
+	);
+
+	if (HealthComponent)
+	{
+		DrawDebugString(
+			GetWorld(),
+			BaseLocation + FVector(0.f, 0.f, -15.f),
+			FString::Printf(
+				TEXT("HP : %.0f / %.0f"),
+				HealthComponent->GetCurrentHealth(),
+				HealthComponent->GetMaxHealth()
+			),
+			nullptr,
+			FColor::Green,
+			0.f,
+			true
+		);
+	}
+
+	if (StaminaComponent)
+	{
+		DrawDebugString(
+			GetWorld(),
+			BaseLocation + FVector(0.f, 0.f, -30.f),
+			FString::Printf(
+				TEXT("ST : %.0f / %.0f"),
+				StaminaComponent->GetCurrentStamina(),
+				StaminaComponent->GetMaxStamina()
+			),
+			nullptr,
+			FColor::Yellow,
+			0.f,
+			true
+		);
+	}
 }

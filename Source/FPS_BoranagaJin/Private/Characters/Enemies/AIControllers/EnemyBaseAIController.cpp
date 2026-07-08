@@ -28,10 +28,10 @@ AEnemyBaseAIController::AEnemyBaseAIController()
 		TEXT("SightConfig")
 	);
 
-	SightConfig->SightRadius = 1200.f;
-	SightConfig->LoseSightRadius = 1500.f;
-	SightConfig->PeripheralVisionAngleDegrees = 70.f;
-	SightConfig->SetMaxAge(3.f);
+	SightConfig->SightRadius = 1700.f;
+	SightConfig->LoseSightRadius = 2000.f;
+	SightConfig->PeripheralVisionAngleDegrees = 140.f;
+	SightConfig->SetMaxAge(10.f);
 
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
 	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;

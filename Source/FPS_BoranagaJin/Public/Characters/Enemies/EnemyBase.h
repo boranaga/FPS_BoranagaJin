@@ -6,32 +6,38 @@
 #include "EnemyBase.generated.h"
 
 class ACharacterPlayer;
+class UHealthComponent;
+class UStaminaComponent;
 class UEnemyStateMachineComponent;
 
 UCLASS()
 class FPS_BORANAGAJIN_API AEnemyBase : public ACharacter, public IDamageInterface
 {
 	GENERATED_BODY()
-
 public:
 	AEnemyBase();
 protected:
 	virtual void BeginPlay() override;
-
+	virtual void Tick(float DeltaTime) override;
+	UPROPERTY(VisibleAnywhere, Category = "Enemy|Components")
+	TObjectPtr<UHealthComponent> HealthComponent;
+	UPROPERTY(VisibleAnywhere, Category = "Enemy|Components")
+	TObjectPtr<UStaminaComponent> StaminaComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|AI")
 	UEnemyStateMachineComponent* StateMachineComponent;
 
 public:
+	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
+	UStaminaComponent* GetStaminaComponent() const { return StaminaComponent; }
 	UEnemyStateMachineComponent* GetStateMachineComponent() const { return StateMachineComponent; };
-
+	float GetCurrentHealth() const;
+	float GetMaxHealth() const;
 public:
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
+	//float MaxHealth = 1000.f;
 
-	//TODO: Damage interface로 옮겨야 할 듯?
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
-	float MaxHealth = 100.f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
-	float CurrentHealth = 100.f;
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
+	//float CurrentHealth = 100.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
 	float AttackRange = 150.f;
@@ -51,7 +57,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Detection")
 	float LoseTargetDistance = 1500.f;
 
-	void TakeEnemyDamage(float DamageAmount);
+	//void TakeEnemyDamage(float DamageAmount);
 
 	void AttackTarget(AActor* Target);
 	void ApplyAttackDamage(AActor* Target);
@@ -60,7 +66,9 @@ public:
 	virtual float ReceiveDamage(const FDamageParams& DamageInfo) override;
 	virtual bool IsDead() const override;
 #pragma endregion
-
+protected:
+	void OnDeath();
+	void OnDamagedBy(AActor* DamageInstigatorActor);
 
 #pragma region Death
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Death")
@@ -78,5 +86,4 @@ public:
 	void DisableEnemyCollision();
 	void StartRagdoll();
 #pragma endregion
-
 };

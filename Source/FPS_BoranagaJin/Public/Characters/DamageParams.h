@@ -28,7 +28,7 @@ public:
 	bool bCanForceDamage = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName BoneName = NAME_None;
+	FName HitBoneName = NAME_None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector ImpulseDirection = FVector::ZeroVector;
@@ -44,6 +44,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector HitDirection = FVector::ZeroVector;
+
+	UPROPERTY()
+	bool bIsCritical = false;
 };
 
 UCLASS()

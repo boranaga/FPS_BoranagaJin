@@ -426,7 +426,7 @@ void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamag
 	Damage.DamageAmount = DamageAmount;
 	Damage.DamageType = DamageType;
 	Damage.bCanForceDamage = bCanForceDamage;
-	Damage.BoneName = BoneName;
+	Damage.HitBoneName = BoneName;
 	Damage.ImpulseDirection = ImpulseDirection;
 	Damage.SurfaceType = SurfaceType;
 	Damage.ImpactPoint = ImpactPoint;

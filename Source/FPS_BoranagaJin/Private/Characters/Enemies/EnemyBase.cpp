@@ -1,6 +1,8 @@
 
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
+#include "Characters/HealthComponent.h"
+#include "Characters/StaminaComponent.h"
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
 
 #include "Components/CapsuleComponent.h"
@@ -12,37 +14,71 @@
 
 AEnemyBase::AEnemyBase()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	AIControllerClass = AEnemyBaseAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	StateMachineComponent = CreateDefaultSubobject<UEnemyStateMachineComponent>(
-		TEXT("StateMachineComponent")
-	);
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
+	StateMachineComponent = CreateDefaultSubobject<UEnemyStateMachineComponent>(TEXT("StateMachineComponent"));
 
-	CurrentHealth = MaxHealth;
+	//CurrentHealth = MaxHealth;
 }
 
 void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	CurrentHealth = MaxHealth;
+	//CurrentHealth = MaxHealth; //TODO: HealthComponent로 이전해야함
+
+	if (HealthComponent)
+	{
+		HealthComponent->OnDeath.AddUObject(this, &AEnemyBase::OnDeath);
+	}
+}
+
+void AEnemyBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	#if ENABLE_DRAW_DEBUG
+
+		if (StateMachineComponent)
+		{
+			StateMachineComponent->DrawDebug();
+		}
+
+	#endif
+}
+
+float AEnemyBase::GetCurrentHealth() const
+{
+	return HealthComponent ? HealthComponent->GetCurrentHealth() : 0.f;
+}
+
+float AEnemyBase::GetMaxHealth() const
+{
+	return HealthComponent ? HealthComponent->GetMaxHealth() : 0.f;
 }
 
 float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 {
-	if (IsDead())
+	if (!HealthComponent || HealthComponent->IsDead())
 	{
 		return 0.f;
 	}
 
-	const float ActualDamage = DamageInfo.DamageAmount;
+	float ActualDamage = DamageInfo.DamageAmount;
 
-	TakeEnemyDamage(ActualDamage);
+	if (DamageInfo.bIsCritical)
+	{
+		ActualDamage *= 2.f;
+	}
 
-	if (!IsDead())
+	const float AppliedDamage = HealthComponent->ApplyDamage(ActualDamage);
+
+	if (!HealthComponent->IsDead())
 	{
 		AActor* InstigatorActor = nullptr;
 
@@ -56,41 +92,49 @@ float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 			InstigatorActor = DamageInfo.DamageCauser;
 		}
 
-		if (StateMachineComponent && InstigatorActor)
-		{
-			StateMachineComponent->SetTarget(InstigatorActor);
-			StateMachineComponent->SetState(EEnemyStateType::Chase);
-		}
+		OnDamagedBy(InstigatorActor);
 	}
 
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("Enemy Damage: Amount=%f, Type=%d"),
-		ActualDamage,
-		static_cast<int32>(DamageInfo.DamageType)
-	);
-
-	return ActualDamage;
+	return AppliedDamage;
 }
 
 bool AEnemyBase::IsDead() const
 {
-	return CurrentHealth <= 0.f;
+	return HealthComponent ? HealthComponent->IsDead() : true;
 }
 
-void AEnemyBase::TakeEnemyDamage(float DamageAmount)
+void AEnemyBase::OnDeath()
 {
-	if (IsDead()) return;
-
-	CurrentHealth -= DamageAmount;
-
-	if (CurrentHealth <= 0.f)
+	if (StateMachineComponent)
 	{
-		CurrentHealth = 0.f;
-		Die();
+		StateMachineComponent->SetState(EEnemyStateType::Dead);
 	}
+
+	// 여기서 기존 Die 처리 연결
+	// StopMovement, DisableCollision, DeathMontage, Ragdoll, SetLifeSpan 등
 }
+
+void AEnemyBase::OnDamagedBy(AActor* DamageInstigatorActor)
+{
+	if (!DamageInstigatorActor) return;
+	if (!StateMachineComponent) return;
+
+	StateMachineComponent->SetTarget(DamageInstigatorActor);
+	StateMachineComponent->SetState(EEnemyStateType::Chase);
+}
+
+//void AEnemyBase::TakeEnemyDamage(float DamageAmount)
+//{
+//	if (IsDead()) return;
+//
+//	//CurrentHealth -= DamageAmount;
+//
+//	if (CurrentHealth <= 0.f)
+//	{
+//		CurrentHealth = 0.f;
+//		Die();
+//	}
+//}
 
 void AEnemyBase::AttackTarget(AActor* Target)
 {
