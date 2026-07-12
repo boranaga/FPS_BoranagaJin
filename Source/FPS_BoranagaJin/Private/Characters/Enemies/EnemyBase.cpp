@@ -73,27 +73,54 @@ float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 
 	if (DamageInfo.bIsCritical)
 	{
-		ActualDamage *= 2.f;
+		ActualDamage *= 2.f; //TODO: Set Critical Damage as Variable
 	}
 
 	const float AppliedDamage = HealthComponent->ApplyDamage(ActualDamage);
 
-	if (!HealthComponent->IsDead())
+	//------------------------------------------------
+
+	//// <Old>
+	//if (!HealthComponent->IsDead())
+	//{
+	//	AActor* InstigatorActor = nullptr;
+
+	//	if (DamageInfo.InstigatorController)
+	//	{
+	//		InstigatorActor = DamageInfo.InstigatorController->GetPawn();
+	//	}
+
+	//	if (!InstigatorActor)
+	//	{
+	//		InstigatorActor = DamageInfo.DamageCauser;
+	//	}
+
+	//	OnDamagedBy(InstigatorActor);
+	//}
+
+	// <New>
+
+	AActor* DamageInstigator = nullptr;
+
+	if (DamageInfo.InstigatorController)
 	{
-		AActor* InstigatorActor = nullptr;
-
-		if (DamageInfo.InstigatorController)
-		{
-			InstigatorActor = DamageInfo.InstigatorController->GetPawn();
-		}
-
-		if (!InstigatorActor)
-		{
-			InstigatorActor = DamageInfo.DamageCauser;
-		}
-
-		OnDamagedBy(InstigatorActor);
+		DamageInstigator = DamageInfo.InstigatorController->GetPawn();
 	}
+
+	if (!DamageInstigator)
+	{
+		DamageInstigator = DamageInfo.DamageCauser;
+	}
+
+	if (!HealthComponent->IsDead() && StateMachineComponent)
+	{
+		StateMachineComponent->NotifyDamageReceived(
+			AppliedDamage,
+			DamageInstigator
+		);
+	}
+
+	//------------------------------------------------
 
 	return AppliedDamage;
 }

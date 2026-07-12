@@ -10,5 +10,9 @@ enum class EEnemyStateType : uint8
 	Patrol	UMETA(DisplayName = "Patrol"),
 	Chase	UMETA(DisplayName = "Chase"),
 	Attack	UMETA(DisplayName = "Attack"),
+	Investigate UMETA(DisplayName = "Investigate"),
+	Flee UMETA(DisplayName = "Flee"),
+	Hide UMETA(DisplayName = "Hide"),
+	Recover UMETA(DisplayName = "Recover"),
 	Dead	UMETA(DisplayName = "Dead")
 };

@@ -5,13 +5,15 @@
 #include "Items/Weapons/Weapon.h"
 
 #include "Characters/Enemies/EnemyBase.h"
-#include "Characters/DamageInterface.h"
+#include "Interface/DamageInterface.h"
 #include "Characters/DamageParams.h"
 
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Character.h"
 #include "Components/SphereComponent.h"
 #include "Components/DecalComponent.h"
+
+#include "Perception/AISense_Hearing.h"
 
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
@@ -494,6 +496,9 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 						TrailEffectComponent = nullptr;
 					}
 				}
+
+
+				ReportNoiseToAI();
 
 				PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
 
@@ -1333,6 +1338,18 @@ void AProjectile::CheckAndDeactivateIfStuck()
 	}
 }
 #pragma endregion
+
+void AProjectile::ReportNoiseToAI()
+{
+	UAISense_Hearing::ReportNoiseEvent(
+		GetWorld(),
+		GetActorLocation(),
+		ProjectileHitNoiseLoudness,
+		this,
+		ProjectileHitNoiseRange,
+		TEXT("ProjectileHit")
+	);
+}
 
 
 //// Called when the game starts or when spawned

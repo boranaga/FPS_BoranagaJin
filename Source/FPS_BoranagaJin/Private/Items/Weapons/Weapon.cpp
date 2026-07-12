@@ -46,12 +46,12 @@
 #include "NiagaraSystem.h"
 #include "NiagaraFunctionLibrary.h"
 
+#include "Perception/AISense_Hearing.h"
+
 //----------------------------------
-//#include "ActorComponents/UISystem/ACUIMangerComponent.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/CanvasRenderTarget2D.h"
-//#include "UI/UIData.h"
 
 // Sets default values for this component's properties
 AWeapon::AWeapon()
@@ -818,7 +818,7 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 		}
 	}
 
-
+	ReportFiringSoundToAI();
 	if (FireData->FireSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, FireData->FireSound, Character->GetActorLocation());
@@ -923,6 +923,7 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 	}
 
 	// <Sound>
+	ReportFiringSoundToAI();
 	if (bWeaponAssetsReady)
 	{
 		if (FireData != nullptr && FireData->FireSound != nullptr)
@@ -1035,6 +1036,7 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 		}
 	}
 
+	ReportFiringSoundToAI();
 	if (FireData != nullptr && FireData->FireSound != nullptr)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, FireData->FireSound, Character->GetActorLocation());
@@ -1137,6 +1139,7 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 		}
 	}
 
+	ReportFiringSoundToAI();
 	if (bWeaponAssetsReady)
 	{
 		if (FireData->FireSound != nullptr)
@@ -1314,6 +1317,30 @@ void AWeapon::StopWeaponSound()
 	{
 		WeaponAudioComponent->Stop();
 	}
+}
+
+void AWeapon::ReportReloadingSoundToAI()
+{
+	UAISense_Hearing::ReportNoiseEvent(
+		GetWorld(),
+		GetActorLocation(),
+		ReloadingSoundLoudness,
+		this,
+		ReloadingSoundRange,
+		TEXT("Reloading")
+	);
+}
+
+void AWeapon::ReportFiringSoundToAI()
+{
+	UAISense_Hearing::ReportNoiseEvent(
+		GetWorld(),
+		GetActorLocation(),
+		FiringSoundLoudness,
+		this,
+		FiringSoundRange,
+		TEXT("Firing")
+	);
 }
 
 #pragma region Niagara
@@ -1700,6 +1727,8 @@ void AWeapon::HandleReload()
 			//TODO: ReloadingState�� EnterState���� StartReload �ص� �� ��
 			ChangeState(ReloadingState);
 			//StartReload();
+
+			ReportReloadingSoundToAI();
 		}
 	}
 }
@@ -1710,6 +1739,8 @@ void AWeapon::HandlePumpActionReload()
 		if (LeftAmmoInCurrentMag < MaxAmmoPerMag && TotalAmmo > 0)
 		{
 			ChangeState(PumpActionReloadingState);
+
+			ReportReloadingSoundToAI();
 		}
 	}
 }

@@ -317,5 +317,15 @@ protected:
 
 #pragma endregion
 
+#pragma region AISense_Hearing
+protected:
+	UPROPERTY(EditAnywhere, Category = "Noise")
+	float ProjectileHitNoiseLoudness = 2.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Noise")
+	float ProjectileHitNoiseRange = 3000.f;
+protected:
+	void ReportNoiseToAI();
+#pragma endregion
 };
 

@@ -717,6 +717,8 @@ bool UInventorySystemComponent::IsInViewport(FVector2D ActorScreenPosition, floa
 
 bool UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)
 {
+	UE_LOG(LogTemp, Error, TEXT("UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)"));
+
 	int32 WeaponIdx = FindItemSlot(WeaponInventory, MagazinePickUp->GetItemName());
 	if (WeaponIdx != INDEX_NONE)
 	{

@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 //#include "GameFramework/Character.h" //TODO: Pawn vs Character which one?
 #include "GameFramework/Pawn.h"
-#include "Characters/DamageInterface.h"
+#include "Interface/DamageInterface.h"
 #include "Items/WeaponState/WeaponStateType.h"
 #include "CharacterPlayer.generated.h"
 

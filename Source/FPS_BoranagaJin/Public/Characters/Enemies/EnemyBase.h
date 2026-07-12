@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Characters/DamageInterface.h"
+#include "Interface/DamageInterface.h"
 #include "EnemyBase.generated.h"
 
 class ACharacterPlayer;

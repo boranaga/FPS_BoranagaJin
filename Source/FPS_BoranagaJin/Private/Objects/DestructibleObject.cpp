@@ -1,11 +1,15 @@
 #include "Objects/DestructibleObject.h"
+#include "Objects/FireAreaComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "TimerManager.h"
+#include "Components/AudioComponent.h"
+
 
 ADestructibleObject::ADestructibleObject()
 {
@@ -24,6 +28,10 @@ ADestructibleObject::ADestructibleObject()
 	BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	BrokenMesh->SetSimulatePhysics(false);
 	BrokenMesh->SetVisibility(false);
+
+	FireAreaComponent = CreateDefaultSubobject<UFireAreaComponent>(TEXT("FireAreaComponent"));
+	FireAreaComponent->SetupAttachment(SceneRoot);
+	FireAreaComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ADestructibleObject::BeginPlay()
@@ -78,9 +86,16 @@ bool ADestructibleObject::IsDead() const
 	return bDestroyed;
 }
 
+void ADestructibleObject::Ignite(AActor* FireCauser)
+{
+	StartBurning(FireCauser);
+}
+
 void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector& HitDirection)
 {
 	if (bDestroyed) return;
+
+	StopBurning();
 
 	bDestroyed = true;
 
@@ -151,4 +166,112 @@ void ADestructibleObject::HideBrokenMesh()
 		BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		BrokenMesh->SetSimulatePhysics(false);
 	}
+}
+
+void ADestructibleObject::StartBurning(AActor* FireCauser)
+{
+	if (bDestroyed) return;
+	if (!bCanBurn) return;
+	if (bBurning) return;
+
+	bBurning = true;
+	BurnCauser = FireCauser;
+
+	if (FireAreaComponent)
+	{
+		FireAreaComponent->ActivateFireArea(FireCauser);
+	}
+
+	if (FireEffect)
+	{
+		ActiveFireEffect = UNiagaraFunctionLibrary::SpawnSystemAttached(
+			FireEffect,
+			IntactMesh,
+			NAME_None,
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::KeepRelativeOffset,
+			true
+		);
+	}
+
+	if (FireStartSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(
+			GetWorld(),
+			FireStartSound,
+			GetActorLocation()
+		);
+	}
+
+	if (FireLoopSound)
+	{
+		ActiveFireLoopSound = UGameplayStatics::SpawnSoundAttached(
+			FireLoopSound,
+			GetRootComponent()
+		);
+	}
+
+	GetWorldTimerManager().SetTimer(
+		BurnDamageTimerHandle,
+		this,
+		&ADestructibleObject::ApplyBurnDamage,
+		BurnDamageInterval,
+		true
+	);
+
+	GetWorldTimerManager().SetTimer(
+		BurnDurationTimerHandle,
+		this,
+		&ADestructibleObject::StopBurning,
+		BurnDuration,
+		false
+	);
+}
+
+void ADestructibleObject::StopBurning()
+{
+	if (!bBurning) return;
+
+	bBurning = false;
+	BurnCauser = nullptr;
+
+	GetWorldTimerManager().ClearTimer(BurnDamageTimerHandle);
+	GetWorldTimerManager().ClearTimer(BurnDurationTimerHandle);
+
+	if (FireAreaComponent)
+	{
+		FireAreaComponent->DeactivateFireArea();
+	}
+
+	if (ActiveFireEffect)
+	{
+		ActiveFireEffect->Deactivate();
+		ActiveFireEffect = nullptr;
+	}
+
+	if (ActiveFireLoopSound)
+	{
+		ActiveFireLoopSound->Stop();
+		ActiveFireLoopSound = nullptr;
+	}
+}
+
+void ADestructibleObject::ApplyBurnDamage()
+{
+	if (bDestroyed)
+	{
+		StopBurning();
+		return;
+	}
+
+	EGameDamageType::Fire;
+
+	FDamageParams Damage;
+	Damage.DamageAmount = BurnDamage;
+	Damage.ImpactPoint = GetActorLocation();
+	Damage.HitDirection = FVector::UpVector;
+	Damage.DamageCauser = BurnCauser;
+
+	ReceiveDamage(Damage);
 }

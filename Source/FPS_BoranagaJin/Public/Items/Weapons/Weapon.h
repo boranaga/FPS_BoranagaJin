@@ -273,6 +273,15 @@ protected:
 
 	void PlayWeaponSound(USoundBase* weaponsound = nullptr);
 	void StopWeaponSound();
+
+	float ReloadingSoundLoudness = 0.5;
+	float ReloadingSoundRange = 800;
+
+	float FiringSoundLoudness = 2.0f;
+	float FiringSoundRange = 3000.f;
+
+	void ReportReloadingSoundToAI();
+	void ReportFiringSoundToAI();
 #pragma endregion
 
 #pragma region Niagara
