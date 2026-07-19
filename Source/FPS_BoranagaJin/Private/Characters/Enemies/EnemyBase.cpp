@@ -3,7 +3,9 @@
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
 #include "Characters/HealthComponent.h"
 #include "Characters/StaminaComponent.h"
+#include "Characters/BloodTrailComponent.h"
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
+#include "Characters/GameDamageType.h"
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -21,16 +23,15 @@ AEnemyBase::AEnemyBase()
 
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
+	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
 	StateMachineComponent = CreateDefaultSubobject<UEnemyStateMachineComponent>(TEXT("StateMachineComponent"));
 
-	//CurrentHealth = MaxHealth;
+	Tags.AddUnique(TEXT("Enemy"));
 }
 
 void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
-
-	//CurrentHealth = MaxHealth; //TODO: HealthComponent로 이전해야함
 
 	if (HealthComponent)
 	{
@@ -64,18 +65,12 @@ float AEnemyBase::GetMaxHealth() const
 
 float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 {
-	if (!HealthComponent || HealthComponent->IsDead())
-	{
-		return 0.f;
-	}
-
+	if (!HealthComponent || HealthComponent->IsDead()) { return 0.f; }
 	float ActualDamage = DamageInfo.DamageAmount;
-
 	if (DamageInfo.bIsCritical)
 	{
 		ActualDamage *= 2.f; //TODO: Set Critical Damage as Variable
 	}
-
 	const float AppliedDamage = HealthComponent->ApplyDamage(ActualDamage);
 
 	//------------------------------------------------
@@ -112,16 +107,17 @@ float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 		DamageInstigator = DamageInfo.DamageCauser;
 	}
 
+	if (BloodTrailComponent)
+	{
+		BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
+	}
+
 	if (!HealthComponent->IsDead() && StateMachineComponent)
 	{
-		StateMachineComponent->NotifyDamageReceived(
-			AppliedDamage,
-			DamageInstigator
-		);
+		StateMachineComponent->NotifyDamageReceived(AppliedDamage, DamageInstigator);
 	}
 
 	//------------------------------------------------
-
 	return AppliedDamage;
 }
 
@@ -166,8 +162,7 @@ void AEnemyBase::OnDamagedBy(AActor* DamageInstigatorActor)
 void AEnemyBase::AttackTarget(AActor* Target)
 {
 	if (!Target) return;
-
-	UE_LOG(LogTemp, Warning, TEXT("Enemy Attack Target: %s"), *Target->GetName());
+	//UE_LOG(LogTemp, Warning, TEXT("Enemy Attack Target: %s"), *Target->GetName());
 
 	// 나중에 여기서:
 	// 1. Attack Montage 재생
@@ -188,16 +183,20 @@ void AEnemyBase::ApplyAttackDamage(AActor* Target)
 {
 	if (!Target) return;
 
-	// TODO: Custom Component로 변경해야함
-	UGameplayStatics::ApplyDamage(
-		Target,
-		AttackDamage,
-		GetController(),
-		this,
-		UDamageType::StaticClass()
-	);
+	FDamageParams Damage;
+	Damage.DamageAmount = AttackDamage;
+	Damage.DamageType = EGameDamageType::Melee;
+	Damage.bCanForceDamage = false;
+	//Damage.HitBoneName = BoneName;
+	//Damage.ImpulseDirection = ImpulseDirection;
+	//Damage.SurfaceType = SurfaceType;
+	//Damage.ImpactPoint = ImpactPoint;
+	Damage.DamageCauser = this;
 
-	UE_LOG(LogTemp, Warning, TEXT("Enemy Apply Damage: %f"), AttackDamage);
+	if (Target->GetClass()->ImplementsInterface(UDamageableInterface::StaticClass()))
+	{
+		Cast<IDamageableInterface>(Target)->ReceiveDamage(Damage);
+	}
 }
 
 void AEnemyBase::Die()

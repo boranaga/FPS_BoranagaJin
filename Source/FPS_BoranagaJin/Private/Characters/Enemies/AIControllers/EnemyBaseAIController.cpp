@@ -8,6 +8,7 @@
 #include "Perception/AISenseConfig_Sight.h"
 #include "Perception/AISenseConfig_Hearing.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "NavigationSystem.h"
 
 //#include "Perception/AISense_Sight.h"
 //#include "Perception/AISense_Hearing.h"
@@ -23,9 +24,9 @@ AEnemyBaseAIController::AEnemyBaseAIController()
 	// <Sight>
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
 
-	SightConfig->SightRadius = 1700.f;
-	SightConfig->LoseSightRadius = 2000.f;
-	SightConfig->PeripheralVisionAngleDegrees = 140.f;
+	SightConfig->SightRadius = 2000.f;
+	SightConfig->LoseSightRadius = 5000.f;
+	SightConfig->PeripheralVisionAngleDegrees = 120.f;
 	SightConfig->SetMaxAge(10.f);
 
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
@@ -102,16 +103,18 @@ void AEnemyBaseAIController::HandleSightStimulus(AActor* Actor, const FAIStimulu
 	}
 	else
 	{
-		/*
-		 * 도망/회복 중에는 시야를 잃는 것이 성공적인 상황이므로
-		 * Target을 즉시 제거하면 안 된다.
-		 * 은신 판정에 플레이어 위치가 계속 필요하다.
-		 */
-		if (!StateMachine->IsInDefensiveState())
-		{
-			StateMachine->ClearTarget();
-			StateMachine->SetState(EEnemyStateType::Patrol);
-		}
+		///*
+		// * 도망/회복 중에는 시야를 잃는 것이 성공적인 상황이므로
+		// * Target을 즉시 제거하면 안 된다.
+		// * 은신 판정에 플레이어 위치가 계속 필요하다.
+		// */
+		//if (!StateMachine->IsInDefensiveState())
+		//{
+		//	StateMachine->ClearTarget();
+		//	StateMachine->SetState(EEnemyStateType::Patrol);
+		//}
+
+		StateMachine->OnTargetMissed();
 	}
 }
 
@@ -123,10 +126,78 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
 	UEnemyStateMachineComponent* StateMachine = Enemy->GetStateMachineComponent();
 	if (!StateMachine) return;
 
-	const FVector HeardLocation = Stimulus.StimulusLocation;
+	if (StateMachine->GetCurrentState() == EEnemyStateType::Chase
+		|| StateMachine->GetCurrentState() == EEnemyStateType::Attack)
+	{
+		return;
+	}
 
-	StateMachine->SetLastHeardLocation(HeardLocation);
-	StateMachine->SetState(EEnemyStateType::Investigate);
+	if (!StateMachine->IsInDefensiveState())
+	{
+		const FVector HeardLocation = Stimulus.StimulusLocation;
+
+		StateMachine->SetLastHeardLocation(HeardLocation);
+		StateMachine->SetState(EEnemyStateType::Investigate);
+	}
+}
+
+bool AEnemyBaseAIController::FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const
+{
+	UWorld* World = GetWorld();
+	if (!World) { return false; }
+
+	const FVector TraceStart = InputLocation + FVector::UpVector * GroundTraceHeight;
+	const FVector TraceEnd = InputLocation - FVector::UpVector * GroundTraceDepth;
+
+	//FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AIMoveGroundTrace), false);
+	FCollisionQueryParams QueryParams;
+
+	if (const APawn* ControlledPawn = GetPawn())
+	{
+		QueryParams.AddIgnoredActor(ControlledPawn);
+	}
+
+	FHitResult GroundHit;
+
+	const bool bGroundHit = World->LineTraceSingleByChannel(
+		GroundHit,
+		TraceStart,
+		TraceEnd,
+		ECC_Visibility,
+		QueryParams
+	);
+
+	if (!bGroundHit)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FindGroundNavLocation: Ground not found. Input: %s"), *InputLocation.ToString());
+		return false;
+	}
+
+	UNavigationSystemV1* NavigationSystem = UNavigationSystemV1::GetCurrent(World);
+
+	if (!NavigationSystem)
+	{
+		UE_LOG(LogTemp, Error,TEXT("FindGroundNavLocation: NavigationSystem is null"));
+		return false;
+	}
+
+	FNavLocation ProjectedLocation;
+
+	const bool bProjected = NavigationSystem->ProjectPointToNavigation(
+			GroundHit.ImpactPoint,
+			ProjectedLocation,
+			NavProjectionExtent
+		);
+
+	if (!bProjected)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FindGroundNavLocation: Failed to project ground point " "to NavMesh. Ground: %s"),*GroundHit.ImpactPoint.ToString());
+
+		return false;
+	}
+
+	OutLocation = ProjectedLocation.Location;
+	return true;
 }
 
 AEnemyBase* AEnemyBaseAIController::GetEnemyCharacter() const
@@ -140,7 +211,7 @@ void AEnemyBaseAIController::MoveToTarget(AActor* Target)
 
 	FAIMoveRequest MoveRequest;
 	MoveRequest.SetGoalActor(Target);
-	MoveRequest.SetAcceptanceRadius(120.f);
+	MoveRequest.SetAcceptanceRadius(50.f);
 	MoveRequest.SetUsePathfinding(true);
 
 	FNavPathSharedPtr NavPath;
@@ -151,11 +222,59 @@ void AEnemyBaseAIController::MoveToLocationPoint(const FVector& Location, float 
 {
 	FAIMoveRequest MoveRequest;
 	MoveRequest.SetGoalLocation(Location);
+	MoveRequest.SetProjectGoalLocation(true);
 	MoveRequest.SetAcceptanceRadius(AcceptanceRadius);
 	MoveRequest.SetUsePathfinding(true);
 
 	FNavPathSharedPtr NavPath;
-	MoveTo(MoveRequest, &NavPath);
+	FPathFollowingRequestResult PathFollowingRequestResult = MoveTo(MoveRequest, &NavPath);
+
+	if (!NavPath)
+	{
+		UE_LOG(LogTemp, Error, TEXT("No Path!!!!!!!!!"));
+	}
+}
+
+void AEnemyBaseAIController::MoveToLocationPoint_Upgrade(const FVector& Location, float AcceptanceRadius)
+{
+	FVector CorrectedLocation;
+
+	if (!FindGroundNavLocation(Location, CorrectedLocation))
+	{
+		UE_LOG(LogTemp, Error, TEXT("MoveToLocationPoint: Failed to correct destination. ""Input: %s"), *Location.ToString());
+		return;
+	}
+
+	FAIMoveRequest MoveRequest;
+	MoveRequest.SetGoalLocation(CorrectedLocation);
+	MoveRequest.SetAcceptanceRadius(FMath::Max(0.f, AcceptanceRadius));
+	MoveRequest.SetUsePathfinding(true);
+	MoveRequest.SetProjectGoalLocation(false);
+	MoveRequest.SetAllowPartialPath(false);
+
+	FNavPathSharedPtr NavPath;
+	const FPathFollowingRequestResult MoveResult = MoveTo(MoveRequest, &NavPath);
+
+	//switch (MoveResult.Code)
+	//{
+	//case EPathFollowingRequestResult::RequestSuccessful:
+	//	UE_LOG(LogTemp, Error, TEXT("Move request succeeded. Input: %s, Corrected: %s"), *Location.ToString(), *CorrectedLocation.ToString());
+	//	break;
+
+	//case EPathFollowingRequestResult::AlreadyAtGoal:
+	//	UE_LOG(LogTemp, Error, TEXT("Already at goal: %s"), *CorrectedLocation.ToString());
+	//	break;
+
+	//case EPathFollowingRequestResult::Failed:
+	//default:
+	//	UE_LOG(LogTemp, Error, TEXT("Move request failed. Input: %s, Corrected: %s"), *Location.ToString(), *CorrectedLocation.ToString());
+	//	break;
+	//}
+
+	if (!NavPath.IsValid() && MoveResult.Code == EPathFollowingRequestResult::RequestSuccessful)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Move request succeeded but NavPath is invalid"));
+	}
 }
 
 void AEnemyBaseAIController::StopAIMovement()

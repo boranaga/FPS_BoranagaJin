@@ -27,7 +27,7 @@ void UAN_ReloadingEnd::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBas
 	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Owner);
 	if (!Player) return;
 
-	UInventorySystemComponent* WeaponSystem = Player->GetWeaponSystemComponent();
+	UInventorySystemComponent* WeaponSystem = Player->GetInventorySystemComponent();
 	if (!WeaponSystem) return;
 
 	AActor* CurrentWeapon = WeaponSystem->GetCurrentWeapon();

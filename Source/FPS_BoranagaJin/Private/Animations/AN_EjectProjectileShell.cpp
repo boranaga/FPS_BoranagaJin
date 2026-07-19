@@ -27,7 +27,7 @@ void UAN_EjectProjectileShell::Notify(USkeletalMeshComponent* MeshComp, UAnimSeq
 	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Owner);
 	if (!Player) return;
 
-	UInventorySystemComponent* WeaponSystem = Player->GetWeaponSystemComponent();
+	UInventorySystemComponent* WeaponSystem = Player->GetInventorySystemComponent();
 	if (!WeaponSystem) return;
 
 	AActor* CurrentWeapon = WeaponSystem->GetCurrentWeapon();

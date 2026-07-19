@@ -3,11 +3,13 @@
 
 #include "UI/UIManagerComponent.h"
 #include "UI/StaminaWidget.h"
+#include "UI/HealthWidget.h"
 #include "UI/PlayerDisplayWidget.h"
 #include "UI/InteractionWidget.h"
 #include "UI/ThrowableWeaponInventoryWidget.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
+#include "Characters/HealthComponent.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -65,6 +67,9 @@ void UUIManagerComponent::InitUIManagerComponent()
 
 		CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
 		CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
+	
+
+		CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
 	}
 }
 
@@ -90,9 +95,19 @@ void UUIManagerComponent::BeginPlay()
 		StaminaWidget = CreateWidget<UStaminaWidget>(GetWorld(), StaminaWidgetClass);
 		if (StaminaWidget)
 		{
-			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
+			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
 			RegisterUIWidget(StaminaWidget);
 			StaminaWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
+
+	if (HealthWidgetClass)
+	{
+		HealthWidget = CreateWidget<UHealthWidget>(GetWorld(), HealthWidgetClass);
+		if (HealthWidget)
+		{
+			RegisterUIWidget(HealthWidget);
+			HealthWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
 
@@ -101,7 +116,7 @@ void UUIManagerComponent::BeginPlay()
 		PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
 		if (PlayerDisplayWidget)
 		{
-			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), PlayerDisplayWidget->GetUIType());
+			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), PlayerDisplayWidget->GetUIType());
 			RegisterUIWidget(PlayerDisplayWidget);
 			PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -112,7 +127,7 @@ void UUIManagerComponent::BeginPlay()
 		InteractionWidget = CreateWidget<UInteractionWidget>(GetWorld(), InteractionWidgetClass);
 		if (InteractionWidget)
 		{
-			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
+			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
 			RegisterUIWidget(InteractionWidget);
 			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -123,7 +138,7 @@ void UUIManagerComponent::BeginPlay()
 		ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(GetWorld(), ThrowableWeaponInventoryWidgetClass);
 		if (ThrowableWeaponInventoryWidget)
 		{
-			UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), ThrowableWeaponInventoryWidget->GetUIType());
+			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), ThrowableWeaponInventoryWidget->GetUIType());
 			RegisterUIWidget(ThrowableWeaponInventoryWidget);
 			ThrowableWeaponInventoryWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -286,7 +301,7 @@ void UUIManagerComponent::InitStaminaBar(float maxstamina)
 	if (StaminaWidget)
 	{
 		StaminaWidget->InitStaminaBar(maxstamina);
-		UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::InitStaminaBar(float maxstamina)!!!"));
+		//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::InitStaminaBar(float maxstamina)!!!"));
 	}
 }
 void UUIManagerComponent::SetStaminaBarPercent(float const Value)

@@ -717,7 +717,7 @@ bool UInventorySystemComponent::IsInViewport(FVector2D ActorScreenPosition, floa
 
 bool UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)
 {
-	UE_LOG(LogTemp, Error, TEXT("UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)"));
+	//UE_LOG(LogTemp, Error, TEXT("UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)"));
 
 	int32 WeaponIdx = FindItemSlot(WeaponInventory, MagazinePickUp->GetItemName());
 	if (WeaponIdx != INDEX_NONE)
@@ -836,7 +836,7 @@ void UInventorySystemComponent::SwitchToPreviousWeapon()
 		}
 		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
 		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
@@ -854,7 +854,7 @@ void UInventorySystemComponent::SwitchToNextWeapon()
 		CurrWeaponIdx = (CurrWeaponIdx + 1) % WeaponInventory.Num();
 		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
 		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
@@ -871,7 +871,7 @@ void UInventorySystemComponent::SwitchToIndex(int32 idx)
 		CurrWeaponIdx = idx;
 		ChangeWeapon(CurrWeaponIdx);
 
-		UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
 		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }

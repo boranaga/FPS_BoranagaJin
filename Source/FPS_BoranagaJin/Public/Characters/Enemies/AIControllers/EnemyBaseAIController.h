@@ -37,11 +37,23 @@ private:
 
 	void HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus);
 	void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
+
+private:
+	bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
+protected:
+	UPROPERTY(EditAnywhere, Category = "AI|Movement")
+	float GroundTraceHeight = 300.f;
+	UPROPERTY(EditAnywhere, Category = "AI|Movement")
+	float GroundTraceDepth = 500.f;
+	UPROPERTY(EditAnywhere, Category = "AI|Movement")
+	FVector NavProjectionExtent = FVector(100.f, 100.f, 300.f);
+
 public:
 	AEnemyBase* GetEnemyCharacter() const;
 
 	void MoveToTarget(AActor* Target);
 	void MoveToLocationPoint(const FVector& Location, float AcceptanceRadius = 50.f);
+	void MoveToLocationPoint_Upgrade(const FVector& Location, float AcceptanceRadius = 50.f);
 	void StopAIMovement();
 
 	void DisablePerception();

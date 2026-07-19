@@ -40,7 +40,7 @@ void UStaminaWidget::InitStaminaBar(float maxstamina)
     MaxStamina = maxstamina;
     StaminaBar->SetPercent(1.f);
 
-    UE_LOG(LogTemp, Error, TEXT("UStaminaWidget::InitStaminaBar(float maxstamina)!!!"));
+    //UE_LOG(LogTemp, Error, TEXT("UStaminaWidget::InitStaminaBar(float maxstamina)!!!"));
 }
 void UStaminaWidget::SetStaminaBarPercent(float const Value)
 {

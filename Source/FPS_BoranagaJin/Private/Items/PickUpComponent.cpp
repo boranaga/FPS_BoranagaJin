@@ -33,7 +33,7 @@ void UPickUpComponent::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedCompo
 		// Unregister from the Overlap Event so it is no longer triggered
 		OnComponentBeginOverlap.RemoveAll(this);
 
-		UE_LOG(LogTemp, Warning, TEXT("Weapon Collided"));
+		//UE_LOG(LogTemp, Warning, TEXT("Weapon Collided"));
 	}
 }
 

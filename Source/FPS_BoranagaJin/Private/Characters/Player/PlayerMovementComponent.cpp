@@ -341,7 +341,7 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 		{
 			if (bIsRunning)
 			{
-				if (AWeapon* CurrentWeapon = CharacterPlayer->GetWeaponSystemComponent()->GetCurrentWeapon())
+				if (AWeapon* CurrentWeapon = CharacterPlayer->GetInventorySystemComponent()->GetCurrentWeapon())
 				{
 					EWeaponStateType CurrentWeaponState = CurrentWeapon->GetCurrentState()->GetWeaponStateType();
 					if (CurrentWeaponState == EWeaponStateType::WeaponStateType_Firing)
@@ -1362,20 +1362,26 @@ void UPlayerMovementComponent::TickDead(float DeltaTime)
 	}
 
 	FVector DefaultCameraRelativeLocation = CharacterPlayer->GetDefaultCameraRelativeLocation();
-	FVector TargetCameraLocation = DefaultCameraRelativeLocation + DeathCameraLocationCurve->GetVectorValue(ElapsedTime);
-	CharacterPlayer->GetCameraComponent()->SetRelativeLocation(TargetCameraLocation);
 
-	FVector DeathRotationVector = DeathCameraRotationCurve->GetVectorValue(ElapsedTime);
-	FRotator TargetControlRotation = DeathStartControlRotation + FRotator(DeathRotationVector.Y, DeathRotationVector.Z, DeathRotationVector.X);
-	if (FRotator::NormalizeAxis(TargetControlRotation.Pitch) < -90.f)
+	if (DeathCameraLocationCurve)
 	{
-		TargetControlRotation.Pitch = -90.f;
+		FVector TargetCameraLocation = DefaultCameraRelativeLocation + DeathCameraLocationCurve->GetVectorValue(ElapsedTime);
+		CharacterPlayer->GetCameraComponent()->SetRelativeLocation(TargetCameraLocation);
 	}
-	else if (FRotator::NormalizeAxis(TargetControlRotation.Pitch) > 90.f)
+	if (DeathCameraRotationCurve)
 	{
-		TargetControlRotation.Pitch = 90.f;
+		FVector DeathRotationVector = DeathCameraRotationCurve->GetVectorValue(ElapsedTime);
+		FRotator TargetControlRotation = DeathStartControlRotation + FRotator(DeathRotationVector.Y, DeathRotationVector.Z, DeathRotationVector.X);
+		if (FRotator::NormalizeAxis(TargetControlRotation.Pitch) < -90.f)
+		{
+			TargetControlRotation.Pitch = -90.f;
+		}
+		else if (FRotator::NormalizeAxis(TargetControlRotation.Pitch) > 90.f)
+		{
+			TargetControlRotation.Pitch = 90.f;
+		}
+		GetController()->SetControlRotation(TargetControlRotation);
 	}
-	GetController()->SetControlRotation(TargetControlRotation);
 
 	if (!IsGrounded())
 	{
@@ -1701,15 +1707,18 @@ bool UPlayerMovementComponent::IsGrounded()
 	return true;
 }
 
-void UPlayerMovementComponent::NotifyDamageData(EGameDamageType DamageType, const FVector& DamageDirection, float DamageForce)
+void UPlayerMovementComponent::NotifyDamageData(const FDamageParams& DamageInfo)
 {
-	ReceivedDamageType = DamageType;
+	ReceivedDamageType = DamageInfo.DamageType;
 	LastDamagedWorldTime = GetWorld()->GetTimeSeconds();
-	ReceivedDamageDirection = DamageDirection;
-	ReceivedDamageForce = DamageForce;
+	ReceivedDamageDirection = DamageInfo.HitDirection;
+	ReceivedDamageForce = DamageInfo.DamageAmount; //TODO: 수정 필요
 
-	switch (DamageType)
+	switch (ReceivedDamageType)
 	{
+	case EGameDamageType::Melee:
+		bDamageSlowDebuff = true;
+		break;
 	case EGameDamageType::Charge:
 		if (CurrentMovementState == EMovementState::EMS_Move ||
 			CurrentMovementState == EMovementState::EMS_Airborne)

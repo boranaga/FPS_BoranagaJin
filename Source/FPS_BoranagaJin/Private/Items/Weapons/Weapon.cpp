@@ -682,9 +682,9 @@ bool AWeapon::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
 	//---------------------------------------------
 	//RightHandToAimSocketOffset = this->GetSocketLocation(FName(TEXT("Aim"))) - Character->GetMesh()->GetSocketLocation(FName("Gun"));
 	RightHandToAimSocketOffset = WeaponMesh->GetSocketLocation(FName(TEXT("Aim"))) - Character->GetArmMesh()->GetBoneLocation(FName(TEXT("hand_r")));
-	if (Character->GetWeaponSystemComponent() && Character->GetWeaponSystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
+	if (Character->GetInventorySystemComponent() && Character->GetInventorySystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
 	{
-		Character->GetWeaponSystemComponent()->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
+		Character->GetInventorySystemComponent()->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
 	}
 
 	// Set AimSocketTransform
@@ -1191,9 +1191,9 @@ void AWeapon::ZoomIn()
 {
 	bIsZoomIn = true;
 
-	if (Character->GetWeaponSystemComponent() && Character->GetWeaponSystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
+	if (Character->GetInventorySystemComponent() && Character->GetInventorySystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
 	{
-		Character->GetWeaponSystemComponent()->ZoomIn(true);
+		Character->GetInventorySystemComponent()->ZoomIn(true);
 		StartCameraSettingChange(&CamSetting_ZoomIn);
 	}
 	ActivateAimUIWidget(false);
@@ -1203,9 +1203,9 @@ void AWeapon::ZoomOut()
 {
 	bIsZoomIn = false;
 
-	if (Character->GetWeaponSystemComponent() && Character->GetWeaponSystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
+	if (Character->GetInventorySystemComponent() && Character->GetInventorySystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
 	{
-		Character->GetWeaponSystemComponent()->ZoomIn(false);
+		Character->GetInventorySystemComponent()->ZoomIn(false);
 		StartCameraSettingChange(&CamSetting_Default);
 	}
 	ActivateAimUIWidget(true);
@@ -1550,7 +1550,7 @@ void AWeapon::EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip)
 	else
 	{
 		UnequipWeapon(TargetCharacter);
-		if (UActorComponent* WeaponSystem = TargetCharacter->GetWeaponSystemComponent())
+		if (UActorComponent* WeaponSystem = TargetCharacter->GetInventorySystemComponent())
 		{
 			if (IWeaponInterface* WeaponInterface = Cast<IWeaponInterface>(WeaponSystem))
 			{

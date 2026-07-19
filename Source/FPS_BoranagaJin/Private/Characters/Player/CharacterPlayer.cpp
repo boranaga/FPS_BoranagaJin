@@ -3,6 +3,8 @@
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/PlayerMovementComponent.h"
+#include "Characters/HealthComponent.h"
+#include "Characters/BloodTrailComponent.h"
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Items/InventorySystemComponent.h"
@@ -10,7 +12,6 @@
 #include "Instance/DefaultGameInstance.h"
 #include "Data/PlayerSoundData.h"
 #include "UI/UIManagerComponent.h"
-
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -57,11 +58,18 @@ ACharacterPlayer::ACharacterPlayer()
 
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 
-	// <WeaponSystem>
-	InventorySystem = CreateDefaultSubobject<UInventorySystemComponent>(TEXT("WeaponSystem"));
+	// <HealthComponent>
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+
+	// <InventorySystem>
+	InventorySystem = CreateDefaultSubobject<UInventorySystemComponent>(TEXT("InventorySystem"));
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel8, ECR_Ignore);
 	ArmMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// <BloodTrailComponent>
+	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
+
 
 	// for damage interactions with enemies
 	//AttackTokensComponent = CreateDefaultSubobject<UACPlayerAttackTokens>(TEXT("Attack Tokens Component"));
@@ -94,6 +102,8 @@ ACharacterPlayer::ACharacterPlayer()
 	SlideAudioComponent = CreateDefaultSubobject<UAudioComponent>("SlideAudioComponent");
 	SlideAudioComponent->SetupAttachment(RootComponent);
 	SlideAudioComponent->bAutoActivate = false;
+
+	Tags.AddUnique(TEXT("Player"));
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -110,6 +120,10 @@ void ACharacterPlayer::BeginPlay()
 	SlideAudioComponent->SetSound(PlayerSound_DataAsset->SlideSound.Sound);
 	SlideAudioComponent->OnAudioPlaybackPercent.AddDynamic(this, &ACharacterPlayer::HandleSlideAudioPlayback);
 
+	if (HealthComponent)
+	{
+		HealthComponent->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
+	}
 
 	//GetDamageSystemComponent()->OnDamaged.AddUObject(CameraMovementComponent, &UPlayerCameraComponent::OnDamaged);
 	//GetDamageSystemComponent()->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
@@ -189,25 +203,64 @@ void ACharacterPlayer::SetLookInputVector2DZero()
 
 float ACharacterPlayer::ReceiveDamage(const FDamageParams& DamageInfo)
 {
-	if (IsDead())
+	if (!HealthComponent || HealthComponent->IsDead()) { return 0.f; }
+
+	float ActualDamage = DamageInfo.DamageAmount;
+
+	if (DamageInfo.bIsCritical)
 	{
-		return 0.f;
+		ActualDamage *= 2.f; //TODO: Set Critical Damage as Variable
 	}
 
-	CurrentHealth -= DamageInfo.DamageAmount;
+	UE_LOG(LogTemp, Error, TEXT("float ACharacterPlayer::ReceiveDamage(const FDamageParams& DamageInfo)"));
+	const float AppliedDamage = HealthComponent->ApplyDamage(ActualDamage);
 
-	if (CurrentHealth <= 0.f)
+	AActor* DamageInstigator = nullptr;
+
+	if (DamageInfo.InstigatorController)
 	{
-		CurrentHealth = 0.f;
-		// Player Dead 처리
+		DamageInstigator = DamageInfo.InstigatorController->GetPawn();
 	}
 
-	return DamageInfo.DamageAmount;
+	if (!DamageInstigator)
+	{
+		DamageInstigator = DamageInfo.DamageCauser;
+	}
+
+	if (!HealthComponent->IsDead())
+	{
+	}
+
+	if (BloodTrailComponent)
+	{
+		BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
+	}
+
+	if (MovementComponent)
+	{
+		MovementComponent->NotifyDamageData(DamageInfo);
+	}
+
+	return AppliedDamage;
 }
 
 bool ACharacterPlayer::IsDead() const
 {
-	return CurrentHealth <= 0.f;
+	if (HealthComponent)
+	{
+		return HealthComponent->IsDead();
+	}
+	return false;
+}
+
+float ACharacterPlayer::GetCurrentHealth() const
+{
+	return HealthComponent ? HealthComponent->GetCurrentHealth() : 0.f;
+}
+
+float ACharacterPlayer::GetMaxHealth() const
+{
+	return HealthComponent ? HealthComponent->GetMaxHealth() : 0.f;
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
@@ -251,7 +304,7 @@ void ACharacterPlayer::PossessedBy(AController* NewController)
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 
 
-			UE_LOG(LogTemp, Error, TEXT("Player input mapping!"));
+			//UE_LOG(LogTemp, Error, TEXT("Player input mapping!"));
 		}
 	}
 }
@@ -421,7 +474,7 @@ void ACharacterPlayer::HandleMoveInput(const FInputActionValue& Value)
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 
@@ -464,7 +517,7 @@ void ACharacterPlayer::StartJumpInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetJumpPressed(true);
@@ -474,7 +527,7 @@ void ACharacterPlayer::StopJumpInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetJumpPressed(false);
@@ -484,7 +537,7 @@ void ACharacterPlayer::StartShiftInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetShiftPressed(true);
@@ -494,7 +547,7 @@ void ACharacterPlayer::StopShiftInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetShiftPressed(false);
@@ -504,7 +557,7 @@ void ACharacterPlayer::StartCrouchInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetCrouchPressed(true);
@@ -514,7 +567,7 @@ void ACharacterPlayer::StopCrouchInput()
 {
 	if (!MovementComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
+		//UE_LOG(LogTemp, Error, TEXT("Player movement component is not valid!"));
 		return;
 	}
 	MovementComponent->SetCrouchPressed(false);
@@ -556,6 +609,9 @@ void ACharacterPlayer::CalculateMappedSoundValue(const FPlayerSoundData& Data, f
 
 void ACharacterPlayer::OnDamaged()
 {
+	//TODO: Damage 받을시 처리 필요
+	// 일시적으로 속도 느려짐과 같은 효과 필요
+	// Damage Type에 따른 서로 다른 reaction 필요
 }
 
 //bool ACharacterPlayer::TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser)

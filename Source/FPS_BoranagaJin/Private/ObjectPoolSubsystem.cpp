@@ -6,7 +6,7 @@ void UObjectPoolSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	UE_LOG(LogTemp, Warning, TEXT("ObjectPoolSubsystem Initialized"));
+	//UE_LOG(LogTemp, Warning, TEXT("ObjectPoolSubsystem Initialized"));
 }
 
 void UObjectPoolSubsystem::Deinitialize()

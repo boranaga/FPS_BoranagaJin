@@ -80,7 +80,7 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 			{
 				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Count);
 
-				UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
+				//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
 			}
 		}
 	}

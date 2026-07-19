@@ -92,7 +92,7 @@ void UTargetingSkillWidget::ApplyCooltimeBarImage(float CurrentCooltime)
 	int32 TextureNum = HPBarTextures.Num();
 	if (TextureNum == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UTargetingSkillWidget::ApplyCooltimeBarImage - HPBarTextures array is empty."));
+		//UE_LOG(LogTemp, Warning, TEXT("UTargetingSkillWidget::ApplyCooltimeBarImage - HPBarTextures array is empty."));
 		return;
 	}
 
@@ -132,6 +132,6 @@ void UTargetingSkillWidget::ApplyCooltimeBarImage(float CurrentCooltime)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UTargetingSkillWidget::ApplyCooltimeBarImage - CoolTimeBar is invalid or TextureIndex %d is out of bounds (Array Size: %d)."), TextureIndex, TextureNum);
+		//UE_LOG(LogTemp, Warning, TEXT("UTargetingSkillWidget::ApplyCooltimeBarImage - CoolTimeBar is invalid or TextureIndex %d is out of bounds (Array Size: %d)."), TextureIndex, TextureNum);
 	}
 }

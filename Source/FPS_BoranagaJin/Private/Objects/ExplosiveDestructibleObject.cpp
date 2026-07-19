@@ -61,7 +61,7 @@ void AExplosiveDestructibleObject::Explode(const FVector& ExplosionLocation)
 
 			if (!TargetActor) continue;
 			if (TargetActor == this) continue;
-			if (!TargetActor->Implements<UDamageInterface>()) continue;
+			if (!TargetActor->Implements<UDamageableInterface>()) continue;
 
 			const FVector TargetLocation = TargetActor->GetActorLocation();
 			const float Distance = FVector::Distance(ExplosionLocation, TargetLocation);
@@ -70,7 +70,7 @@ void AExplosiveDestructibleObject::Explode(const FVector& ExplosionLocation)
 			const FVector ExplosionDirection =
 				(TargetLocation - ExplosionLocation).GetSafeNormal();
 
-			IDamageInterface* Damageable = Cast<IDamageInterface>(TargetActor);
+			IDamageableInterface* Damageable = Cast<IDamageableInterface>(TargetActor);
 
 			//------------
 			FDamageParams Damage; //TODO: ÂøÅº À§Ä¡

@@ -20,7 +20,7 @@ void ADefaultGameMode::BeginPlay()
 	if (UObjectPoolSubsystem* Pool =
 		GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UObjectPoolSubsystem Created!!!"));
+		//UE_LOG(LogTemp, Warning, TEXT("UObjectPoolSubsystem Created!!!"));
 
 		//Pool->PrewarmPool(ProjectileClass, 50);
 		//Pool->PrewarmPool(ItemPickupClass, 30);

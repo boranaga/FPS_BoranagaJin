@@ -3,13 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Characters/GameDamageType.h"
+#include "Characters/DamageParams.h"
 #include "GameFramework/PawnMovementComponent.h"
 #include "Characters/Player/MovementTriggerEnums.h"
 #include "PlayerMovementComponent.generated.h"
 
 class UCurveVector;
-enum class EDamageTypeTest;
+
 class AController;
 //class APlayerController;
 class ACharacterPlayer;
@@ -71,26 +71,23 @@ struct FWallInfo
 	double TimeStamp = 0;
 };
 
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMoveSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAirborneSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMantleSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDownedSignature);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunEndSignature);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunSignature); //
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallRunEndSignature); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideEndSignature);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideSignature); //
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSlideEndSignature); //
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLandSignature, float, ZSpeed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPrimaryJumpSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallJumpSignature);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLandSignature, float, ZSpeed); //
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPrimaryJumpSignature); //
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWallJumpSignature); //
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDashSignature, FVector2D, InputVector); //
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDashEndSignature); //
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDashSignature, FVector2D, InputVector);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDashEndSignature);
 
 UCLASS()
 class FPS_BORANAGAJIN_API UPlayerMovementComponent : public UPawnMovementComponent
@@ -137,8 +134,7 @@ public:
 
 	bool GetIsInvincible() const { return bIsInvincible; }
 
-	void NotifyDamageData(EGameDamageType DamageType, const FVector& DamageDirection, float DamageForce);
-
+	void NotifyDamageData(const FDamageParams& DamageInfo);
 	void NotifyGravityLaunchForce(const FVector& Direction, float ForceAmount);
 
 	void NotifyJumpPadLaunchForce(float ForceAmount);
@@ -415,20 +411,13 @@ protected:
 #pragma endregion Mantle
 
 #pragma region Damage
-
 	UPROPERTY(EditAnywhere, Category = "Movement|Damage")
 	EGameDamageType ReceivedDamageType;
-
 	bool bDamageSlowDebuff = false;
-
 	float LastDamagedWorldTime = 0.f;
-
 	float DamageSlowDebuffDuration = 1.f;
-
 	float DamageSlowDebuffMultiplier = 0.3f;
-
 	bool bIsInvincible = false;
-
 #pragma endregion Damage
 
 #pragma region Downed

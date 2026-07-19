@@ -39,7 +39,7 @@ void UPlayerCharacterAnimInstance::NativeInitializeAnimation()
 		SetAimPoint();
 		CurrentWeaponStateType = EWeaponStateType::WeaponStateType_None;
 
-		if (PlayerCharacter->GetWeaponSystemComponent())
+		if (PlayerCharacter->GetInventorySystemComponent())
 		{
 			//SetAimSocket();
 		}
@@ -72,7 +72,7 @@ void UPlayerCharacterAnimInstance::NativeUpdateAnimation(float DeltaTime)
 	if (PlayerCharacter)
 	{
 		// <Weapon System>
-		bIsZoomIn = PlayerCharacter->GetWeaponSystemComponent()->IsZoomIn();
+		bIsZoomIn = PlayerCharacter->GetInventorySystemComponent()->IsZoomIn();
 		//ScreenCenterWorldLocation = Character->GetWeaponSystem()->GetScreenCenterWorldPosition();
 		//TargetRightHandWorldLocation = Character->GetWeaponSystem()->GetTargetRightHandWorldLocation();
 		SetTargetRightHandTransform();
@@ -81,7 +81,7 @@ void UPlayerCharacterAnimInstance::NativeUpdateAnimation(float DeltaTime)
 		//TODO: Update 말고 트리거로 작동하게 해야함
 		//SetAimSocket();
 		//SetAimPoint();
-		if (PlayerCharacter->GetWeaponSystemComponent())
+		if (PlayerCharacter->GetInventorySystemComponent())
 		{
 			//SetAimSocket();
 			UpdateRightHandSocket(DeltaTime);
@@ -151,19 +151,19 @@ void UPlayerCharacterAnimInstance::LoadAnimationData()
 
 void UPlayerCharacterAnimInstance::UpdateWeapon()
 {
-	if (IsValid(PlayerCharacter->GetWeaponSystemComponent())
-		&& PlayerCharacter->GetWeaponSystemComponent() != nullptr)
+	if (IsValid(PlayerCharacter->GetInventorySystemComponent())
+		&& PlayerCharacter->GetInventorySystemComponent() != nullptr)
 	{
-		if (PlayerCharacter->GetWeaponSystemComponent()->GetWeaponNum() != 0
-			&& IsValid(PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon())
-			&& PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon() != nullptr)
+		if (PlayerCharacter->GetInventorySystemComponent()->GetWeaponNum() != 0
+			&& IsValid(PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
+			&& PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon() != nullptr)
 		{
 			bHasWeapon = true;
 
-			AimSocketRelativeTransform = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
+			AimSocketRelativeTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
 
 			//-------------------------------------------------------------
-			CurrentWeaponStateType = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
+			CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
 
 			//if (CurrentWeaponStateType == EWeaponStateType::WeaponStateType_Firing)
 			//{
@@ -175,19 +175,19 @@ void UPlayerCharacterAnimInstance::UpdateWeapon()
 			//}
 			//-------------------------------------------------------------
 
-			if (CurrentWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon())
+			if (CurrentWeapon != PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
 			{
 				// <RightHandSocket>
-				RightHandSocketTransform = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform();
-				RightHandSocketTransform_Crouch = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Crouch();
+				RightHandSocketTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform();
+				RightHandSocketTransform_Crouch = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Crouch();
 				//RightHandSocketTransform_Targeting = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting();
 				//RightHandSocketTransform_Targeting_Crouch = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting_Crouch();
 
 				// <Recoil>
-				ArmRecoil = *PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo(); //TODO: 이제 AddArmRecoil에서 struct 정보 가져오기 때문에 이 줄은 없어도 될듯
-				ArmRecoil_Hand = *PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_Hand();
-				ArmRecoil_UpperArm = *PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_UpperArm();
-				ArmRecoil_LowerArm = *PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_LowerArm();
+				ArmRecoil = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo(); //TODO: 이제 AddArmRecoil에서 struct 정보 가져오기 때문에 이 줄은 없어도 될듯
+				ArmRecoil_Hand = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_Hand();
+				ArmRecoil_UpperArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_UpperArm();
+				ArmRecoil_LowerArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_LowerArm();
 			}
 
 			//if (CurrentSkillWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon())
@@ -238,14 +238,14 @@ void UPlayerCharacterAnimInstance::SetAimSocket()
 	//	AimSocketRelativeTransform = AimSocketTransform.GetRelativeTransform(RightHandTransform);
 	//}
 
-	if (IsValid(PlayerCharacter->GetWeaponSystemComponent())
-		&& PlayerCharacter->GetWeaponSystemComponent() != nullptr)
+	if (IsValid(PlayerCharacter->GetInventorySystemComponent())
+		&& PlayerCharacter->GetInventorySystemComponent() != nullptr)
 	{
-		if (PlayerCharacter->GetWeaponSystemComponent()->GetWeaponNum() != 0
-			&& IsValid(PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon())
-			&& PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon() != nullptr)
+		if (PlayerCharacter->GetInventorySystemComponent()->GetWeaponNum() != 0
+			&& IsValid(PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
+			&& PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon() != nullptr)
 		{
-			FTransform AimSocketTransform = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetWeaponMesh()->GetSocketTransform(FName(TEXT("Aim")));
+			FTransform AimSocketTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetWeaponMesh()->GetSocketTransform(FName(TEXT("Aim")));
 			FTransform IKHandGunTransform = PlayerCharacter->GetArmMesh()->GetSocketTransform(FName(TEXT("ik_hand_gun")));
 
 			AimSocketRelativeTransform = AimSocketTransform.GetRelativeTransform(IKHandGunTransform);
@@ -280,18 +280,18 @@ void UPlayerCharacterAnimInstance::SetAimPoint()
 
 void UPlayerCharacterAnimInstance::SetTargetRightHandTransform()
 {
-	if (IsValid(PlayerCharacter->GetWeaponSystemComponent())
-		&& PlayerCharacter->GetWeaponSystemComponent() != nullptr)
+	if (IsValid(PlayerCharacter->GetInventorySystemComponent())
+		&& PlayerCharacter->GetInventorySystemComponent() != nullptr)
 	{
-		if (PlayerCharacter->GetWeaponSystemComponent()->GetWeaponNum() != 0
-			&& IsValid(PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon())
-			&& PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon() != nullptr)
+		if (PlayerCharacter->GetInventorySystemComponent()->GetWeaponNum() != 0
+			&& IsValid(PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
+			&& PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon() != nullptr)
 		{
 			//FTransform RootTransform = Character->GetMesh()->GetBoneTransform(FName(TEXT("ik_hand_root")), ERelativeTransformSpace::RTS_World);
 			FTransform RootTransform = PlayerCharacter->GetArmMesh()->GetComponentTransform();
 			
 			FTransform CameraTransform = PlayerCharacter->GetCameraComponent()->GetComponentTransform();
-			FTransform WeaponAimSocketTransform = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetWeaponMesh()->GetSocketTransform(FName(TEXT("Aim")));
+			FTransform WeaponAimSocketTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetWeaponMesh()->GetSocketTransform(FName(TEXT("Aim")));
 			FTransform RightHandTransform = PlayerCharacter->GetArmMesh()->GetBoneTransform(FName(TEXT("hand_r")));
 
 			FTransform CameraRelativeTransform = CameraTransform.GetRelativeTransform(RootTransform);
@@ -316,11 +316,11 @@ void UPlayerCharacterAnimInstance::LogTransform(const FTransform& Transform, con
 	FRotator Rotation = Transform.Rotator();
 	FVector Scale = Transform.GetScale3D();
 
-	UE_LOG(LogTemp, Log, TEXT("%s: Location: X=%.2f, Y=%.2f, Z=%.2f | Rotation: Pitch=%.2f, Yaw=%.2f, Roll=%.2f | Scale: X=%.2f, Y=%.2f, Z=%.2f"),
-		*TransformName,
-		Location.X, Location.Y, Location.Z,
-		Rotation.Pitch, Rotation.Yaw, Rotation.Roll,
-		Scale.X, Scale.Y, Scale.Z);
+	//UE_LOG(LogTemp, Log, TEXT("%s: Location: X=%.2f, Y=%.2f, Z=%.2f | Rotation: Pitch=%.2f, Yaw=%.2f, Roll=%.2f | Scale: X=%.2f, Y=%.2f, Z=%.2f"),
+		//*TransformName,
+		//Location.X, Location.Y, Location.Z,
+		//Rotation.Pitch, Rotation.Yaw, Rotation.Roll,
+		//Scale.X, Scale.Y, Scale.Z);
 }
 
 FTransform UPlayerCharacterAnimInstance::GetLeftHandTransform()
@@ -332,7 +332,7 @@ FTransform UPlayerCharacterAnimInstance::GetTargetLeftHandTransfrom() //TODO: 수
 {
 	if (PlayerCharacter)
 	{
-		CurrentWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon();
+		CurrentWeapon = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon();
 		//CurrentSkillWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon();
 		if (CurrentWeapon)
 		{

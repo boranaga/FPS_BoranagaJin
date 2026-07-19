@@ -17,13 +17,18 @@ class UInputMappingContext;
 class UNiagaraComponent;
 
 class UPlayerMovementComponent;
+class UHealthComponent;
+class UBloodTrailComponent;
 class UPlayerCameraComponent;
 class UInventorySystemComponent;
 class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
 
+
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnUIWidgetCreated, UBaseUIWidget*, NewUIWidgetPtr);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionUIPopUp);
@@ -43,7 +48,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
 UCLASS()
-class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageInterface
+class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageableInterface
 {
 	GENERATED_BODY()
 public:
@@ -58,7 +63,8 @@ public:
 	UCameraComponent* GetCameraComponent() const { return Camera; };
 	FVector GetDefaultCameraRelativeLocation() const { return DefaultCameraRelativeLocation; };
 
-	UInventorySystemComponent* GetWeaponSystemComponent() const { return InventorySystem; }
+	UInventorySystemComponent* GetInventorySystemComponent() const { return InventorySystem; }
+
 
 	USkeletalMeshComponent* GetArmMesh() { return ArmMesh; }
 	USkeletalMeshComponent* GetHandsMesh() { return HandsMesh; }
@@ -72,17 +78,17 @@ public:
 	void UpdateLookInputVector2D(const FInputActionValue& InputValue);
 	void SetLookInputVector2DZero();
 	FVector2D GetPlayerLookInputVector() const { return PlayerLookInputVector2D; }
-	UPlayerMovementComponent* GetPlayerMovementComponent() { return MovementComponent; };
+	UPlayerMovementComponent* GetPlayerMovementComponent() { return MovementComponent; }
+	UHealthComponent* GetHealthComponent() { return HealthComponent; }
 
 	// for damage system comp and interactions with enemies
 	//UACDamageSystem* GetDamageSystemComponent() const { return DamageSystemComponent; }
 	//UACPlayerAttackTokens* GetAttackTokensComponent() const { return AttackTokensComponent; }
-	//virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) override;
+
 	virtual float ReceiveDamage(const FDamageParams& DamageInfo) override;
 	virtual bool IsDead() const override;
-
-private:
-	float CurrentHealth = 100.f;
+	float GetCurrentHealth() const;
+	float GetMaxHealth() const;
 
 public:
 	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;
@@ -137,27 +143,23 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UCameraComponent> Camera;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "MovementComponent")
 	TObjectPtr<UPlayerMovementComponent> MovementComponent;
-
-	UPROPERTY(EditAnywhere, Category = "WeaponSystem")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HealthComponent")
+	TObjectPtr<UHealthComponent> HealthComponent;
+	UPROPERTY(EditAnywhere, Category = "InventorySystemComponent")
 	TObjectPtr<UInventorySystemComponent> InventorySystem;
-
+	UPROPERTY(VisibleAnywhere, Category = "BloodTrailComponent")
+	TObjectPtr<UBloodTrailComponent> BloodTrailComponent;
 
 	// This actor component is for handling camera shakes and state-based movement
 	// IT IS NOT THE CAMERA!!
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UPlayerCameraComponent> CameraMovementComponent;
 
-	//UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage")
-	//UACDamageSystem* DamageSystemComponent;
-
 	//UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attack Tokens")
 	//UACPlayerAttackTokens* AttackTokensComponent;
-
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "BaseUI", meta = (AllowPrivateAccess = "true"))
-	//UACUIMangerComponent* UIManager;
-
+	// 
 	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "BaseUI", meta = (AllowPrivateAccess = "true"))
 	//UACHitScreenManager* HitScreenManager;
 
@@ -169,7 +171,6 @@ protected:
 	TObjectPtr<UNiagaraComponent> LeftDashEffectComponent;
 	UPROPERTY(EditDefaultsOnly, Category = "Editor Assign")
 	TObjectPtr<UNiagaraComponent> RightDashEffectComponent;
-
 
 	UPROPERTY(EditAnywhere, Category = "Editor Assign")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;

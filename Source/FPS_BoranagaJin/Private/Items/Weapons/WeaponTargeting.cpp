@@ -377,9 +377,9 @@ bool AWeaponTargeting::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
 	//---------------------------------------------
 	//RightHandToAimSocketOffset = this->GetSocketLocation(FName(TEXT("Aim"))) - Character->GetMesh()->GetSocketLocation(FName("Gun"));
 	RightHandToAimSocketOffset = WeaponMesh->GetSocketLocation(FName(TEXT("Aim"))) - Character->GetArmMesh()->GetBoneLocation(FName(TEXT("hand_r")));
-	if (Character->GetWeaponSystemComponent() && Character->GetWeaponSystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
+	if (Character->GetInventorySystemComponent() && Character->GetInventorySystemComponent()->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
 	{
-		Character->GetWeaponSystemComponent()->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
+		Character->GetInventorySystemComponent()->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
 	}
 
 	// Set AimSocketTransform
@@ -1174,14 +1174,14 @@ void AWeaponTargeting::UpdateTargetingSkillUI()
 bool AWeaponTargeting::TryTakeControl()
 {
 	if (!Character) { return false; }
-	UInventorySystemComponent* WSC = Character->GetWeaponSystemComponent();
+	UInventorySystemComponent* WSC = Character->GetInventorySystemComponent();
 	if (!WSC) { return false; }
 	return WSC->TryTakeControl(this);
 }
 void AWeaponTargeting::ReleaseControl()
 {
 	if (!Character) { return; }
-	UInventorySystemComponent* WSC = Character->GetWeaponSystemComponent();
+	UInventorySystemComponent* WSC = Character->GetInventorySystemComponent();
 	if (!WSC) { return; }
 	WSC->ReleaseControl();
 }

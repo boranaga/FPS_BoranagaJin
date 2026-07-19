@@ -20,7 +20,7 @@ class FPS_BORANAGAJIN_API UStaminaWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual EUIType GetUIType() const { return EUIType::UIType_Stamina; }
 public:
 	UPROPERTY(meta = (BindWidget))

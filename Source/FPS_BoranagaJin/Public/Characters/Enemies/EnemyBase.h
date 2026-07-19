@@ -8,10 +8,11 @@
 class ACharacterPlayer;
 class UHealthComponent;
 class UStaminaComponent;
+class UBloodTrailComponent;
 class UEnemyStateMachineComponent;
 
 UCLASS()
-class FPS_BORANAGAJIN_API AEnemyBase : public ACharacter, public IDamageInterface
+class FPS_BORANAGAJIN_API AEnemyBase : public ACharacter, public IDamageableInterface
 {
 	GENERATED_BODY()
 public:
@@ -23,6 +24,8 @@ protected:
 	TObjectPtr<UHealthComponent> HealthComponent;
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|Components")
 	TObjectPtr<UStaminaComponent> StaminaComponent;
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UBloodTrailComponent> BloodTrailComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|AI")
 	UEnemyStateMachineComponent* StateMachineComponent;
 
@@ -33,14 +36,8 @@ public:
 	float GetCurrentHealth() const;
 	float GetMaxHealth() const;
 public:
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
-	//float MaxHealth = 1000.f;
-
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
-	//float CurrentHealth = 100.f;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
-	float AttackRange = 150.f;
+	float AttackRange = 200.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat")
 	float AttackDamage = 10.f;

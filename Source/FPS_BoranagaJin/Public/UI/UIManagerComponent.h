@@ -11,6 +11,7 @@ class AFPSPlayerController;
 class ACharacterPlayer;
 class UBaseUIWidget;
 class UStaminaWidget;
+class UHealthWidget;
 class UThrowableWeaponInventoryWidget;
 
 class UPlayerDisplayWidget;
@@ -91,8 +92,6 @@ protected:
 	void InitUILayersMap();
 public:
 	void RegisterUIWidget(UBaseUIWidget* NewUIWidget);
-	
-
 #pragma endregion
 #pragma region InventoryUI
 protected:
@@ -134,6 +133,13 @@ protected:
 	void SetStaminaBarPercent(float const Value);
 	//void HideInGame(bool bHidden);
 	//void PlayFadeAnimation();
+#pragma endregion
+#pragma region HealthBar
+protected:
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "HealthWidget")
+	TSubclassOf<UHealthWidget> HealthWidgetClass;
+	UPROPERTY()
+	UHealthWidget* HealthWidget = nullptr;
 #pragma endregion
 #pragma region InteractionUI
 protected:

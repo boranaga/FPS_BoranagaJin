@@ -11,6 +11,7 @@ enum class EEnemyStateType : uint8
 	Chase	UMETA(DisplayName = "Chase"),
 	Attack	UMETA(DisplayName = "Attack"),
 	Investigate UMETA(DisplayName = "Investigate"),
+	TrackBlood UMETA(DisplayName = "TrackBlood"),
 	Flee UMETA(DisplayName = "Flee"),
 	Hide UMETA(DisplayName = "Hide"),
 	Recover UMETA(DisplayName = "Recover"),

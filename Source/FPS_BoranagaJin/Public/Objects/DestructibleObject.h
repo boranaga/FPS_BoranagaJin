@@ -13,7 +13,7 @@ class UNiagaraSystem;
 class USoundBase;
 
 UCLASS()
-class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageInterface
+class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageableInterface
 {
 	GENERATED_BODY()
 public:

@@ -22,6 +22,7 @@ enum class EUIType : uint8
 	UIType_WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
 	UIType_AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	UIType_Stamina UMETA(DisplayName = "StaminaWidget"),
+	UIType_Health UMETA(DisplayName = "HealthWidget"),
 	UIType_Inventory UMETA(DisplayName = "InventoryWidget"),
 	UIType_ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
 	UIType_Interaction UMETA(DisplayName = "InteractionWidget")

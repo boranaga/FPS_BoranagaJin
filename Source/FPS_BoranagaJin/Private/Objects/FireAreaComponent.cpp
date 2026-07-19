@@ -79,9 +79,9 @@ void UFireAreaComponent::ApplyFireAreaDamage()
 			continue;
 		}
 
-		if (TargetActor->Implements<UDamageInterface>())
+		if (TargetActor->Implements<UDamageableInterface>())
 		{
-			IDamageInterface* Damageable = Cast<IDamageInterface>(TargetActor);
+			IDamageableInterface* Damageable = Cast<IDamageableInterface>(TargetActor);
 
 			if (Damageable)
 			{

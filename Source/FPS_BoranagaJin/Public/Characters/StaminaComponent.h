@@ -27,13 +27,13 @@ public:
 
 private:
 	UPROPERTY(EditAnywhere, Category = "Stamina")
-	float MaxStamina = 100.f;
-
+	float MaxStamina = 1000.f;
+	
 	UPROPERTY(VisibleAnywhere, Category = "Stamina")
-	float CurrentStamina = 100.f;
+	float CurrentStamina = 1000.f;
 
 	UPROPERTY(EditAnywhere, Category = "Stamina")
-	float RecoveryRate = 20.f;
+	float RecoveryRate = 50.f;
 
 	UPROPERTY(EditAnywhere, Category = "Stamina")
 	float RecoveryDelay = 1.f;

@@ -12,6 +12,8 @@ void UHealthComponent::BeginPlay()
 
 	CurrentHealth = MaxHealth;
 	bIsDead = false;
+
+	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }
 
 float UHealthComponent::ApplyDamage(float DamageAmount)
@@ -27,7 +29,7 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 
 	const float ActualDamage = OldHealth - CurrentHealth;
 
-	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 
 	if (CurrentHealth <= 0.f)
 	{
@@ -47,7 +49,7 @@ void UHealthComponent::Heal(float HealAmount)
 
 	CurrentHealth = FMath::Clamp(CurrentHealth + HealAmount, 0.f, MaxHealth);
 
-	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }
 
 bool UHealthComponent::IsDead() const
@@ -75,5 +77,5 @@ void UHealthComponent::ResetHealth()
 	CurrentHealth = MaxHealth;
 	bIsDead = false;
 
-	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }

@@ -113,11 +113,11 @@ FReply UInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry
 
 FReply UInventorySlotWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
 
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
-        UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+        //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
 
         return UWidgetBlueprintLibrary::DetectDragIfPressed(
             InMouseEvent,
@@ -140,7 +140,7 @@ void UInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, con
         return;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDragDetected)"));
+    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDragDetected)"));
 
     DragOperation->DraggedSlotWidget = this;
     DragOperation->FromIndex = Index;
@@ -184,7 +184,7 @@ bool UInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDrag
         return false;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDrop"));
+    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDrop"));
 
     const int32 FromIndex = DragOperation->FromIndex;
     const int32 ToIndex = Index;

@@ -435,10 +435,10 @@ void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamag
 
 	Damage.DamageCauser = this->ProjectileOwner;
 
-	if (OtherActor->GetClass()->ImplementsInterface(UDamageInterface::StaticClass()))
+	if (OtherActor->GetClass()->ImplementsInterface(UDamageableInterface::StaticClass()))
 	{
 		//Cast<IDamageInterface>(OtherActor)->TakeDamage(Damage, this->ProjectileOwner);
-		Cast<IDamageInterface>(OtherActor)->ReceiveDamage(Damage);
+		Cast<IDamageableInterface>(OtherActor)->ReceiveDamage(Damage);
 	}
 }
 bool AProjectile::SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors)
@@ -1328,7 +1328,7 @@ void AProjectile::CheckAndDeactivateIfStuck()
 
 		if (StuckCount > MaxStuckCount)
 		{
-			UE_LOG(LogTemp, Error, TEXT("Projectile is Stuck!!!"));
+			//UE_LOG(LogTemp, Error, TEXT("Projectile is Stuck!!!"));
 			DeactiveProjectile();
 		}
 		else

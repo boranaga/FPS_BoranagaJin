@@ -8,12 +8,12 @@
 #include "DamageInterface.generated.h"
 
 UINTERFACE(MinimalAPI)
-class UDamageInterface : public UInterface
+class UDamageableInterface : public UInterface
 {
 	GENERATED_BODY()
 };
 
-class FPS_BORANAGAJIN_API IDamageInterface
+class FPS_BORANAGAJIN_API IDamageableInterface
 {
 	GENERATED_BODY()
 
