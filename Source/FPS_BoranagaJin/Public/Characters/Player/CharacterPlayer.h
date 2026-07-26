@@ -21,6 +21,7 @@ class UHealthComponent;
 class UBloodTrailComponent;
 class UPlayerCameraComponent;
 class UInventorySystemComponent;
+class UInteractionComponent;
 class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
@@ -252,4 +253,34 @@ protected:
 	//---------------
 public:
 	void InitUIManager();
+
+
+#pragma region InteractionComponent
+protected:
+	UPROPERTY(
+		VisibleAnywhere,
+		BlueprintReadOnly,
+		Category = "Component"
+	)
+	TObjectPtr<UInteractionComponent> InteractionComponent;
+
+	UPROPERTY(
+		EditDefaultsOnly,
+		BlueprintReadOnly,
+		Category = "Input"
+	)
+	TObjectPtr<UInputAction> InteractInputAction;
+
+protected:
+	void InputInteract(
+		const FInputActionValue& InputActionValue
+	);
+
+public:
+	UFUNCTION(BlueprintPure, Category = "Component")
+	UInteractionComponent* GetInteractionComponent() const
+	{
+		return InteractionComponent;
+	}
+#pragma endregion
 };

@@ -6,6 +6,7 @@
 #include "Characters/HealthComponent.h"
 #include "Characters/BloodTrailComponent.h"
 #include "Characters/Player/PlayerCameraComponent.h"
+#include "Characters/InteractionComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Items/InventorySystemComponent.h"
 #include "GameModes/DefaultGameMode.h"
@@ -70,7 +71,8 @@ ACharacterPlayer::ACharacterPlayer()
 	// <BloodTrailComponent>
 	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
 
-
+	// <InteractionComponent>
+	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 	// for damage interactions with enemies
 	//AttackTokensComponent = CreateDefaultSubobject<UACPlayerAttackTokens>(TEXT("Attack Tokens Component"));
 	//DamageSystemComponent = CreateDefaultSubobject<UACDamageSystem>(TEXT("Damage System Component"));
@@ -290,6 +292,16 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		// <WeaponSystem>
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ACharacterPlayer::UpdateLookInputVector2D);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::None, this, &ACharacterPlayer::SetLookInputVector2DZero);
+
+		if (InteractInputAction)
+		{
+			EnhancedInputComponent->BindAction(
+				InteractInputAction,
+				ETriggerEvent::Started,
+				this,
+				&ACharacterPlayer::InputInteract
+			);
+		}
 	}
 }
 
@@ -809,4 +821,14 @@ void ACharacterPlayer::InitUIManager()
 			PlayerController->InitUIManager();
 		}
 	}
+}
+
+void ACharacterPlayer::InputInteract(const FInputActionValue& InputActionValue)
+{
+	if (!InteractionComponent)
+	{
+		return;
+	}
+
+	InteractionComponent->TryInteract();
 }

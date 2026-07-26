@@ -21,6 +21,5 @@ public:
 	//virtual bool TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser) = 0;
 
 	virtual float ReceiveDamage(const FDamageParams& DamageData) = 0;
-
 	virtual bool IsDead() const = 0;
 };
