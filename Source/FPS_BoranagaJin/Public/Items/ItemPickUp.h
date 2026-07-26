@@ -50,6 +50,8 @@ protected:
 	EWeaponName WeaponName;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Item, meta = (AllowPrivateAccess = "true"))
 	UPickUpComponent* PickUpComponent = nullptr;
+	UPROPERTY()
+	TObjectPtr<AItem> ItemPtr = nullptr;
 protected:
 	UPROPERTY(EditAnywhere)
 	bool bIsWeapon = false;

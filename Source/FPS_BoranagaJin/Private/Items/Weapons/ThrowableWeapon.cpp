@@ -21,9 +21,9 @@ void AThrowableWeapon::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter)
+void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
-	Super::InitItem(NewCharacter);
+	Super::InitItem(NewCharacter, PickUpActor);
 	if (Character)
 	{
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();

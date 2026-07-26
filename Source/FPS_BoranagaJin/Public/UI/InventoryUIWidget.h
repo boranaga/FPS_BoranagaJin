@@ -45,5 +45,6 @@ public:
 	void UpdateInventorySlots(const TArray<FInventorySlot>& Inventory);
 	void RequestSwapInventorySlots(int32 FromIndex, int32 ToIndex);
 	void RequestDropInventorySlot(int32 SlotIndex);
+	void RequestUseInventorySlot(int32 SlotIndex);
 	bool IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const;
 };

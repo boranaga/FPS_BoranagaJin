@@ -231,10 +231,10 @@ float ACharacterPlayer::ReceiveDamage(const FDamageParams& DamageInfo)
 	{
 	}
 
-	if (BloodTrailComponent)
-	{
-		BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
-	}
+	//if (BloodTrailComponent)
+	//{
+	//	BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
+	//}
 
 	if (MovementComponent)
 	{

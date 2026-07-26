@@ -68,7 +68,6 @@ void UUIManagerComponent::InitUIManagerComponent()
 		CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
 		CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
 	
-
 		CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
 	}
 }
@@ -252,6 +251,15 @@ void UUIManagerComponent::RequestDropInventorySlot(FName InventoryName, int32 Sl
 	if (CharacterPlayer)
 	{
 		CharacterPlayer->OnInventorySlotDropRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+	}
+}
+
+void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+	UE_LOG(LogTemp, Error, TEXT("void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)"));
+	if (CharacterPlayer)
+	{
+		CharacterPlayer->OnInventorySlotUseRequestedDelegate.Broadcast(InventoryName, SlotIndex);
 	}
 }
 

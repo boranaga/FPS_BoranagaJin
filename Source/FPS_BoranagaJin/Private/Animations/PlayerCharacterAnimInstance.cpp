@@ -162,18 +162,8 @@ void UPlayerCharacterAnimInstance::UpdateWeapon()
 
 			AimSocketRelativeTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
 
-			//-------------------------------------------------------------
 			CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
 
-			//if (CurrentWeaponStateType == EWeaponStateType::WeaponStateType_Firing)
-			//{
-			//	UE_LOG(LogTemp, Warning, TEXT("Firing State!!!!!!!!!!"));
-			//}
-			//else if (CurrentWeaponStateType == EWeaponStateType::WeaponStateType_Reloading)
-			//{
-			//	UE_LOG(LogTemp, Warning, TEXT("Reloading State!!!!!!!!!!"));
-			//}
-			//-------------------------------------------------------------
 
 			if (CurrentWeapon != PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
 			{
@@ -196,6 +186,10 @@ void UPlayerCharacterAnimInstance::UpdateWeapon()
 			//	SkillWeaponSocketTransform_Active = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Active();
 			//	SkillWeaponSocketTransform_Inactive = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Inactive();
 			//}
+		}
+		else
+		{
+			bHasWeapon = false;
 		}
 
 
@@ -333,7 +327,7 @@ FTransform UPlayerCharacterAnimInstance::GetTargetLeftHandTransfrom() //TODO: ¼ö
 	if (PlayerCharacter)
 	{
 		CurrentWeapon = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon();
-		//CurrentSkillWeapon = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon();
+
 		if (CurrentWeapon)
 		{
 			return CurrentWeapon->GetWeaponMesh()->GetSocketTransform(FName("LeftHand"));

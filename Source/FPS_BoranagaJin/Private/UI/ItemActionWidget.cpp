@@ -12,7 +12,11 @@ void UItemActionWidget::NativePreConstruct()
 
 	TxtTextBlock->SetText(ActionText);
 
-	ButtonItemAction->OnHovered.AddDynamic(this, &UItemActionWidget::OnButtonHovered);
+	if (ButtonItemAction)
+	{
+		ButtonItemAction->OnHovered.AddDynamic(this, &UItemActionWidget::OnButtonHovered);
+		ButtonItemAction->OnClicked.AddDynamic(this, &UItemActionWidget::OnButtonClicked);
+	}
 }
 
 void UItemActionWidget::NativeConstruct()
@@ -24,4 +28,11 @@ void UItemActionWidget::OnButtonHovered()
 {
 	
 	//TxtTextBlock->SetColorAndOpacity();
+}
+
+void UItemActionWidget::OnButtonClicked()
+{
+	UE_LOG(LogTemp, Error, TEXT("void UItemActionWidget::OnButtonClicked()"));
+
+	OnItemActionClicked.Broadcast();
 }

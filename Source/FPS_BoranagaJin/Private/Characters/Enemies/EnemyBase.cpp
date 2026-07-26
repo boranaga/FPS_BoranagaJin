@@ -107,10 +107,10 @@ float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 		DamageInstigator = DamageInfo.DamageCauser;
 	}
 
-	if (BloodTrailComponent)
-	{
-		BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
-	}
+	//if (BloodTrailComponent)
+	//{
+	//	BloodTrailComponent->NotifyDamageReceived(AppliedDamage);
+	//}
 
 	if (!HealthComponent->IsDead() && StateMachineComponent)
 	{

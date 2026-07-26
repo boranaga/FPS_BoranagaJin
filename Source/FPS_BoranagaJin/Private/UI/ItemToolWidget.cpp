@@ -2,6 +2,7 @@
 
 
 #include "UI/ItemToolWidget.h"
+#include "UI/ItemActionWidget.h"
 
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Border.h"
@@ -16,6 +17,16 @@ void UItemToolWidget::NativeConstruct()
 {
     Super::NativeConstruct();
     //SetItemToolPosition();
+
+    if (ItemAction_Use)
+    {
+        ItemAction_Use->OnItemActionClicked.AddUObject(this, &UItemToolWidget::OnUseClicked);
+    }
+
+    if (ItemAction_Drop)
+    {
+        ItemAction_Drop->OnItemActionClicked.AddUObject(this, &UItemToolWidget::OnDropClicked);
+    }
 }
 
 void UItemToolWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
@@ -33,6 +44,23 @@ void UItemToolWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
     //SetVisibility(ESlateVisibility::Hidden);
     //RemoveFromParent();
+}
+
+//void UItemToolWidget::SetInventoryIndex(int32 NewIndex)
+//{
+//    InventoryIndex = NewIndex;
+//}
+
+void UItemToolWidget::OnUseClicked()
+{
+    UE_LOG(LogTemp, Error, TEXT("void UItemToolWidget::OnUseClicked()"));
+    OnUseItemRequested.Broadcast();
+}
+
+void UItemToolWidget::OnDropClicked()
+{
+    UE_LOG(LogTemp, Error, TEXT("void UItemToolWidget::OnDropClicked()"));
+    OnDropItemRequested.Broadcast();
 }
 
 void UItemToolWidget::SetItemToolPosition()

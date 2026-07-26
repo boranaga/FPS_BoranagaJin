@@ -40,9 +40,10 @@ void AWeaponTargeting::Tick(float DeltaTime)
 	UpdateTargetingSkillUI(); //TODO: Should Update UI When even TargetingSkillTimer is not activated
 }
 
-void AWeaponTargeting::InitItem(ACharacterPlayer* NewCharacter)
+void AWeaponTargeting::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
 	Character = NewCharacter;
+	ItemPickUp = PickUpActor;
 	if (Character)
 	{
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();

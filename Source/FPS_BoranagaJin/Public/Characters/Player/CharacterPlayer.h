@@ -37,7 +37,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool, bFla
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryCreated, int32, InventoryCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, const TArray<FInventorySlot>&, Inventory);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnInventorySwapRequested, FName, InventoryName, int32, FromIndex, int32, ToIndex);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotDropRequested, FName, InventoryName, int32, SlotIndex);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotDropRequested, FName InventoryName, int32 SlotIndex);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotUseRequested, FName InventoryName, int32 SlotIndex);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryCreated, int32, WeaponInventoryCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInventorySlot>&, WeaponInventory);
@@ -102,6 +103,7 @@ public:
 	FOnInventoryUpdated OnInventoryUpdatedDelegate;
 	FOnInventorySwapRequested OnInventorySwapRequestedDelegate;
 	FOnInventorySlotDropRequested OnInventorySlotDropRequestedDelegate;
+	FOnInventorySlotUseRequested OnInventorySlotUseRequestedDelegate;
 
 	FOnWeaponInventoryCreated OnWeaponInventoryCreatedDelegate;
 	FOnWeaponInventoryUpdated OnWeaponInventoryUpdatedDelegate;

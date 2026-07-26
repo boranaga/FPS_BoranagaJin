@@ -18,11 +18,7 @@ void UBloodTrailComponent::BeginPlay()
 	LastBloodDropLocation = OwnerActor->GetActorLocation();
 }
 
-void UBloodTrailComponent::TickComponent(
-	float DeltaTime,
-	ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction
-)
+void UBloodTrailComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
@@ -31,41 +27,47 @@ void UBloodTrailComponent::TickComponent(
 	SpawnBloodStain();
 }
 
-void UBloodTrailComponent::NotifyDamageReceived(float AppliedDamage)
+//void UBloodTrailComponent::NotifyDamageReceived(float AppliedDamage)
+//{
+//	if (!GetWorld() || AppliedDamage <= 0.f) { return; }
+//
+//	const bool bHeavyDamage = AppliedDamage >= HeavyDamageThreshold;
+//	const bool bLowHealth = HealthComponent && HealthComponent->GetHealthPercent() <= BleedingHealthThresholdPercent;
+//
+//	if (!bHeavyDamage && !bLowHealth)
+//	{
+//		return;
+//	}
+//
+//	bIsBleeding = true;
+//
+//	if (bHeavyDamage)
+//	{
+//		BleedingEndTime = GetWorld()->GetTimeSeconds() + BleedingDurationAfterHeavyDamage;
+//	}
+//}
+
+void UBloodTrailComponent::StartBleeding(bool bLoop, float duration)
 {
-	if (!GetWorld() || AppliedDamage <= 0.f) { return; }
+	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::StartBleeding(bool bLoop, float duration)"));
 
-	const bool bHeavyDamage = AppliedDamage >= HeavyDamageThreshold;
-	const bool bLowHealth = HealthComponent && HealthComponent->GetHealthPercent() <= BleedingHealthThresholdPercent;
-
-	if (!bHeavyDamage && !bLowHealth)
+	if (bLoop) { bIsBleeding = true; }
+	else
 	{
-		return;
-	}
-
-	bIsBleeding = true;
-
-	if (bHeavyDamage)
-	{
-		BleedingEndTime = GetWorld()->GetTimeSeconds() + BleedingDurationAfterHeavyDamage;
+		bIsBleeding = true;
+		BleedingEndTime = GetWorld()->GetTimeSeconds() + duration;
 	}
 }
 
 void UBloodTrailComponent::UpdateBleedingState()
 {
-	if (!bIsBleeding || !GetWorld()) { return; }
-	if (HealthComponent && HealthComponent->IsDead())
+	if (bIsBleeding)
 	{
-		StopBleeding();
-		return;
-	}
-
-	const bool bStillLowHealth = HealthComponent && HealthComponent->GetHealthPercent() <= BleedingHealthThresholdPercent;
-	const bool bHeavyDamageBleedingActive = GetWorld()->GetTimeSeconds() < BleedingEndTime;
-
-	if (!bStillLowHealth && !bHeavyDamageBleedingActive)
-	{
-		StopBleeding();
+		const bool bHeavyDamageBleedingActive = GetWorld()->GetTimeSeconds() < BleedingEndTime;
+		if (!bHeavyDamageBleedingActive && GetWorld() && BleedingEndTime > 0)
+		{
+			StopBleeding();
+		}
 	}
 }
 
@@ -80,23 +82,17 @@ bool UBloodTrailComponent::CanDropBlood() const
 
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
 
-	if (CurrentTime - LastBloodDropTime
-		< MinimumBloodDropInterval)
+	if (CurrentTime - LastBloodDropTime < MinimumBloodDropInterval)
 	{
 		return false;
 	}
 
-	const float MovedDistance = FVector::Dist2D(
-		OwnerActor->GetActorLocation(),
-		LastBloodDropLocation
-	);
+	const float MovedDistance = FVector::Dist2D(OwnerActor->GetActorLocation(), LastBloodDropLocation);
 
 	return MovedDistance >= MinimumBloodDropDistance;
 }
 
-bool UBloodTrailComponent::FindGroundBelow(
-	FHitResult& OutHitResult
-) const
+bool UBloodTrailComponent::FindGroundBelow(FHitResult& OutHitResult) const
 {
 	const AActor* OwnerActor = GetOwner();
 
@@ -105,31 +101,18 @@ bool UBloodTrailComponent::FindGroundBelow(
 		return false;
 	}
 
-	const FVector TraceStart =
-		OwnerActor->GetActorLocation() +
-		FVector(0.f, 0.f, 50.f);
+	const FVector TraceStart = OwnerActor->GetActorLocation() + FVector(0.f, 0.f, 50.f);
+	const FVector TraceEnd = TraceStart - FVector(0.f, 0.f, GroundTraceDistance);
 
-	const FVector TraceEnd =
-		TraceStart -
-		FVector(0.f, 0.f, GroundTraceDistance);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(BloodGroundTrace), false, OwnerActor);
 
-	FCollisionQueryParams QueryParams(
-		SCENE_QUERY_STAT(BloodGroundTrace),
-		false,
-		OwnerActor
-	);
-
-	return GetWorld()->LineTraceSingleByChannel(
-		OutHitResult,
-		TraceStart,
-		TraceEnd,
-		ECC_Visibility,
-		QueryParams
-	);
+	return GetWorld()->LineTraceSingleByChannel(OutHitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
 }
 
 void UBloodTrailComponent::SpawnBloodStain()
 {
+	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::SpawnBloodStain()"));
+
 	if (!BloodStainClass || !GetWorld())
 	{
 		return;
@@ -179,6 +162,8 @@ void UBloodTrailComponent::SpawnBloodStain()
 
 void UBloodTrailComponent::StopBleeding()
 {
+	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::StopBleeding()"));
+
 	bIsBleeding = false;
 	BleedingEndTime = 0.f;
 }

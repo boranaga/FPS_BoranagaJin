@@ -104,6 +104,7 @@ protected:
 	bool IsValidSlotIndex(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex) const;
 	int32 FindItemSlot(const TArray<FInventorySlot>& TargetInventory, EItemName ItemName) const;
 	int32 FindEmptySlot(const TArray<FInventorySlot>& TargetInventory) const;
+	int32 GetOccupiedSlotCount(const TArray<FInventorySlot>& TargetInventory) const;
 	const TArray<FInventorySlot>& GetInventorySlots() const;
 
 	void PrintInventory() const;
@@ -115,6 +116,7 @@ public:
 	void SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
 	UFUNCTION()
 	void DropItemInventorySlot(FName InventoryName, int32 SlotIndex);
+	void UseItemInventorySlot(FName InventoryName, int32 SlotIndex);
 #pragma endregion
 #pragma region PickUpItem
 protected:

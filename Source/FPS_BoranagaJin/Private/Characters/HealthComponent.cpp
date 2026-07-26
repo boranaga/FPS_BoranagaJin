@@ -1,5 +1,6 @@
 
 #include "Characters/HealthComponent.h"
+#include "Characters/BloodTrailComponent.h"
 
 UHealthComponent::UHealthComponent()
 {
@@ -14,6 +15,17 @@ void UHealthComponent::BeginPlay()
 	bIsDead = false;
 
 	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor) { return; }
+	BloodTrailComponent = OwnerActor->FindComponentByClass<UBloodTrailComponent>();
+}
+
+void UHealthComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	//UpdateBleedingState();
 }
 
 float UHealthComponent::ApplyDamage(float DamageAmount)
@@ -37,6 +49,27 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 		OnDeath.Broadcast();
 	}
 
+
+	if (GetWorld() && !BloodTrailComponent->IsBleeding())
+	{
+		const bool bHeavyDamage = ActualDamage >= HeavyDamageThreshold;
+		const bool bLowHealth = GetHealthPercent() <= BleedingHealthThresholdPercent;
+
+		if (!bHeavyDamage && !bLowHealth)
+		{
+			return ActualDamage;
+		}
+
+		if (!bLowHealth && bHeavyDamage)
+		{
+			BloodTrailComponent->StartBleeding(false, BleedingDurationAfterHeavyDamage);
+			return ActualDamage;
+		}
+
+		BloodTrailComponent->StartBleeding();
+
+	}
+
 	return ActualDamage;
 }
 
@@ -52,9 +85,23 @@ void UHealthComponent::Heal(float HealAmount)
 	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }
 
+void UHealthComponent::StopBleeding(float HealAmount)
+{
+	if (bIsDead) { return; }
+	if (HealAmount > 0.f) { Heal(HealAmount); }
+	if (!BloodTrailComponent) { return; }
+	BloodTrailComponent->StopBleeding();
+}
+
 bool UHealthComponent::IsDead() const
 {
 	return bIsDead;
+}
+
+bool UHealthComponent::IsBleeding() const
+{
+	if (!BloodTrailComponent) { return false; }
+	return BloodTrailComponent->IsBleeding();
 }
 
 float UHealthComponent::GetCurrentHealth() const
@@ -79,3 +126,22 @@ void UHealthComponent::ResetHealth()
 
 	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }
+
+//void UHealthComponent::UpdateBleedingState()
+//{
+//	if (!BloodTrailComponent->IsBleeding() || !GetWorld()) { return; }
+//	if (bIsDead)
+//	{
+//		BloodTrailComponent->StopBleeding();
+//		return;
+//	}
+//
+//	const bool bStillLowHealth = GetHealthPercent() <= BleedingHealthThresholdPercent;
+//	const bool bHeavyDamageBleedingActive = GetWorld()->GetTimeSeconds() < BleedingEndTime;
+//
+//	if (!bStillLowHealth && !bHeavyDamageBleedingActive)
+//	{
+//		StopBleeding();
+//	}
+//
+//}

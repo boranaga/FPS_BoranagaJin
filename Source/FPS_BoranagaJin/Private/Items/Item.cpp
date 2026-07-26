@@ -2,8 +2,10 @@
 
 
 #include "Items/Item.h"
+#include "Items/ItemPickUp.h"
 #include "Data/ItemData.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "ObjectPoolSubsystem.h"
 
 
 // Sets default values
@@ -28,11 +30,21 @@ void AItem::Tick(float DeltaTime)
 
 }
 
-void AItem::InitItem(ACharacterPlayer* NewCharacter)
+void AItem::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
 	Character = NewCharacter;
 
-	LoadItemData();
+	if (!bWasInitialized)
+	{
+		bWasInitialized = true;
+		ItemPickUp = PickUpActor;
+		LoadItemData();
+	}
+}
+
+bool AItem::UseItem(ACharacterPlayer* UsingCharacter)
+{
+	return false;
 }
 
 void AItem::LoadItemData()
@@ -46,5 +58,37 @@ void AItem::LoadItemData()
 
 	ItemImage = ItemData->ItemImage;
 }
+
+void AItem::SetOwningPool(UObjectPoolSubsystem* NewPool)
+{
+	OwningPool = NewPool;
+}
+
+void AItem::OnActivateFromPool()
+{
+}
+
+void AItem::OnDeactivateToPool()
+{
+}
+
+bool AItem::IsActiveInPool() const
+{
+	return false;
+}
+
+void AItem::DeactivateItemPickUp_Pool()
+{
+	if (OwningPool)
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AItem::DeactivateItemPickUp_Pool()"));
+
+		FVector Offset = Character->GetActorLocation() + Character->GetActorForwardVector() * 100.f;
+
+		OwningPool->GetActorFromAvailablePool(ItemPickUp, Offset, Character->GetActorRotation());
+		OwningPool->ReturnToPool(this);
+	}
+}
+
 
 

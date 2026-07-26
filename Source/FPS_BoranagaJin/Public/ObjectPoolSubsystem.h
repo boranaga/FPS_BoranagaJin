@@ -13,12 +13,10 @@ struct FActorPool
 
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> AvailableActors;
-
 	UPROPERTY()
 	TSet<TObjectPtr<AActor>> AvailableActorSet;
-
 	UPROPERTY()
-	TArray<TObjectPtr<AActor>> ActiveActors;
+	TArray<TObjectPtr<AActor>> ActiveActors; //TODO: ActiveActor 또한 Set을 구현하기
 };
 
 UCLASS()
@@ -30,58 +28,35 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	AActor* SpawnFromPool(
-		TSubclassOf<AActor> ActorClass,
-		const FVector& Location,
-		const FRotator& Rotation
-	);
+	bool RegisterActor(AActor* Actor,bool bStartActive = true);
+
+	AActor* SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation);
 
 	template<typename T>
-	T* SpawnFromPool(
-		TSubclassOf<T> ActorClass,
-		const FVector& Location,
-		const FRotator& Rotation
-	)
+	T* SpawnFromPool(TSubclassOf<T> ActorClass, const FVector& Location, const FRotator& Rotation)
 	{
-		return Cast<T>(
-			SpawnFromPool(
-				TSubclassOf<AActor>(ActorClass),
-				Location,
-				Rotation
-			)
-		);
+		return Cast<T>(SpawnFromPool(TSubclassOf<AActor>(ActorClass), Location, Rotation));
 	}
 
 	void ReturnToPool(AActor* Actor);
-
 	void PrewarmPool(TSubclassOf<AActor> ActorClass, int32 Count);
-
 	bool IsActorInAvailablePool(AActor* Actor) const;
-
-	AActor* ExtractActorFromAvailablePool(AActor* Actor);
-
+	AActor* GetActorFromAvailablePool(AActor* Actor, const FVector& Location, const FRotator& Rotation);
 private:
 	UPROPERTY()
 	TMap<TSubclassOf<AActor>, FActorPool> ActorPools;
 
+
 	UPROPERTY()
-	TMap<TObjectPtr<AActor>, TSubclassOf<AActor>> ActorToPoolClassMap;
+	TMap<TObjectPtr<AActor>, TSubclassOf<AActor>> ActorToPoolClassMap; //MEMO: 없어도 되지 않나?
 
 	AActor* CreateNewActor(TSubclassOf<AActor> ActorClass);
 
-	void ActivateActor(
-		AActor* Actor,
-		const FVector& Location,
-		const FRotator& Rotation
-	);
-
+	AActor* ExtractActorFromAvailablePool(AActor* Actor);
+	void ActivateActor(AActor* Actor, const FVector& Location, const FRotator& Rotation);
 	void DeactivateActor(AActor* Actor);
-
 	void AddToAvailablePool(FActorPool& Pool, AActor* Actor);
-
 	bool RemoveFromAvailablePool(FActorPool& Pool, AActor* Actor);
-
 	void AddToActivePool(FActorPool& Pool, AActor* Actor);
-
 	bool RemoveFromActivePool(FActorPool& Pool, AActor* Actor);
 };

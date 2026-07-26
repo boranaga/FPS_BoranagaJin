@@ -42,6 +42,9 @@ void UInventorySlotWidget::NativePreConstruct()
             ItemToolWidget->OnToolWidgetEnter.AddUObject(this, &UInventorySlotWidget::OnMouseEnterToToolWidget);
             ItemToolWidget->OnToolWidgetLeave.AddUObject(this, &UInventorySlotWidget::OnMouseLeaveFromToolWidget);
             
+            ItemToolWidget->OnUseItemRequested.AddUObject(this, &UInventorySlotWidget::OnUseItemRequested);
+            ItemToolWidget->OnDropItemRequested.AddUObject(this, &UInventorySlotWidget::OnDropItemRequested);
+
             //ItemToolWidget->AddToViewport(static_cast<int32>(EUIZOrder::ItemTool));
             //UCanvasPanelSlot* CanvasSlot = ItemToolCanvas->AddChildToCanvas(ItemToolWidget);
             //if (CanvasSlot)
@@ -355,4 +358,18 @@ void UInventorySlotWidget::OnMouseLeaveFromToolWidget()
     {
         HideItemTool();
     }
+}
+
+void UInventorySlotWidget::OnUseItemRequested()
+{
+    UE_LOG(LogTemp, Error, TEXT("void UInventorySlotWidget::OnUseItemRequested()"));
+    if (!OwnerInventoryWidget) { return; }
+    OwnerInventoryWidget->RequestUseInventorySlot(Index);
+}
+
+void UInventorySlotWidget::OnDropItemRequested()
+{
+    UE_LOG(LogTemp, Error, TEXT("void UInventorySlotWidget::OnDropItemRequested()"));
+    if (!OwnerInventoryWidget) { return; }
+    OwnerInventoryWidget->RequestDropInventorySlot(Index);
 }

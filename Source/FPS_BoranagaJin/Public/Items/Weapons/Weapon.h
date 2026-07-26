@@ -119,7 +119,7 @@ public:
 
 	TArray<FInputBindingHandle*> InputActionBindingHandles;
 
-	virtual void InitItem(ACharacterPlayer* NewCharacter) override;
+	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
 	void InitializeCamera(ACharacterPlayer* NewCharacter);
 	virtual void InitializeUI();
 protected:

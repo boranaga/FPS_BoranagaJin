@@ -58,9 +58,11 @@ private:
 	int32 NextSequenceIndex = 0;
 
 public:
-	void NotifyDamageReceived(float AppliedDamage);
+	//void NotifyDamageReceived(float AppliedDamage);
+	void StartBleeding(bool bLoop = true, float duration = 0.f);
 	void StopBleeding();
 	bool IsBleeding() const;
+	float GetBleedingEndTime() const { return bIsBleeding; }
 private:
 	void UpdateBleedingState();
 	bool CanDropBlood() const;

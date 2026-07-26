@@ -102,6 +102,13 @@ void UInventoryUIWidget::RequestDropInventorySlot(int32 SlotIndex)
 	OwnerUIManager->RequestDropInventorySlot(InventoryName, SlotIndex);
 }
 
+void UInventoryUIWidget::RequestUseInventorySlot(int32 SlotIndex)
+{
+	UE_LOG(LogTemp, Error, TEXT("void UInventoryUIWidget::RequestUseInventorySlot(int32 SlotIndex)"));
+	if (!OwnerUIManager) return;
+	OwnerUIManager->RequestUseInventorySlot(InventoryName, SlotIndex);
+}
+
 bool UInventoryUIWidget::IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const
 {
 	const FVector2D LocalPosition =

@@ -81,10 +81,14 @@ AWeapon::AWeapon()
 	bIsStackable = false;
 }
 
-void AWeapon::InitItem(ACharacterPlayer* NewCharacter)
+void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
-	Super::InitItem(NewCharacter);
-	//Character = NewCharacter;
+	Character = NewCharacter;
+	if (bWasInitialized) { return; }
+	bWasInitialized = true;
+	ItemPickUp = PickUpActor;
+	LoadItemData();
+
 	if (Character)
 	{
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
@@ -1498,8 +1502,6 @@ FTransform AWeapon::GetAimSocketRelativeTransform()
 #pragma region Equip/Unequip
 void AWeapon::SwitchWeapon(ACharacterPlayer* TargetCharacter, bool bEquip)
 {
-	//TODO: Targeting ���̶�� ���� ��ü �Ұ��� �ؾ���
-
 	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
 	{
 		CancelReload();

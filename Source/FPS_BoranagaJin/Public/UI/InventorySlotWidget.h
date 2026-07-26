@@ -87,4 +87,6 @@ protected:
 	void CheckHideToolWidget();
 	void OnMouseEnterToToolWidget();
 	void OnMouseLeaveFromToolWidget();
+	void OnUseItemRequested();
+	void OnDropItemRequested();
 };

@@ -25,7 +25,7 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 
-	virtual void InitItem(ACharacterPlayer* NewCharacter) override;
+	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
 
 	virtual void InitializeUI() override;
 

@@ -42,9 +42,9 @@ void UInventorySystemComponent::BeginPlay()
 
 	InitInventory();
 
-
 	PlayerOwner->OnInventorySwapRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::SwapItemInventorySlots);
-	PlayerOwner->OnInventorySlotDropRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::DropItemInventorySlot);
+	PlayerOwner->OnInventorySlotDropRequestedDelegate.AddUObject(this, &UInventorySystemComponent::DropItemInventorySlot);
+	PlayerOwner->OnInventorySlotUseRequestedDelegate.AddUObject(this, &UInventorySystemComponent::UseItemInventorySlot);
 }
 
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -362,6 +362,19 @@ int32 UInventorySystemComponent::FindEmptySlot(const TArray<FInventorySlot>& Tar
 	return INDEX_NONE;
 }
 
+int32 UInventorySystemComponent::GetOccupiedSlotCount(const TArray<FInventorySlot>& TargetInventory) const
+{
+	int32 OccupiedCount = 0;
+	for (const FInventorySlot& Slot : TargetInventory)
+	{
+		if (!Slot.IsEmpty())
+		{
+			++OccupiedCount;
+		}
+	}
+	return OccupiedCount;
+}
+
 const TArray<FInventorySlot>& UInventorySystemComponent::GetInventorySlots() const
 {
 	return ItemInventory;
@@ -433,8 +446,18 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		if (!ItemInventory.IsValidIndex(SlotIndex)) { return; }
 		if (ItemInventory[SlotIndex].IsEmpty()) { return; }
 
+		//-----------------------------------------------------------
 		// TODO: 나중에 월드에 Pickup Actor Spawn하려면 여기에서 처리
 		// TODO: Object pooling으로 ItemPickUp 불러오기
+		
+		ItemInventory[SlotIndex].GetItem(0)->DeactivateItemPickUp_Pool();
+
+		//for (int32 i = 0; i < ItemInventory[SlotIndex].Count; i++)
+		//{
+		//	ItemInventory[SlotIndex].GetItem(i)->DeactivateItemPickUp_Pool();
+		//}
+		//-----------------------------------------------------------
+
 		ItemInventory[SlotIndex].ClearSlot();
 		if (PlayerOwner)
 		{
@@ -448,8 +471,25 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		if (!WeaponInventory.IsValidIndex(SlotIndex)) { return; }
 		if (WeaponInventory[SlotIndex].IsEmpty()) { return; }
 
-		// TODO: 나중에 월드에 Pickup Actor Spawn하려면 여기에서 처리
-		// TODO: Object pooling으로 ItemPickUp 불러오기
+		if (CurrentWeapon)
+		{
+			if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle) 
+			{
+				return;
+			}
+		}
+
+
+		// TODO: GetItem(0)이 아니라 더 깔끔한 방식이 필요함
+		AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[SlotIndex].GetItem(0));
+		Weapon->UnequipWeapon(PlayerOwner);
+		if (Weapon == CurrentWeapon) { CurrentWeapon = nullptr; }
+
+		WeaponInventory[SlotIndex].GetItem(0)->DeactivateItemPickUp_Pool();
+
+
+
+
 		WeaponInventory[SlotIndex].ClearSlot();
 		if (PlayerOwner)
 		{
@@ -457,6 +497,60 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 			//TODO: 여기서 무기 버릴 때 처리를 해야함
 		}
 	}
+}
+
+void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+	UE_LOG(LogTemp, Error, TEXT("void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 SlotIndex)"));
+
+	if (!IsValid(PlayerOwner)) { return; }
+
+	// 현재는 일반 아이템 인벤토리만 Use 처리
+	if (InventoryName != FName(TEXT("ItemInventory")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInventorySlot: Unsupported inventory: %s"), *InventoryName.ToString());
+		return;
+	}
+
+	if (!ItemInventory.IsValidIndex(SlotIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInventorySlot: Invalid slot index: %d"), SlotIndex);
+		return;
+	}
+
+	FInventorySlot& TargetSlot = ItemInventory[SlotIndex];
+	if (TargetSlot.IsEmpty()) { return; }
+	AItem* ItemToUse = TargetSlot.GetItem(0);
+
+	if (!IsValid(ItemToUse))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInventorySlot: Item is invalid. SlotIndex: %d"), SlotIndex);
+		return;
+	}
+
+	// 사용할 수 없는 상황이면 수량을 차감하지 않음
+	const bool bUseSucceeded = ItemToUse->UseItem(PlayerOwner);
+	if (!bUseSucceeded) 
+	{ 
+		UE_LOG(LogTemp, Error, TEXT("UseItemInventorySlot: Use Item Failed!!!"));
+
+		return; 
+	}
+
+	// 사용에 성공한 경우 한 개 제거
+	if (!RemoveItemAtSlot(ItemInventory, SlotIndex, 1))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInventorySlot: Failed to remove item. SlotIndex: %d"), SlotIndex);
+		return;
+	}
+
+	// 인벤토리 UI 갱신
+	PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+
+	// 필요하다면 ToolWidget을 닫는 Delegate도 Broadcast
+	// PlayerOwner->OnItemToolWidgetCloseRequestedDelegate.Broadcast();
+
+	PrintInventory();
 }
 
 bool UInventorySystemComponent::SearchItems()
@@ -535,7 +629,6 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddWeaponFromPickUp(NewItemPickUp))
 		{
-			//NewItemPickUp->DestroyItemPickUp();
 			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
 			return true;
@@ -549,7 +642,6 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddThrowableWeaponFromPickUp(NewItemPickUp))
 		{
-			//NewItemPickUp->DestroyItemPickUp();
 			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 			return true;
@@ -563,7 +655,6 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 	{
 		if (AddItemFromPickUp(NewItemPickUp))
 		{
-			//NewItemPickUp->DestroyItemPickUp();
 			NewItemPickUp->DeactivateItemPickUp();
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 			return true;
@@ -821,11 +912,12 @@ EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 
 void UInventorySystemComponent::SwitchToPreviousWeapon()
 {
+	if (!CurrentWeapon) { return; }
 	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
-	if (WeaponInventory.Num() > 1)
+	if (GetOccupiedSlotCount(WeaponInventory) > 1)
 	{
 		const int32 PrevIndex = CurrWeaponIdx;
 
@@ -843,11 +935,12 @@ void UInventorySystemComponent::SwitchToPreviousWeapon()
 
 void UInventorySystemComponent::SwitchToNextWeapon()
 {
+	if (!CurrentWeapon) { return; }
 	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
-	if (WeaponInventory.Num() > 1)
+	if (GetOccupiedSlotCount(WeaponInventory) > 1)
 	{
 		const int32 PrevIndex = CurrWeaponIdx;
 
@@ -861,9 +954,12 @@ void UInventorySystemComponent::SwitchToNextWeapon()
 
 void UInventorySystemComponent::SwitchToIndex(int32 idx)
 {
-	if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-		|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-		return;
+	if (CurrentWeapon)
+	{
+		if (CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+			|| CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+			return;
+		}
 	}
 	if (WeaponInventory.IsValidIndex(idx) && CurrWeaponIdx != idx)
 	{
@@ -892,6 +988,10 @@ void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
 		if (IsValid(CurrentWeapon))
 		{
 			CurrentWeapon->SwitchWeapon(PlayerOwner, false);
+		}
+		else
+		{
+			SwitchToOtherWeapon();
 		}
 	}
 }
