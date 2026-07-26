@@ -1611,6 +1611,9 @@ void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 		return;
 	}
 
+	FVector TargetLocation = Enemy->GetActorLocation() + Enemy->GetVelocity();
+	RotateToTargetDirection(DeltaTime, TargetLocation);
+
 	if (!IsAtCurrentBloodStain())
 	{
 		AIController->MoveToLocationPoint_Upgrade(CurrentBloodStain->GetActorLocation(), BloodTrackAcceptanceRadius - 50.f);
