@@ -13,6 +13,8 @@ enum class EItemName : uint8
 	ItemName_RocketLauncher UMETA(DisplayName = "RocketLauncher"),
 	ItemName_Grenade UMETA(DisplayName = "Grenade"),
 	ItemName_Bandage UMETA(DisplayName = "Bandage"),
+	ItemName_FlashLight UMETA(DisplayName = "FlashLight"),
+	ItemName_Battery UMETA(DisplayName = "Battery"),
 	ItemName_Dummy UMETA(DisplayName = "DummyItem"),
 	ItemName_Dummy_2 UMETA(DisplayName = "DummyItem_2"),
 	ItemName_None UMETA(DisplayName = "None")

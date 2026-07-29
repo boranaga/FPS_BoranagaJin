@@ -18,6 +18,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapo
 
 class ACharacterPlayer;
 class AItem;
+class AFlashlightItem;
 class AWeapon;
 class AThrowableWeapon;
 class AItemPickUp;
@@ -73,6 +74,8 @@ private:
 	class UInputAction* LeftMouseButtonAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* RightMouseButtonAction;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* FlashLightAction;
 #pragma endregion
 #pragma region ItemInventory
 protected:
@@ -184,11 +187,11 @@ public:
 #pragma region WeaponInventory
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-	AWeapon* CurrentWeapon = nullptr;
+	AWeapon* CurrWeapon = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrWeaponIdx = 0;
 public:
-	AWeapon* GetCurrentWeapon() { return CurrentWeapon; }
+	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
 	int32 GetWeaponNum() { return WeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
 	EWeaponStateType GetCurrWeaponStateType() const;
@@ -198,6 +201,8 @@ public:
 	void SwitchToIndex(int32 idx);
 
 	virtual void SwitchToOtherWeapon() override;
+	void SwitchToNextItem();
+	void SwitchToCurrWeapon(); //TODO: 전부 리팩토링 필요함
 	void ChangeWeapon(int32 WeaponIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
@@ -226,4 +231,17 @@ public:
 	bool TryTakeControl(AWeapon* NewWeapon);
 	void ReleaseControl();
 #pragma endregion
+#pragma region FlashLight
+protected:
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<AFlashlightItem> CurrFlashLightItem = nullptr;
+
+	bool bIsUsingFlashLightItem = false;
+protected:
+	void ToggleFlashLight();
+public:
+	AFlashlightItem* GetCurrFlashLightItem() { return CurrFlashLightItem; }
+	bool IsUsingFlashLight() const { return bIsUsingFlashLightItem; }
+#pragma endregion
 };
+

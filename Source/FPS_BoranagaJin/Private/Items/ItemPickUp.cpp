@@ -10,11 +10,15 @@ AItemPickUp::AItemPickUp()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	ItemName = EItemName::ItemName_Base;
-	ItemMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ItemMesh"));
-	ItemMesh->SetupAttachment(RootComponent);
+	//IntactMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ItemMesh"));
+	//IntactMesh->SetupAttachment(RootComponent);
 
 	PickUpComponent = CreateDefaultSubobject<UPickUpComponent>(TEXT("PickUpComponent"));
-	PickUpComponent->SetupAttachment(ItemMesh);
+	PickUpComponent->SetupAttachment(SceneRoot);
+
+
+	bDestroyActorAfterBreak = false;
+	bHideBrokenMeshAfterDelay = false;
 }
 
 void AItemPickUp::BeginPlay()
@@ -82,7 +86,7 @@ void AItemPickUp::DeactivateItemPickUp()
 void AItemPickUp::ActivateItemPickUp(FVector location)
 {
 	SetActorLocation(location);
-	ItemMesh->SetVisibility(true);
+	IntactMesh->SetVisibility(true);
 }
 
 void AItemPickUp::DestroyItemPickUp()

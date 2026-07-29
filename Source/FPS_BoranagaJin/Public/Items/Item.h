@@ -24,7 +24,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr);
 	virtual bool UseItem(ACharacterPlayer* UsingCharacter);
-; protected:
+protected:
 	UPROPERTY(EditAnywhere, Category = Weapon)
 	TSoftObjectPtr<UDataTable> ItemDataTable;
 	UPROPERTY(EditAnywhere, Category = Weapon)
@@ -34,8 +34,8 @@ public:
 	EItemName ItemName = EItemName::ItemName_Base;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FName ItemID;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ItemMesh")
-	USkeletalMeshComponent* ItemMesh;
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ItemMesh")
+	//USkeletalMeshComponent* ItemMesh;
 	UPROPERTY()
 	ACharacterPlayer* Character = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -51,7 +51,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ItemImage")
 	UTexture2D* ItemImage;
 public:
-	USkeletalMeshComponent* GetItemMesh() { return ItemMesh; }
+	//USkeletalMeshComponent* GetItemMesh() { return ItemMesh; }
 	EItemName GetItemName() const { return ItemName; }
 	FName GetItemID() const { return ItemID; }
 	bool IsStackable() const { return bIsStackable; }
@@ -64,7 +64,8 @@ public:
 	virtual void OnActivateFromPool() override;
 	virtual void OnDeactivateToPool() override;
 	virtual bool IsActiveInPool() const override;
-	void DeactivateItemPickUp_Pool();
+	void DeactivateItemAndGetItemPickUp();
+	void DeactivateItem();
 private:
 	UPROPERTY()
 	TObjectPtr<UObjectPoolSubsystem> OwningPool;

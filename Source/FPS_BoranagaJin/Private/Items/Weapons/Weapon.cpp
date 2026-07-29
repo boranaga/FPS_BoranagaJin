@@ -451,6 +451,7 @@ void AWeapon::LoadWeaponData_Upgrade()
 	//-------------------------------------
 	// <WeaponSocket>
 	WeaponSocketName = WeaponData->WeaponSocket;
+	bIsTwoHandedWeapon = WeaponData->bIsTwoHandedWeapon;
 
 	// <Action>
 	LeftMouseAction = WeaponData->LeftMouseAction;
@@ -670,7 +671,6 @@ bool AWeapon::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
 		AttachToComponent(Character->GetArmMesh(), AttachmentRules, WeaponSocketName);
 	}
 
-	// Seunghwan - use unreal first person rendering
 	WeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	TArray<USceneComponent*> AttachedChildren;
 	WeaponMesh->GetChildrenComponents(true, AttachedChildren);
@@ -1561,6 +1561,66 @@ void AWeapon::EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip)
 		}
 	}
 }
+void AWeapon::HolsterWeapon(ACharacterPlayer* TargetCharacter)
+{
+	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
+	{
+		CancelReload();
+	}
+	else if (CurrentState == FiringState)
+	{
+		BurstShotFired = 0;
+		GetWorld()->GetTimerManager().ClearTimer(SingleShotTimer);
+		GetWorld()->GetTimerManager().ClearTimer(BurstShotTimer);
+	}
+	else if (CurrentState == FullAutoFiringState)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
+	}
+
+	ChangeState(SwitchingState);
+
+	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter]() {OnHolsterWeaponEnded(TargetCharacter); }, WeaponSwitchingRate, false);
+	StartAnimation(AM_Unequip_Character, nullptr, WeaponSwitchingRate, WeaponSwitchingRate);
+
+	AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
+	AM_Unequip_Character->bEnableAutoBlendOut = false;
+}
+void AWeapon::DrawWeapon(ACharacterPlayer* TargetCharacter)
+{
+	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
+	{
+		CancelReload();
+	}
+	else if (CurrentState == FiringState)
+	{
+		BurstShotFired = 0;
+		GetWorld()->GetTimerManager().ClearTimer(SingleShotTimer);
+		GetWorld()->GetTimerManager().ClearTimer(BurstShotTimer);
+	}
+	else if (CurrentState == FullAutoFiringState)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
+	}
+
+	ChangeState(SwitchingState);
+
+
+	AttachWeaponToPlayer(TargetCharacter);
+	//GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter, bEquip]() {EndWeaponSwitch(TargetCharacter, bEquip); }, WeaponSwitchingRate, false);
+	TWeakObjectPtr WeakThis = this;
+	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis, TargetCharacter]()
+		{
+			if (auto* HardThis = WeakThis.Get())
+			{
+				HardThis->OnDrawWeaponEnded(TargetCharacter);
+			}
+
+		}), WeaponSwitchingRate, false);
+
+	StartAnimation(AM_Equip_Character, nullptr, WeaponSwitchingRate, WeaponSwitchingRate);
+
+}
 void AWeapon::EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly)
 {
 	SetInputActionBinding();
@@ -1581,6 +1641,24 @@ void AWeapon::UnequipWeapon(ACharacterPlayer* TargetCharacter)
 	ResetInputActionBinding();
 	DetachWeaponFromPlayer();
 	ChangeState(UnequippedState);
+}
+
+void AWeapon::OnHolsterWeaponEnded(ACharacterPlayer* TargetCharacter)
+{
+	if (!TargetCharacter) { return; }
+
+	UnequipWeapon(TargetCharacter);
+	if (UInventorySystemComponent* WeaponSystem = TargetCharacter->GetInventorySystemComponent())
+	{
+		WeaponSystem->SwitchToNextItem();
+	}
+}
+
+void AWeapon::OnDrawWeaponEnded(ACharacterPlayer* TargetCharacter)
+{
+	if (!TargetCharacter) { return; }
+
+	EquipWeapon(TargetCharacter);
 }
 
 void AWeapon::SetInputActionBinding()

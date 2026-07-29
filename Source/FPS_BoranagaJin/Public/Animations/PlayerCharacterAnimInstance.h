@@ -12,6 +12,8 @@
 #include "PlayerCharacterAnimInstance.generated.h"
 
 class ACharacterPlayer;
+class UInventorySystemComponent;
+class AItem;
 class AWeapon;
 
 // Ring buffer for float with O(1) moving average
@@ -134,6 +136,8 @@ protected:
 	// <Player Movement>
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<ACharacterPlayer> PlayerCharacter;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TObjectPtr<UInventorySystemComponent> InventorySystemComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	EMovementState MovementState;
@@ -192,7 +196,9 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Weapon")
 	FRotator AimPointRotation;
 
-	//TODO: Logic �ٲ�� ��
+	UPROPERTY(BlueprintReadOnly, Category = "Item")
+	AItem* CurrItem = nullptr;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Weapon")
 	AWeapon* CurrentWeapon = nullptr;
 

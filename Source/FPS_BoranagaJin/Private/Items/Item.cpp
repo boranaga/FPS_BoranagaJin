@@ -66,10 +66,12 @@ void AItem::SetOwningPool(UObjectPoolSubsystem* NewPool)
 
 void AItem::OnActivateFromPool()
 {
+	bIsActiveInPool = true;
 }
 
 void AItem::OnDeactivateToPool()
 {
+	bIsActiveInPool = false;
 }
 
 bool AItem::IsActiveInPool() const
@@ -77,17 +79,20 @@ bool AItem::IsActiveInPool() const
 	return false;
 }
 
-void AItem::DeactivateItemPickUp_Pool()
+void AItem::DeactivateItemAndGetItemPickUp()
 {
 	if (OwningPool)
 	{
-		UE_LOG(LogTemp, Error, TEXT("void AItem::DeactivateItemPickUp_Pool()"));
-
 		FVector Offset = Character->GetActorLocation() + Character->GetActorForwardVector() * 100.f;
 
 		OwningPool->GetActorFromAvailablePool(ItemPickUp, Offset, Character->GetActorRotation());
 		OwningPool->ReturnToPool(this);
 	}
+}
+
+void AItem::DeactivateItem()
+{
+	OwningPool->ReturnToPool(this);
 }
 
 

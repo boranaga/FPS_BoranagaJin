@@ -6,6 +6,7 @@
 #include "Characters/Player/CharacterPlayer.h"
 
 #include "Items/InventorySystemComponent.h"
+#include "Items/FlashlightItem.h"
 #include "Items/Weapons/Weapon.h"
 #include "Items/WeaponState/WeaponBaseState.h"
 
@@ -31,6 +32,8 @@ void UPlayerCharacterAnimInstance::NativeInitializeAnimation()
 		Velocity = PlayerCharacter->GetPlayerMovementComponent()->Velocity;
 		MovementInputVector = PlayerCharacter->GetPlayerMovementComponent()->GetMovementInputVector();
 
+		// <InventorySystem>
+		InventorySystemComponent = PlayerCharacter->GetInventorySystemComponent();
 
 		//-------------------------------------------
 		// <weapon System>
@@ -68,6 +71,16 @@ void UPlayerCharacterAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSe
 void UPlayerCharacterAnimInstance::NativeUpdateAnimation(float DeltaTime)
 {
 	Super::NativeUpdateAnimation(DeltaTime);
+
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	{
+		if (PC->IsInputKeyDown(EKeys::O))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("F Key Pressed"));
+
+			UE_LOG(LogTemp, Error, TEXT("Transform: %s"), *CurrentRightHandSocketTransform.ToString());
+		}
+	}
 
 	if (PlayerCharacter)
 	{
@@ -151,47 +164,66 @@ void UPlayerCharacterAnimInstance::LoadAnimationData()
 
 void UPlayerCharacterAnimInstance::UpdateWeapon()
 {
-	if (IsValid(PlayerCharacter->GetInventorySystemComponent())
-		&& PlayerCharacter->GetInventorySystemComponent() != nullptr)
+	if (IsValid(InventorySystemComponent) && InventorySystemComponent != nullptr)
 	{
-		if (PlayerCharacter->GetInventorySystemComponent()->GetWeaponNum() != 0
-			&& IsValid(PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
-			&& PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon() != nullptr)
+		if (InventorySystemComponent->IsUsingFlashLight())
 		{
-			bHasWeapon = true;
-
-			AimSocketRelativeTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
-
-			CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
-
-
-			if (CurrentWeapon != PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
+			if (CurrItem != InventorySystemComponent->GetCurrFlashLightItem())
 			{
-				// <RightHandSocket>
-				RightHandSocketTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform();
-				RightHandSocketTransform_Crouch = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Crouch();
-				//RightHandSocketTransform_Targeting = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting();
-				//RightHandSocketTransform_Targeting_Crouch = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting_Crouch();
+				//TODO: 변수명 바꾸기
+				bHasWeapon = true;
 
-				// <Recoil>
-				ArmRecoil = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo(); //TODO: 이제 AddArmRecoil에서 struct 정보 가져오기 때문에 이 줄은 없어도 될듯
-				ArmRecoil_Hand = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_Hand();
-				ArmRecoil_UpperArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_UpperArm();
-				ArmRecoil_LowerArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_LowerArm();
+				RightHandSocketTransform = InventorySystemComponent->GetCurrFlashLightItem()->GetRightHandSocketTransform();
+				RightHandSocketTransform_Crouch = InventorySystemComponent->GetCurrFlashLightItem()->GetRightHandSocketTransform_Crouch();
+
+				UE_LOG(LogTemp, Error, TEXT("Transform: %s"), *RightHandSocketTransform.ToString());
+				UE_LOG(LogTemp, Error, TEXT("Transform: %s"), *RightHandSocketTransform_Crouch.ToString());
+
+				CurrItem = InventorySystemComponent->GetCurrFlashLightItem();
+
+				UE_LOG(LogTemp, Warning, TEXT("Weapon Updated 1"));
 			}
-
-			//if (CurrentSkillWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon())
-			//{
-			//	// <SkillWeaponSocket>
-			//	SkillWeaponSocketTransform_Active = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Active();
-			//	SkillWeaponSocketTransform_Inactive = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Inactive();
-			//}
 		}
 		else
 		{
-			bHasWeapon = false;
-		}
+			if (InventorySystemComponent->GetWeaponNum() != 0
+				&& IsValid(InventorySystemComponent->GetCurrentWeapon())
+				&& InventorySystemComponent->GetCurrentWeapon() != nullptr)
+			{
+				bHasWeapon = true;
 
+				AimSocketRelativeTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
+
+				CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
+
+
+				if (CurrentWeapon != PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
+				{
+					// <RightHandSocket>
+					RightHandSocketTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform();
+					RightHandSocketTransform_Crouch = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Crouch();
+					//RightHandSocketTransform_Targeting = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting();
+					//RightHandSocketTransform_Targeting_Crouch = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentWeapon()->GetRightHandSocketTransform_Targeting_Crouch();
+
+					// <Recoil>
+					ArmRecoil = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo(); //TODO: 이제 AddArmRecoil에서 struct 정보 가져오기 때문에 이 줄은 없어도 될듯
+					ArmRecoil_Hand = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_Hand();
+					ArmRecoil_UpperArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_UpperArm();
+					ArmRecoil_LowerArm = *PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetArmRecoilInfo_LowerArm();
+				}
+
+				//if (CurrentSkillWeapon != PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon())
+				//{
+				//	// <SkillWeaponSocket>
+				//	SkillWeaponSocketTransform_Active = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Active();
+				//	SkillWeaponSocketTransform_Inactive = PlayerCharacter->GetWeaponSystemComponent()->GetCurrentSkillWeapon()->GetSkillWeaponSocketTransform_Inactive();
+				//}
+			}
+			else
+			{
+				bHasWeapon = false;
+			}
+		}
 
 		//if (CurrentWeapon != Character->GetWeaponSystem()->GetCurrentWeapon())
 		//{

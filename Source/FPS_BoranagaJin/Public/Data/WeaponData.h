@@ -25,6 +25,8 @@ struct FPS_BORANAGAJIN_API FWeaponData : public FTableRowBase
 	//-----------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Socket")
 	FName WeaponSocket = FName();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Socket")
+	bool bIsTwoHandedWeapon = true;
 	//-----------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
 	bool bIsSkillWeapon = false;

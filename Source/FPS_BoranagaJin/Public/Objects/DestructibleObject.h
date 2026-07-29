@@ -21,18 +21,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 public:
-
-	//TODO: Delete
-	//virtual void TakeObjectDamage(
-	//	float Damage,
-	//	const FVector& HitLocation,
-	//	const FVector& HitDirection,
-	//	AActor* DamageCauser
-	//);
-
 	virtual float ReceiveDamage(const FDamageParams& DamageData) override;
-
-	//TODO: 필요한가?
 	virtual bool IsDead() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Fire")
@@ -95,6 +84,12 @@ protected:
 	// <Burning>
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")
 	bool bCanBurn = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")
+	bool bCanIgniteFromDamage = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")
+	float IgnitionDamageThreshold = 0.f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fire")
 	bool bBurning = false;

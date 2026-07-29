@@ -48,24 +48,6 @@ void ADestructibleObject::BeginPlay()
 	}
 }
 
-//void ADestructibleObject::TakeObjectDamage(
-//	float Damage,
-//	const FVector& HitLocation,
-//	const FVector& HitDirection,
-//	AActor* DamageCauser
-//)
-//{
-//	if (bDestroyed) return;
-//	if (Damage <= 0.f) return;
-//
-//	CurrentHealth -= Damage;
-//
-//	if (CurrentHealth <= 0.f)
-//	{
-//		BreakObject(HitLocation, HitDirection);
-//	}
-//}
-
 float ADestructibleObject::ReceiveDamage(const FDamageParams& DamageData)
 {
 	if (bDestroyed) return 0.f;
@@ -77,6 +59,17 @@ float ADestructibleObject::ReceiveDamage(const FDamageParams& DamageData)
 	{
 		BreakObject(DamageData.ImpactPoint, DamageData.HitDirection);
 	}
+	else
+	{
+		if (bCanIgniteFromDamage && IgnitionDamageThreshold > CurrentHealth)
+		{
+			if (!bBurning)
+			{
+				StartBurning();
+			}
+		}
+	}
+
 
 	return DamageData.DamageAmount;
 }

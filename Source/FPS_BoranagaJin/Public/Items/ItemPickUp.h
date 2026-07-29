@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "PoolableActorInterface.h"
+#include "Objects/DestructibleObject.h"
 #include "ItemName.h"
 #include "Weapons/WeaponName.h"
 #include "ItemPickUp.generated.h"
@@ -14,7 +15,7 @@ class ACharacterPlayer;
 class UPickUpComponent;
 
 UCLASS()
-class FPS_BORANAGAJIN_API AItemPickUp : public AActor, public IPoolableActorInterface
+class FPS_BORANAGAJIN_API AItemPickUp : public ADestructibleObject, public IPoolableActorInterface
 {
 	GENERATED_BODY()
 public:
@@ -42,8 +43,8 @@ private:
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = Item)
 	TSubclassOf<AItem> ItemClass;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Item, meta = (AllowPrivateAccess = "true"))
-	USkeletalMeshComponent* ItemMesh = nullptr;
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Item, meta = (AllowPrivateAccess = "true"))
+	//USkeletalMeshComponent* IntactMesh = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EItemName ItemName;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

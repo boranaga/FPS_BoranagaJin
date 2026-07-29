@@ -142,7 +142,10 @@ public:
 #pragma region Socket
 protected:
 	FName WeaponSocketName = FName("");
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Socket")
+	bool bIsTwoHandedWeapon = true;
+public:
+	bool IsTwoHandedWeapon() const { return bIsTwoHandedWeapon; }
 #pragma endregion
 
 #pragma region HitScan
@@ -359,8 +362,14 @@ protected:
 public:
 	void SwitchWeapon(ACharacterPlayer* TargetCharacter, bool bEquip);
 	void EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip);
+	void HolsterWeapon(ACharacterPlayer* TargetCharacter);
+	void DrawWeapon(ACharacterPlayer* TargetCharacter);
 	void EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly = false);
 	void UnequipWeapon(ACharacterPlayer* TargetCharacter);
+
+	void OnHolsterWeaponEnded(ACharacterPlayer* TargetCharacter);
+	void OnDrawWeaponEnded(ACharacterPlayer* TargetCharacter);
+
 	virtual void SetInputActionBinding();
 	void ResetInputActionBinding();
 #pragma endregion
