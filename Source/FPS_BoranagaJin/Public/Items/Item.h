@@ -24,6 +24,9 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr);
 	virtual bool UseItem(ACharacterPlayer* UsingCharacter);
+
+	virtual void Equip(ACharacterPlayer* TargetCharacter);
+	virtual void Unequip(ACharacterPlayer* TargetCharacter);
 protected:
 	UPROPERTY(EditAnywhere, Category = Weapon)
 	TSoftObjectPtr<UDataTable> ItemDataTable;
@@ -40,6 +43,8 @@ protected:
 	ACharacterPlayer* Character = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bIsStackable = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bIsWeapon = false;
 	UPROPERTY(VisibleAnywhere)
 	bool bWasInitialized = false;
 
@@ -55,8 +60,10 @@ public:
 	EItemName GetItemName() const { return ItemName; }
 	FName GetItemID() const { return ItemID; }
 	bool IsStackable() const { return bIsStackable; }
+	bool IsWeapon() const { return bIsWeapon; }
 protected:
 	virtual void LoadItemData();
+	virtual bool AttachItemToPlayer(ACharacterPlayer* TargetCharacter);
 
 #pragma region PoolableActorInterface
 public:

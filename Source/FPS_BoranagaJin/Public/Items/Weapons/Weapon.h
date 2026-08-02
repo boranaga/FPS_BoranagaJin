@@ -131,7 +131,7 @@ public:
 	void SetMeshVisibility(bool bflag);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	virtual bool AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter);
+	virtual bool AttachItemToPlayer(ACharacterPlayer* TargetCharacter) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void DetachWeaponFromPlayer();
@@ -360,14 +360,15 @@ protected:
 	float WeaponSwitchingRate = 1.f;
 	FTimerHandle SwitchingTimer;
 public:
-	void SwitchWeapon(ACharacterPlayer* TargetCharacter, bool bEquip);
-	void EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip);
-	void HolsterWeapon(ACharacterPlayer* TargetCharacter);
-	void DrawWeapon(ACharacterPlayer* TargetCharacter);
-	void EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly = false);
-	void UnequipWeapon(ACharacterPlayer* TargetCharacter);
+	//void EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip);
+	virtual void Unequip(ACharacterPlayer* TargetCharacter) override;
+	virtual void Equip(ACharacterPlayer* TargetCharacter) override;
+	
+	//void EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly = false);
+	
+	void UnequipWeapon_Legacy(ACharacterPlayer* TargetCharacter);
 
-	void OnHolsterWeaponEnded(ACharacterPlayer* TargetCharacter);
+	void OnUnequipEnded(ACharacterPlayer* TargetCharacter);
 	void OnDrawWeaponEnded(ACharacterPlayer* TargetCharacter);
 
 	virtual void SetInputActionBinding();

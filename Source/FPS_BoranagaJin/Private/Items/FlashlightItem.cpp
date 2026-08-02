@@ -97,7 +97,7 @@ bool AFlashlightItem::UseItem(ACharacterPlayer* UsingCharacter)
 
 void AFlashlightItem::Equip(ACharacterPlayer* TargetCharacter)
 {
-	AttachWeaponToPlayer(TargetCharacter);
+	AttachItemToPlayer(TargetCharacter);
 	TWeakObjectPtr WeakThis = this;
 	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis, TargetCharacter]()
 		{
@@ -111,8 +111,10 @@ void AFlashlightItem::Equip(ACharacterPlayer* TargetCharacter)
 	StartAnimation(AM_Equip_Character, nullptr, SwitchingRate);
 }
 
-void AFlashlightItem::Unequip()
+void AFlashlightItem::Unequip(ACharacterPlayer* TargetCharacter)
 {
+	TurnOffFlashlight();
+
 	TWeakObjectPtr WeakThis = this;
 	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis]()
 		{
@@ -133,6 +135,7 @@ void AFlashlightItem::Unequip()
 void AFlashlightItem::OnEquipEnded(ACharacterPlayer* UsingCharacter)
 {
 	if (!UsingCharacter) { return; }
+	TurnOnFlashlight();
 }
 
 void AFlashlightItem::OnUnequipEnded()
@@ -141,11 +144,11 @@ void AFlashlightItem::OnUnequipEnded()
 
 	if (UInventorySystemComponent* WeaponSystem = Cast<ACharacterPlayer>(Character)->GetInventorySystemComponent())
 	{
-		WeaponSystem->SwitchToCurrWeapon();
+		WeaponSystem->SwitchToNextItem();
 	}
 }
 
-bool AFlashlightItem::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
+bool AFlashlightItem::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 {
 	Character = TargetCharacter;
 	if (Character == nullptr) { return false; }
@@ -172,9 +175,9 @@ bool AFlashlightItem::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
 	//	Character->GetInventorySystemComponent()->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
 	//}
 
-	//ItemMesh->SetVisibility(true);
-	//FlashlightLight->SetVisibility(true); //TODO: 바꿔야함 -> UseItem으로 바꿔야함
-	UseItem(Character);
+	ItemMesh->SetVisibility(true);
+
+	UseItem(Character); //FlashlightLight->SetVisibility(true); //TODO: UseItem을 바로 사용하지 않는 방식으로 바꿔야함
 
 	return true;
 }
@@ -200,8 +203,6 @@ void AFlashlightItem::DetachFromPlayer()
 
 		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 		ItemMesh->SetVisibility(false);
-
-		UseItem(Character);
 	}
 }
 

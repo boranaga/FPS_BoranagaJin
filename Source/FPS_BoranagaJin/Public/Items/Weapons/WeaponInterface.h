@@ -31,7 +31,7 @@ public:
 
 	virtual void EjectProjectileShell();
 
-	virtual void SwitchToOtherWeapon();
+	//virtual void SwitchToOtherWeapon();
 
 	virtual void SwitchToOtherThrowableWeapon();
 

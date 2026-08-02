@@ -344,7 +344,7 @@ void AWeaponTargeting::SetInputActionBinding()
 	}
 }
 
-bool AWeaponTargeting::AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter)
+bool AWeaponTargeting::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 {
 	Character = TargetCharacter;
 	if (Character == nullptr) { return false; }

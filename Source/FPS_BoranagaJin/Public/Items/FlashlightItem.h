@@ -24,12 +24,12 @@ public:
 	 */
 	virtual bool UseItem(ACharacterPlayer* UsingCharacter) override;
 
-	void Equip(ACharacterPlayer* TargetCharacter);
-	void Unequip();
+	virtual void Equip(ACharacterPlayer* TargetCharacter) override;
+	virtual void Unequip(ACharacterPlayer* TargetCharacter) override;
 protected:
 	void OnEquipEnded(ACharacterPlayer* UsingCharacter);
 	void OnUnequipEnded();
-	bool AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter);
+	virtual bool AttachItemToPlayer(ACharacterPlayer* TargetCharacter) override;
 	void DetachFromPlayer();
 	void StartAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* WeaponAnimation, float CharacterAnimPlayRate, FName StartSection = FName());
 

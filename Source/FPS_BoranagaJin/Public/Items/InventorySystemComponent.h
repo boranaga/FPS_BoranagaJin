@@ -189,6 +189,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	AWeapon* CurrWeapon = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	AItem* NextItem = nullptr;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrWeaponIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
@@ -200,9 +202,7 @@ public:
 	void SwitchToNextWeapon();
 	void SwitchToIndex(int32 idx);
 
-	virtual void SwitchToOtherWeapon() override;
 	void SwitchToNextItem();
-	void SwitchToCurrWeapon(); //TODO: 전부 리팩토링 필요함
 	void ChangeWeapon(int32 WeaponIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
@@ -239,6 +239,7 @@ protected:
 	bool bIsUsingFlashLightItem = false;
 protected:
 	void ToggleFlashLight();
+	bool FindFlashLightInInventory();
 public:
 	AFlashlightItem* GetCurrFlashLightItem() { return CurrFlashLightItem; }
 	bool IsUsingFlashLight() const { return bIsUsingFlashLightItem; }

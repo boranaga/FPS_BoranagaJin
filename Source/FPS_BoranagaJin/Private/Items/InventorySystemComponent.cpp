@@ -261,7 +261,11 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 		if (!CurrWeapon)
 		{
 			CurrWeapon = NewWeapon;
-			CurrWeapon->SwitchWeapon(PlayerOwner, true);
+			if (CurrFlashLightItem && bIsUsingFlashLightItem)
+			{
+				return true;
+			}
+			CurrWeapon->Equip(PlayerOwner);
 		}
 		return true;
 	}
@@ -482,14 +486,41 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		// TODO: Object pooling으로 ItemPickUp 불러오기
 		
 		AItem* ItemToDrop = ItemInventory[SlotIndex].GetItem(0);
+		ItemInventory[SlotIndex].ClearSlot();
 
 		if (ItemToDrop->GetItemName() == EItemName::ItemName_FlashLight && ItemToDrop == CurrFlashLightItem)
 		{
-			CurrFlashLightItem = nullptr;
 			//TODO: Inventory 내에 또 다른 Flash Light이 있다면 그 것을 장착해야함
+			if (bIsUsingFlashLightItem)
+			{
+
+				int32 idx = FindItemSlot(ItemInventory, EItemName::ItemName_FlashLight);
+				if (idx != INDEX_NONE)
+				{
+					if (AFlashlightItem* nextflashlight = Cast<AFlashlightItem>(ItemInventory[idx].GetItem(0)))
+					{
+						NextItem = nextflashlight;
+						CurrFlashLightItem->Unequip(PlayerOwner);
+						bIsUsingFlashLightItem = false;
+						CurrFlashLightItem = nextflashlight;			
+					}
+				}
+				else
+				{
+					NextItem = CurrWeapon;
+					CurrFlashLightItem->Unequip(PlayerOwner);
+					bIsUsingFlashLightItem = false;
+					CurrFlashLightItem = nullptr;
+				}
+			}
+			else
+			{
+
+				CurrFlashLightItem = nullptr;
+			}
 		}
 
-		ItemToDrop->DeactivateItemAndGetItemPickUp();
+
 
 		//for (int32 i = 0; i < ItemInventory[SlotIndex].Count; i++)
 		//{
@@ -497,7 +528,9 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		//}
 		//-----------------------------------------------------------
 
-		ItemInventory[SlotIndex].ClearSlot();
+
+		ItemToDrop->DeactivateItemAndGetItemPickUp();
+
 		if (PlayerOwner)
 		{
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
@@ -512,7 +545,8 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 
 		if (CurrWeapon)
 		{
-			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle) 
+			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle
+				&& CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Unequipped)
 			{
 				return;
 			}
@@ -521,13 +555,10 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 
 		// TODO: GetItem(0)이 아니라 더 깔끔한 방식이 필요함
 		AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[SlotIndex].GetItem(0));
-		Weapon->UnequipWeapon(PlayerOwner);
+		Weapon->UnequipWeapon_Legacy(PlayerOwner);
 		if (Weapon == CurrWeapon) { CurrWeapon = nullptr; }
 
 		WeaponInventory[SlotIndex].GetItem(0)->DeactivateItemAndGetItemPickUp();
-
-
-
 
 		WeaponInventory[SlotIndex].ClearSlot();
 		if (PlayerOwner)
@@ -644,17 +675,23 @@ void UInventorySystemComponent::PickUpItem()
 {
 	if (OverlappedItem != nullptr)
 	{
-		if (CurrWeapon == nullptr || (CurrWeapon != nullptr && CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Idle))
+		if (CurrWeapon)
 		{
-			if (OverlappedItem->IsMagazine())
+			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Unequipped
+				&& CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle)
 			{
-				ObtainAmmo(OverlappedItem);
+				return;
 			}
-			else
-			{
-				//ObtainItem(OverlappedItem);
-				ObtainItem(OverlappedItem);
-			}
+		}
+
+		if (OverlappedItem->IsMagazine())
+		{
+			ObtainAmmo(OverlappedItem);
+		}
+		else
+		{
+			//ObtainItem(OverlappedItem);
+			ObtainItem(OverlappedItem);
 		}
 	}
 }
@@ -951,43 +988,92 @@ EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 
 void UInventorySystemComponent::SwitchToPreviousWeapon()
 {
+	//if (!CurrWeapon) { return; }
+	//if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	//	|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+	//	return;
+	//}
+	//if (GetOccupiedSlotCount(WeaponInventory) > 1)
+	//{
+	//	const int32 PrevIndex = CurrWeaponIdx;
+
+	//	CurrWeaponIdx--;
+	//	if (CurrWeaponIdx < 0)
+	//	{
+	//		CurrWeaponIdx = WeaponInventory.Num() + CurrWeaponIdx;
+	//	}
+	//	ChangeWeapon(CurrWeaponIdx);
+
+	//	//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
+	//}
+
+	//-----------------------------------------------------
+
 	if (!CurrWeapon) { return; }
 	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
-	if (GetOccupiedSlotCount(WeaponInventory) > 1)
+
+	int32 NextIdx = CurrWeaponIdx;
+
+	for (int32 i = 1; i < WeaponInventory.Num(); i++)
 	{
-		const int32 PrevIndex = CurrWeaponIdx;
-
-		CurrWeaponIdx--;
-		if (CurrWeaponIdx < 0)
+		NextIdx -= 1;
+		if (NextIdx < 0)
 		{
-			CurrWeaponIdx = WeaponInventory.Num() + CurrWeaponIdx;
+			NextIdx = WeaponInventory.Num() + NextIdx;
 		}
-		ChangeWeapon(CurrWeaponIdx);
 
-		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
+		if (!WeaponInventory[NextIdx].IsEmpty())
+		{
+			CurrWeaponIdx = NextIdx;
+			ChangeWeapon(CurrWeaponIdx);
+			break;
+		}
 	}
 }
 
 void UInventorySystemComponent::SwitchToNextWeapon()
 {
+	//if (!CurrWeapon) { return; }
+	//if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+	//	|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+	//	return;
+	//}
+	//if (GetOccupiedSlotCount(WeaponInventory) > 1)
+	//{
+	//	const int32 PrevIndex = CurrWeaponIdx;
+
+	//	CurrWeaponIdx = (CurrWeaponIdx + 1) % WeaponInventory.Num();
+	//	ChangeWeapon(CurrWeaponIdx);
+
+	//	//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
+	//}
+
+	//-----------------------------------
+
 	if (!CurrWeapon) { return; }
 	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
 		return;
 	}
-	if (GetOccupiedSlotCount(WeaponInventory) > 1)
+
+	int32 NextIdx = CurrWeaponIdx;
+
+	for (int32 i = 1; i < WeaponInventory.Num(); i++)
 	{
-		const int32 PrevIndex = CurrWeaponIdx;
+		NextIdx += 1;
+		NextIdx = NextIdx % WeaponInventory.Num();
 
-		CurrWeaponIdx = (CurrWeaponIdx + 1) % WeaponInventory.Num();
-		ChangeWeapon(CurrWeaponIdx);
-
-		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
+		if (!WeaponInventory[NextIdx].IsEmpty())
+		{
+			CurrWeaponIdx = NextIdx;
+			ChangeWeapon(CurrWeaponIdx);
+			break;
+		}
 	}
 }
 
@@ -1010,40 +1096,38 @@ void UInventorySystemComponent::SwitchToIndex(int32 idx)
 		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
 	}
 }
-void UInventorySystemComponent::SwitchToOtherWeapon()
-{
-	AWeapon* OtherWeapon = Cast<AWeapon>(WeaponInventory[CurrWeaponIdx].GetItem(0));
-	if (OtherWeapon)
-	{
-		OtherWeapon->SwitchWeapon(PlayerOwner, true);
-		CurrWeapon = OtherWeapon;
-	}
-}
+
 
 void UInventorySystemComponent::SwitchToNextItem()
 {
-	//TODO: NextItem을 따로 저장해놓기
-	CurrFlashLightItem->Equip(PlayerOwner);
+	if (!NextItem) { return; }
+	if (NextItem->IsWeapon())
+	{
+		CurrWeapon = Cast<AWeapon>(NextItem);
+	}
+	else
+	{
+		bIsUsingFlashLightItem = true; //TODO: 이 변수에 대한 처리가 필요함
+	}
 
-	bIsUsingFlashLightItem = true;
-}
-
-void UInventorySystemComponent::SwitchToCurrWeapon()
-{
-
+	NextItem->Equip(PlayerOwner);
 }
 
 void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
 {
 	if (WeaponInventory.IsValidIndex(WeaponIndex) && !WeaponInventory[WeaponIndex].IsEmpty())
 	{
+		NextItem = WeaponInventory[WeaponIndex].GetItem(0);
+
 		if (IsValid(CurrWeapon))
 		{
-			CurrWeapon->SwitchWeapon(PlayerOwner, false);
+			//CurrWeapon->SwitchWeapon(PlayerOwner, false);
+			CurrWeapon->Unequip(PlayerOwner);
 		}
 		else
 		{
-			SwitchToOtherWeapon();
+			//SwitchToOtherWeapon();
+			SwitchToNextItem();
 		}
 	}
 }
@@ -1117,7 +1201,8 @@ void UInventorySystemComponent::ChangeThrowableWeapon(int32 WeaponIndex)
 	{
 		if (IsValid(CurrThrowableWeapon))
 		{
-			CurrThrowableWeapon->SwitchWeapon(PlayerOwner, false);
+			//CurrThrowableWeapon->SwitchWeapon(PlayerOwner, false);
+			CurrThrowableWeapon->Unequip(PlayerOwner);
 		}
 	}
 }
@@ -1172,13 +1257,26 @@ void UInventorySystemComponent::ToggleFlashLight()
 {
 	UE_LOG(LogTemp, Warning, TEXT("void UInventorySystemComponent::ToggleFlashLight()"));
 
-	if (!CurrFlashLightItem) { return; }
+	if (!CurrFlashLightItem)
+	{ 
+		if (!FindFlashLightInInventory())
+		{
+			return;
+		}
+	}
 
 	if (CurrFlashLightItem->IsFlashlightOn())
 	{
 		if (CurrWeapon)
 		{
-			CurrFlashLightItem->Unequip();
+			NextItem = CurrWeapon;
+			CurrFlashLightItem->Unequip(PlayerOwner);
+			bIsUsingFlashLightItem = false;
+		}
+		else
+		{
+			CurrFlashLightItem->Unequip(PlayerOwner);
+			bIsUsingFlashLightItem = false;
 		}
 	}
 	else
@@ -1190,16 +1288,36 @@ void UInventorySystemComponent::ToggleFlashLight()
 				return;
 			}
 
+			NextItem = CurrFlashLightItem;
+
 			if (CurrWeapon->IsTwoHandedWeapon())
 			{
-				CurrWeapon->HolsterWeapon(PlayerOwner);
+				CurrWeapon->Unequip(PlayerOwner);
 			}
 			else
 			{
 
 			}
 		}
+		else
+		{
+			CurrFlashLightItem->Equip(PlayerOwner);
+			bIsUsingFlashLightItem = true;
+		}
 	}
+}
+bool UInventorySystemComponent::FindFlashLightInInventory()
+{
+	int32 idx = FindItemSlot(ItemInventory, EItemName::ItemName_FlashLight);
+	if (idx != INDEX_NONE)
+	{
+		if (AFlashlightItem* flashlight = Cast<AFlashlightItem>(ItemInventory[idx].GetItem(0)))
+		{
+			CurrFlashLightItem = Cast<AFlashlightItem>(flashlight);
+			return true;
+		}
+	}
+	return false;
 }
 #pragma endregion
 

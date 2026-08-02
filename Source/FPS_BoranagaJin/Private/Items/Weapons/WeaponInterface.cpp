@@ -22,9 +22,9 @@ void IWeaponInterface::EjectProjectileShell()
 {
 }
 
-void IWeaponInterface::SwitchToOtherWeapon()
-{
-}
+//void IWeaponInterface::SwitchToOtherWeapon()
+//{
+//}
 
 void IWeaponInterface::SwitchToOtherThrowableWeapon()
 {

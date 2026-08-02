@@ -34,7 +34,7 @@ public:
 	virtual void SetInputActionBinding() override;
 
 	///UFUNCTION(BlueprintCallable, Category = "Weapon")
-	virtual bool AttachWeaponToPlayer(ACharacterPlayer* TargetCharacter) override;
+	virtual bool AttachItemToPlayer(ACharacterPlayer* TargetCharacter) override;
 
 	virtual void FireSingleProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, bool bIsHoming = false, AActor* HomingTarget = nullptr) override;
 

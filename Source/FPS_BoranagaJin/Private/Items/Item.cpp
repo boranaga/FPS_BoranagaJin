@@ -47,6 +47,16 @@ bool AItem::UseItem(ACharacterPlayer* UsingCharacter)
 	return false;
 }
 
+void AItem::Equip(ACharacterPlayer* TargetCharacter)
+{
+
+}
+
+void AItem::Unequip(ACharacterPlayer* TargetCharacter)
+{
+
+}
+
 void AItem::LoadItemData()
 {
 	if (ItemDataTable.IsNull() || ItemRowName.IsNone()) return;
@@ -57,6 +67,11 @@ void AItem::LoadItemData()
 	if (!ItemData) return;
 
 	ItemImage = ItemData->ItemImage;
+}
+
+bool AItem::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
+{
+	return false;
 }
 
 void AItem::SetOwningPool(UObjectPoolSubsystem* NewPool)
