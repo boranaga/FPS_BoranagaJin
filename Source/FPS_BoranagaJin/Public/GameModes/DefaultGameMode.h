@@ -24,6 +24,13 @@ protected:
 public:
 	virtual void BeginPlay() override;
 
+	void NotifyPlayerDied();
+	void NotifyObjectiveCompleted();
+
+private:
+	void StartGameplay();
+
+
 	//void RespawnToLastCheckpoint(ACharacterPlayer* Player);
 
 	//void OnPlayerFellOutOfWorld(ACharacterPlayer* Player);

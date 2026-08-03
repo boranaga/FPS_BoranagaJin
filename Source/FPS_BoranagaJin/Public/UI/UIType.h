@@ -19,6 +19,7 @@ UENUM(BlueprintType)
 enum class EUIType : uint8
 {
 	UIType_Base UMETA(DisplayName = "BaseUIWidget"),
+	UIType_MainMenu UMETA(DisplayName = "MainMenu"),
 	UIType_WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
 	UIType_AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	UIType_Stamina UMETA(DisplayName = "StaminaWidget"),

@@ -3,6 +3,7 @@
 
 #include "GameModes/DefaultGameMode.h"
 #include "ObjectPoolSubsystem.h"
+#include "GameFlowSubsystem.h"
 
 #include "Engine/PlayerStartPIE.h"
 #include "Kismet/GameplayStatics.h"
@@ -25,7 +26,11 @@ void ADefaultGameMode::BeginPlay()
 		//Pool->PrewarmPool(ProjectileClass, 50);
 		//Pool->PrewarmPool(ItemPickupClass, 30);
 	}
-	//----------------------
+
+	StartGameplay();
+
+
+
 
 	//UE_LOG(LogTemp, Error, TEXT("ALevelGameMode::BeginPlay()"));
 
@@ -79,6 +84,30 @@ void ADefaultGameMode::BeginPlay()
 	// 	CurrentSave->CheckpointOrderIndex = -1;
 	// }
 
+}
+
+void ADefaultGameMode::NotifyPlayerDied()
+{
+	if (UGameFlowSubsystem* GameFlow = GetGameInstance()->GetSubsystem<UGameFlowSubsystem>())
+	{
+		GameFlow->HandlePlayerDeath();
+	}
+}
+
+void ADefaultGameMode::NotifyObjectiveCompleted()
+{
+
+}
+
+void ADefaultGameMode::StartGameplay()
+{
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UGameFlowSubsystem* GameFlow = GameInstance->GetSubsystem<UGameFlowSubsystem>())
+		{
+			// 별도 공개 함수로 Playing 상태 전환
+		}
+	}
 }
 
 //void AGameModeBase::RespawnToLastCheckpoint(APawnPlayer* Player)

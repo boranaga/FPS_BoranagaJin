@@ -99,7 +99,7 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 	}
 
 
-	UE_LOG(LogTemp, Error, TEXT("bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)"));
+	//UE_LOG(LogTemp, Error, TEXT("bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)"));
 	return true;
 }
 
