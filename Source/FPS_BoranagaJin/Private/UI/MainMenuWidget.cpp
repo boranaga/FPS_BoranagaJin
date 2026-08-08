@@ -11,10 +11,22 @@ void UMainMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (IsValid(Button_Play))
+	if (IsValid(Button_PlayNewGame))
 	{
-		Button_Play->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
-		Button_Play->OnClicked.AddDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
+		Button_PlayNewGame->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
+		Button_PlayNewGame->OnClicked.AddDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
+	}
+
+	if (IsValid(Button_Continue))
+	{
+		Button_Continue->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandleContinueButtonClicked);
+		Button_Continue->OnClicked.AddDynamic(this, &UMainMenuWidget::HandleContinueButtonClicked);
+	}
+
+	if (IsValid(Button_Option))
+	{
+		Button_Option->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandleOptionButtonClicked);
+		Button_Option->OnClicked.AddDynamic(this, &UMainMenuWidget::HandleOptionButtonClicked);
 	}
 
 	if (IsValid(Button_Exit))
@@ -26,9 +38,9 @@ void UMainMenuWidget::NativeConstruct()
 
 void UMainMenuWidget::NativeDestruct()
 {
-	if (IsValid(Button_Play))
+	if (IsValid(Button_PlayNewGame))
 	{
-		Button_Play->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
+		Button_PlayNewGame->OnClicked.RemoveDynamic(this, &UMainMenuWidget::HandlePlayButtonClicked);
 	}
 
 	if (IsValid(Button_Exit))
@@ -41,7 +53,17 @@ void UMainMenuWidget::NativeDestruct()
 
 void UMainMenuWidget::HandlePlayButtonClicked()
 {
-	OnPlayRequested.Broadcast();
+	OnPlayNewGameRequested.Broadcast();
+}
+
+void UMainMenuWidget::HandleContinueButtonClicked()
+{
+	OnContinueRequested.Broadcast();
+}
+
+void UMainMenuWidget::HandleOptionButtonClicked()
+{
+	OnOptionRequested.Broadcast();
 }
 
 void UMainMenuWidget::HandleExitButtonClicked()

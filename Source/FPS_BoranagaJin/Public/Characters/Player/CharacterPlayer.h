@@ -6,6 +6,7 @@
 //#include "GameFramework/Character.h" //TODO: Pawn vs Character which one?
 #include "GameFramework/Pawn.h"
 #include "Interface/DamageInterface.h"
+#include "Interface/SaveablePlayerInterface.h"
 #include "Items/WeaponState/WeaponStateType.h"
 #include "CharacterPlayer.generated.h"
 
@@ -50,7 +51,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
 UCLASS()
-class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageableInterface
+class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageableInterface, public ISaveablePlayerInterface
 {
 	GENERATED_BODY()
 public:
@@ -91,6 +92,12 @@ public:
 	virtual bool IsDead() const override;
 	float GetCurrentHealth() const;
 	float GetMaxHealth() const;
+
+#pragma region SaveablePlayerInterface
+public:
+	virtual void WritePlayerSaveData(FPlayerSaveData& OutSaveData) const override;
+	virtual void LoadPlayerSaveData(const FPlayerSaveData& SaveData) override;
+#pragma endregion
 
 public:
 	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;

@@ -4,11 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Items/ItemName.h"
+#include "ItemName.h"
+#include "InventoryName.h"
 #include "Items/InventorySlot.h"
 #include "Items/Weapons/WeaponName.h"
 #include "Items/WeaponState/WeaponStateType.h"
 #include "Items/Weapons/WeaponInterface.h"
+#include "SaveSystem/InventorySaveData.h"
 #include "InventorySystemComponent.generated.h"
 
 //MEMO: 다른 방식?
@@ -26,6 +28,7 @@ class AWeaponPickUp;
 class UInteractionWidget;
 
 struct FInventorySlot;
+struct FInventorySlotSaveData;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class FPS_BORANAGAJIN_API UInventorySystemComponent : public UActorComponent, public IWeaponInterface
@@ -45,12 +48,22 @@ protected:
 	virtual void BeginPlay() override;
 public:	
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
 #pragma region PlayerReference
 private:
 	void InitializePlayerReference();
 #pragma endregion
-#pragma region InputAction
+#pragma region SaveAndLoad
+public:
+	bool WriteInventorySaveData(TArray<FInventorySlotSaveData>& OutSaveData, EInventoryName inventoryname) const;
+	bool RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName inventoryname);
+	//TODO: EquipdedFlashLight에 대한 처리
+	void RestoreEquippedWeapon(int32 WeaponIndex);
+private:
+	AItem* CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData);
+	void ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory);
+	void NotifyInventoryRestored();
+#pragma endregion
+#pragma region InputAction 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "WeaponSystem|PlayerReference", Meta = (AllowPrivateAccess = "true"))
 	ACharacterPlayer* PlayerOwner;
@@ -94,7 +107,9 @@ protected:
 	TArray<FInventorySlot> ThrowableWeaponInventory;
 
 	FTimerHandle InitInventoryUITimerHandle;
-
+public:
+	const TArray<FInventorySlot>* GetInventoryConst(EInventoryName InventoryName) const;
+	TArray<FInventorySlot>* GetInventory(EInventoryName InventoryName);
 protected:
 	void InitInventory();
 	bool AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable = true, int32 AddCount = 1);
@@ -109,8 +124,6 @@ protected:
 	int32 FindEmptySlot(const TArray<FInventorySlot>& TargetInventory) const;
 	int32 GetOccupiedSlotCount(const TArray<FInventorySlot>& TargetInventory) const;
 	const TArray<FInventorySlot>& GetInventorySlots() const;
-
-	void PrintInventory() const;
 protected:
 	void InitInventoryUI();
 
@@ -194,6 +207,11 @@ protected:
 	int32 CurrWeaponIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
+	int32 GetCurrentWeaponIndex() const { return CurrWeaponIdx; }
+
+
+	FName GetCurrentWeaponID() const; //TODO: 구현 필요한가? ItemName으로 대체 가능할듯
+
 	int32 GetWeaponNum() { return WeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
 	EWeaponStateType GetCurrWeaponStateType() const;

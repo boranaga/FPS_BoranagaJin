@@ -32,6 +32,54 @@ ADestructibleObject::ADestructibleObject()
 	FireAreaComponent = CreateDefaultSubobject<UFireAreaComponent>(TEXT("FireAreaComponent"));
 	FireAreaComponent->SetupAttachment(SceneRoot);
 	FireAreaComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// <Save>
+	if (!SaveID.IsValid())
+	{
+		SaveID = FGuid::NewGuid();
+	}
+}
+
+#if WITH_EDITOR
+void ADestructibleObject::PostEditImport()
+{
+	Super::PostEditImport();
+
+	// 에디터에서 복사된 Actor가 기존 Actor와 같은 ID를 가지지 않도록 합니다.
+	SaveID = FGuid::NewGuid();
+}
+
+void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
+{
+	Super::PostDuplicate(DuplicateMode);
+
+	if (DuplicateMode == EDuplicateMode::Normal)
+	{
+		SaveID = FGuid::NewGuid();
+	}
+}
+#endif
+
+void ADestructibleObject::OnAfterLoad()
+{
+	if (bBroken)
+	{
+		// 파괴 상태를 시각적으로 다시 적용합니다.
+		HideBrokenMesh();
+
+		SetActorEnableCollision(false);
+
+		// TODO: 여기서 중요한 점은 로드 시 BreakObject()를 직접 호출하지 않는 것.
+		// BreakObject()가 폭발, 사운드, 아이템 드롭 등을 발생시킨다면 로딩할 때 모든 효과가 다시 실행될 수 있음.
+		//따라서 저장 복원 전용 함수가 필요합니다.
+		// 예시: void ADestructibleObject::ApplyBrokenVisualState() // 효과나 데미지는 발생시키지 않고 상태만 복원
+
+	}
+	else
+	{
+		SetActorHiddenInGame(false);
+		SetActorEnableCollision(true);
+	}
 }
 
 void ADestructibleObject::BeginPlay()

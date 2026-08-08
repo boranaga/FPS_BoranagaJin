@@ -18,6 +18,8 @@ public:
     bool StartNewGame();
     void ContinueGame();
 
+    bool RestartFromCheckPoint();
+
     void PauseGame();
     void ResumeGame();
 
@@ -42,7 +44,6 @@ private:
     EGameFlowState CurrentState = EGameFlowState::None;
 
     bool bLevelTransitionInProgress = false;
-
 
 private:
     void HandlePostLoadMap(UWorld* LoadedWorld);

@@ -6,6 +6,8 @@
 #include "Data/ItemData.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "ObjectPoolSubsystem.h"
+#include "SaveSystem/InventorySaveData.h"
+#include "SaveSystem/SaveGameArchive.h"
 
 
 // Sets default values
@@ -107,7 +109,65 @@ void AItem::DeactivateItemAndGetItemPickUp()
 
 void AItem::DeactivateItem()
 {
+	if (!OwningPool) { return; }
 	OwningPool->ReturnToPool(this);
+}
+
+bool AItem::WriteItemSaveData(FItemInstanceSaveData& OutSaveData)
+{
+	OutSaveData.Reset();
+	if (ItemID.IsNone() || ItemName == EItemName::ItemName_None)
+	{
+		return false;
+	}
+
+	if (!InstanceID.IsValid())
+	{
+		InstanceID = FGuid::NewGuid();
+	}
+
+	OutSaveData.ItemClass = GetClass();
+	OutSaveData.InstanceID = InstanceID;
+	OutSaveData.ItemID = ItemID;
+	OutSaveData.ItemName = ItemName;
+
+	FMemoryWriter MemoryWriter(OutSaveData.SerializedState, true);
+	FSaveGameArchive Archive(MemoryWriter);
+
+	Serialize(Archive);
+
+	MemoryWriter.Close();
+
+	UE_LOG(LogTemp, Error, TEXT("bool AItem::WriteItemSaveData(FItemInstanceSaveData& OutSaveData)"));
+
+	return true;
+}
+
+bool AItem::LoadItemSaveData(const FItemInstanceSaveData& SaveData)
+{
+	if (!SaveData.IsValid()) { return false; }
+
+	InstanceID = SaveData.InstanceID;
+	ItemID = SaveData.ItemID;
+	ItemName = SaveData.ItemName;
+
+	if (!SaveData.SerializedState.IsEmpty())
+	{
+		FMemoryReader MemoryReader(SaveData.SerializedState, true);
+		FSaveGameArchive Archive(MemoryReader);
+		Serialize(Archive);
+		MemoryReader.Close();
+	}
+
+	OnItemStateRestored();
+
+	return true;
+}
+
+void AItem::OnItemStateRestored()
+{
+	// BaseItem의 경우 후처리 안함
+	// Child Class에서 Override 예정
 }
 
 

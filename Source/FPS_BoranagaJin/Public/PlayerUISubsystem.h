@@ -11,6 +11,15 @@ class UMainMenuWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
 
+USTRUCT()
+struct FUIWidgetArray
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    TArray<TObjectPtr<UBaseUIWidget>> Widgets;
+};
+
 UCLASS()
 class FPS_BORANAGAJIN_API UPlayerUISubsystem : public ULocalPlayerSubsystem
 {
@@ -36,15 +45,15 @@ private:
     {
         switch (Type)
         {
-        case EUIType::UIType_Stamina: return 0;
-        case EUIType::UIType_Health: return 0;
-        case EUIType::UIType_Interaction: return 1;
-        case EUIType::UIType_WeaponAim: return 2;
-        case EUIType::UIType_AmmoCounter: return 2;
-        case EUIType::UIType_MainMenu: return 3;
-        case EUIType::UIType_Inventory: return 3;
-        case EUIType::UIType_ThrowableWeaponInventory: return 3;
-        case EUIType::UIType_Base: return 4;
+        case EUIType::Stamina: return 0;
+        case EUIType::Health: return 0;
+        case EUIType::Interaction: return 1;
+        case EUIType::WeaponAim: return 2;
+        case EUIType::AmmoCounter: return 2;
+        case EUIType::MainMenu: return 3;
+        case EUIType::Inventory: return 3;
+        case EUIType::ThrowableWeaponInventory: return 3;
+        case EUIType::Base: return 4;
         default: return 0;
         }
     }
@@ -59,11 +68,18 @@ public:
     void InitGameplayUI();
 private:
     void HandlePlayRequested();
+    void HandleContinueRequested();
+    void HandleOptionRequested();
     void HandleExitRequested();
 private:
     //TODO: Weapon Aim UI는 같은 Type으로 여러개 존재하는데 이에 대한 처리 필요
+    //UPROPERTY()
+    //TMap<EUIType, TObjectPtr<UBaseUIWidget>> UIWidgets_Legacy;
+
     UPROPERTY()
-    TMap<EUIType, TObjectPtr<UBaseUIWidget>> UIWidgets;
+    TMap<EUIType, FUIWidgetArray> UIWidgets;
+
+
     //UPROPERTY()
     //TMap<EUIType, int32> UILayers;
     UPROPERTY()

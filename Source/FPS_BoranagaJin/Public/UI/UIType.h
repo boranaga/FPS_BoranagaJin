@@ -18,17 +18,17 @@ enum class EUIZOrder : uint8
 UENUM(BlueprintType)
 enum class EUIType : uint8
 {
-	UIType_Base UMETA(DisplayName = "BaseUIWidget"),
-	UIType_MainMenu UMETA(DisplayName = "MainMenu"),
-	UIType_WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
-	UIType_AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
-	UIType_Stamina UMETA(DisplayName = "StaminaWidget"),
-	UIType_Health UMETA(DisplayName = "HealthWidget"),
-	UIType_Inventory UMETA(DisplayName = "InventoryWidget"),
-	UIType_ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
-	UIType_Interaction UMETA(DisplayName = "InteractionWidget")
+	Base UMETA(DisplayName = "BaseUIWidget"),
+	MainMenu UMETA(DisplayName = "MainMenu"),
+	WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
+	AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
+	Stamina UMETA(DisplayName = "StaminaWidget"),
+	Health UMETA(DisplayName = "HealthWidget"),
+	Inventory UMETA(DisplayName = "InventoryWidget"),
+	ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
+	Interaction UMETA(DisplayName = "InteractionWidget")
 };
-ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::UIType_Base, EUIType::UIType_Interaction);
+ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::Base, EUIType::Interaction);
 
 UCLASS()
 class FPS_BORANAGAJIN_API AUIType : public AActor

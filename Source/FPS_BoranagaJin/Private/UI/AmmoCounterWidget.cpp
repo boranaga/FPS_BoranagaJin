@@ -8,7 +8,7 @@
 void UAmmoCounterWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
-	SetUIType(EUIType::UIType_AmmoCounter);
+	SetUIType(EUIType::AmmoCounter);
 }
 
 void UAmmoCounterWidget::NativeConstruct()

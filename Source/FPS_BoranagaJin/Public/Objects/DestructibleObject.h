@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Interface/DamageInterface.h"
+#include "Interface/SaveableActorInterface.h"
 #include "DestructibleObject.generated.h"
 
 class UFireAreaComponent;
@@ -13,11 +14,40 @@ class UNiagaraSystem;
 class USoundBase;
 
 UCLASS()
-class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageableInterface
+class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageableInterface, public ISaveableActorInterface
 {
 	GENERATED_BODY()
 public:
 	ADestructibleObject();
+
+#pragma region SaveableActorInterface
+#if WITH_EDITOR
+	virtual void PostEditImport() override;
+	virtual void PostDuplicate(EDuplicateMode::Type DuplicateMode) override;
+#endif
+public:
+	virtual FGuid GetSaveID() const override
+	{
+		return SaveID;
+	}
+
+	virtual bool ShouldSaveTransform() const override
+	{
+		return false;
+	}
+
+	virtual void OnAfterLoad() override;
+
+protected:
+	UPROPERTY(EditInstanceOnly, Category = "Save", meta = (AllowPrivateAccess = "true"))
+	FGuid SaveID;
+
+	UPROPERTY(EditAnywhere, SaveGame, Category = "Destructible")
+	float CurrentDurability = 100.0f;
+
+	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Destructible")
+	bool bBroken = false;
+#pragma endregion
 protected:
 	virtual void BeginPlay() override;
 public:

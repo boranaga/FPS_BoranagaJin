@@ -15,7 +15,7 @@ class FPS_BORANAGAJIN_API UPlayerDisplayWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual EUIType GetUIType() const { return EUIType::UIType_Inventory; }
+	virtual EUIType GetUIType() const { return EUIType::Inventory; }
 public:
 	void OpenInventory();
 	void CloseInventory();

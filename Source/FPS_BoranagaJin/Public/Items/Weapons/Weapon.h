@@ -139,6 +139,14 @@ public:
 	virtual void FireSingleProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, bool bIsHoming = false, AActor* HomingTarget = nullptr);
 	void FireMultiProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, int32 AdditionalPellet = 0, bool bIsHoming = false, AActor* HomingTarget = nullptr);
 
+#pragma region SaveAndLoad
+	//TODO: Save가 필요한 모든 변수에
+	// UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save")
+	// TODO: 기본적으로 DT를 통해 Load되는 변수들에 대해서는 어떻게 처리해야할지 고민 필요
+	// 나중에 Restore 이후에 InitItem에서 DT Load 먼저 진행한 이후에 LoadItemSaveData 진행해야 하나?
+public:
+	virtual void OnItemStateRestored() override;
+#pragma endregion
 #pragma region Socket
 protected:
 	FName WeaponSocketName = FName("");
@@ -305,6 +313,7 @@ public:
 #pragma endregion
 
 #pragma region ProjectileShell
+//TODO: ObjectPoolSubsystem에 편입
 protected:
 	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
 	TSubclassOf<AProjectileShell> ProjectileShellClass;
@@ -396,15 +405,12 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	int32 MaxTotalAmmo = 200.f;
-
-	UPROPERTY(EditAnywhere)
-	int32 TotalAmmo = 100.f;
-
 	UPROPERTY(EditAnywhere)
 	int32 MaxAmmoPerMag = 20.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	int32 LeftAmmoInCurrentMag = 0;
+	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save")
+	int32 TotalAmmo = 100.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Weapon|Save")
+	int32 LeftAmmoInCurrMag = 0;
 
 	FTimerHandle ReloadingTimer;
 protected:
@@ -428,7 +434,7 @@ public:
 	void AutoReload();
 	virtual void ReloadingEnd() override;
 
-	int32 GetLeftAmmoInCurrentMag() { return LeftAmmoInCurrentMag; }
+	int32 GetLeftAmmoInCurrentMag() { return LeftAmmoInCurrMag; }
 	int32 GetMaxAmmoPerMag() { return MaxAmmoPerMag; }
 #pragma endregion
 
@@ -624,6 +630,7 @@ protected:
 
 #pragma region Projectile
 protected:
+	//TODO: ObjectPoolingSubsystem에 편입
 	int32 NumProjectile_L = 10;
 	int32 NumProjectile_R = 5;
 

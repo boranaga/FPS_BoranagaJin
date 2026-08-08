@@ -62,7 +62,7 @@ void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inve
 		{
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
-				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Count);
+				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
 			}
 		}
 	}
@@ -80,7 +80,7 @@ void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inve
 		{
 			InventorySlotWidgets[i]->SetItemSlotData(
 				Inventory[i].ItemID,
-				Inventory[i].Count
+				Inventory[i].Num()
 			);
 		}
 		else

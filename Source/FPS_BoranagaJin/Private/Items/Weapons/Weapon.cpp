@@ -76,7 +76,7 @@ AWeapon::AWeapon()
 	WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
 	//---------------------------------------------------------------------------------
-	LeftAmmoInCurrentMag = MaxAmmoPerMag;
+	LeftAmmoInCurrMag = MaxAmmoPerMag;
 
 	bIsWeapon = true;
 	bIsStackable = false;
@@ -95,21 +95,6 @@ void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
 		//InitializeCamera(Character);
 		LoadWeaponData_Upgrade();
-
-		//if (Character->GetWeaponSystemComponent()->IsSceneCaptureActive())
-		//{
-		//	TInlineComponentArray<USceneComponent*> MeshComponents;
-		//	GetComponents<USceneComponent>(MeshComponents);
-
-		//	for (USceneComponent* MeshComp : MeshComponents)
-		//	{
-		//		if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(MeshComp))
-		//		{
-		//			Character->GetSceneCaptureComponent()->ShowOnlyComponent(PrimComp);
-		//			PrimComp->SetVisibleInSceneCaptureOnly(true);
-		//		}
-		//	}
-		//}
 	}
 	InitializeUI();
 
@@ -127,6 +112,7 @@ void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 	SetMeshVisibility(false);
 	SetAimSocketRelativeTransform();
 
+	//TODO: ObjectPoolingSystem에 편입
 	InitProjectileShells();
 
 	InitProjectiles(FireData_L.ProjectileClass, 10);
@@ -154,7 +140,7 @@ void AWeapon::InitializeUI()
 		AmmoCounterWidget = CreateWidget<UAmmoCounterWidget>(GetWorld(), AmmoCounterWidgetClass);
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrentMag);
+			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 	}
@@ -475,7 +461,7 @@ void AWeapon::LoadWeaponData_Upgrade()
 	MaxTotalAmmo = WeaponData->MaxTotalAmmo;
 	TotalAmmo = MaxTotalAmmo;
 	MaxAmmoPerMag = WeaponData->MaxAmmoPerMag;
-	LeftAmmoInCurrentMag = MaxAmmoPerMag;
+	LeftAmmoInCurrMag = MaxAmmoPerMag;
 	FireData_L.AmmoCost = WeaponData->AmmoConsumedPerShot_Left;
 	FireData_R.AmmoCost = WeaponData->AmmoConsumedPerShot_Right;
 	FireData_Skill.AmmoCost = WeaponData->AmmoCost_Skill;
@@ -745,7 +731,7 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 	{
 		if (FireData->bAllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag <= 0)
+			if (LeftAmmoInCurrMag <= 0)
 			{
 				return;
 			}
@@ -865,7 +851,7 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 	{
 		if (FireData->bAllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag <= 0)
+			if (LeftAmmoInCurrMag <= 0)
 			{
 				return;
 			}
@@ -962,6 +948,20 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 	AddArmRecoil(&FireData->Armrecoil);
 }
 
+void AWeapon::OnItemStateRestored()
+{
+	Super::OnItemStateRestored();
+
+	TotalAmmo = FMath::Max(TotalAmmo, 0);
+	LeftAmmoInCurrMag = FMath::Max(LeftAmmoInCurrMag, 0);
+
+	if (AmmoCounterWidget)
+	{
+		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
+		AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
+	}
+}
+
 void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (CurrentState == UnequippedState) return;
@@ -976,7 +976,7 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 	{
 		if (FireData->bAllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag <= 0)
+			if (LeftAmmoInCurrMag <= 0)
 			{
 				return;
 			}
@@ -1081,7 +1081,7 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 	{
 		if (FireData->bAllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag <= 0)
+			if (LeftAmmoInCurrMag <= 0)
 			{
 				return;
 			}
@@ -1770,7 +1770,7 @@ void AWeapon::HandleReload()
 {
 	if (CurrentState == IdleState)
 	{
-		if (LeftAmmoInCurrentMag < MaxAmmoPerMag && TotalAmmo > 0)
+		if (LeftAmmoInCurrMag < MaxAmmoPerMag && TotalAmmo > 0)
 		{
 			//TODO: ReloadingState�� EnterState���� StartReload �ص� �� ��
 			ChangeState(ReloadingState);
@@ -1784,7 +1784,7 @@ void AWeapon::HandlePumpActionReload()
 {
 	if (CurrentState == IdleState)
 	{
-		if (LeftAmmoInCurrentMag < MaxAmmoPerMag && TotalAmmo > 0)
+		if (LeftAmmoInCurrMag < MaxAmmoPerMag && TotalAmmo > 0)
 		{
 			ChangeState(PumpActionReloadingState);
 
@@ -1826,7 +1826,7 @@ void AWeapon::StartPumpActionReload(bool bStartFromMiddle)
 
 	if (bStartFromMiddle)
 	{
-		if (LeftAmmoInCurrentMag + 1 == MaxAmmoPerMag)
+		if (LeftAmmoInCurrMag + 1 == MaxAmmoPerMag)
 		{
 			if (CharacterAnimInstance != nullptr && AM_Reload_Character != nullptr)
 			{
@@ -1906,7 +1906,7 @@ void AWeapon::StartPumpActionReload(bool bStartFromMiddle)
 		}
 
 		//-------------------------------------------------------
-		if (LeftAmmoInCurrentMag + 1 == MaxAmmoPerMag)
+		if (LeftAmmoInCurrMag + 1 == MaxAmmoPerMag)
 		{
 			if (CharacterAnimInstance != nullptr && AM_Reload_Character != nullptr)
 			{
@@ -1981,7 +1981,7 @@ void AWeapon::StopPumpActionReload()
 
 	if (BufferedFireRequest.IsSet())
 	{
-		if (LeftAmmoInCurrentMag >= MaxAmmoPerMag)
+		if (LeftAmmoInCurrMag >= MaxAmmoPerMag)
 		{
 			ChangeState(IdleState);
 
@@ -2022,7 +2022,7 @@ void AWeapon::StopPumpActionReload()
 	}
 	else if (bFireInputDuringReload)
 	{
-		if (LeftAmmoInCurrentMag >= MaxAmmoPerMag)
+		if (LeftAmmoInCurrMag >= MaxAmmoPerMag)
 		{
 			bFireInputDuringReload = false;
 			ChangeState(IdleState);
@@ -2057,7 +2057,7 @@ void AWeapon::StopPumpActionReload()
 	//}
 	else
 	{
-		if (LeftAmmoInCurrentMag < MaxAmmoPerMag)
+		if (LeftAmmoInCurrMag < MaxAmmoPerMag)
 		{
 			StartPumpActionReload(true);
 		}
@@ -2098,27 +2098,28 @@ void AWeapon::InterruptReloadAndFire()
 
 void AWeapon::ConsumeAmmo(int32 AmmoCost, bool AllowFireWithInsufficientAmmo)
 {
-	if (LeftAmmoInCurrentMag > 0)
+	if (LeftAmmoInCurrMag > 0)
 	{
 		if (AllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag >= AmmoCost)
+			if (LeftAmmoInCurrMag >= AmmoCost)
 			{
-				LeftAmmoInCurrentMag -= AmmoCost;
+				LeftAmmoInCurrMag -= AmmoCost;
 			}
 			else
 			{
-				LeftAmmoInCurrentMag = 0;
+				LeftAmmoInCurrMag = 0;
 			}
 		}
 		else
 		{
-			LeftAmmoInCurrentMag -= AmmoCost;
+			LeftAmmoInCurrMag -= AmmoCost;
 		}
 
+		//TODO: PlayerUISubsystem에 편입
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrentMag);
+			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
 		}
 	}
 }
@@ -2129,12 +2130,12 @@ void AWeapon::ReloadAmmo(bool bPumpAction)
 		int32 RequiredAmmo = 1;
 		int32 AmmoToReload = FMath::Min(RequiredAmmo, TotalAmmo);
 
-		LeftAmmoInCurrentMag += AmmoToReload;
+		LeftAmmoInCurrMag += AmmoToReload;
 		TotalAmmo -= AmmoToReload;
 
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrentMag);
+			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 	}
@@ -2152,10 +2153,10 @@ void AWeapon::ReloadAmmo(bool bPumpAction)
 		//	LeftAmmoInCurrentMag = MaxAmmoPerMag;
 		//}
 
-		int32 RequiredAmmo = MaxAmmoPerMag - LeftAmmoInCurrentMag;
+		int32 RequiredAmmo = MaxAmmoPerMag - LeftAmmoInCurrMag;
 		int32 AmmoToReload = FMath::Min(RequiredAmmo, TotalAmmo);
 
-		LeftAmmoInCurrentMag += AmmoToReload;
+		LeftAmmoInCurrMag += AmmoToReload;
 		TotalAmmo -= AmmoToReload;
 
 		//--------------
@@ -2163,18 +2164,18 @@ void AWeapon::ReloadAmmo(bool bPumpAction)
 		//LeftAmmoInCurrentMag = MaxAmmoPerMag;
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrentMag);
+			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 	}
 }
 bool AWeapon::HasAmmoInCurrentMag()
 {
-	return (LeftAmmoInCurrentMag > 0);
+	return (LeftAmmoInCurrMag > 0);
 }
 bool AWeapon::HasAmmoInCurrentMag(int32 AmmoCost)
 {
-	return LeftAmmoInCurrentMag >= AmmoCost;
+	return LeftAmmoInCurrMag >= AmmoCost;
 }
 bool AWeapon::AddAmmo(int32 NumAmmo)
 {
@@ -2184,7 +2185,7 @@ bool AWeapon::AddAmmo(int32 NumAmmo)
 		TotalAmmo = NewTotalAmmo;
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrentMag);
+			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 		return true;
@@ -2212,7 +2213,7 @@ void AWeapon::ReloadingEnd()
 {
 	//UE_LOG(LogTemp, Warning, TEXT("Reloading End!!!"));
 
-	if (LeftAmmoInCurrentMag < MaxAmmoPerMag)
+	if (LeftAmmoInCurrMag < MaxAmmoPerMag)
 	{
 		ReloadAmmo(true);
 	}

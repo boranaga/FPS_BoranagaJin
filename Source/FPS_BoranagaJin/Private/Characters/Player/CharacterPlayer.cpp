@@ -265,6 +265,55 @@ float ACharacterPlayer::GetMaxHealth() const
 	return HealthComponent ? HealthComponent->GetMaxHealth() : 0.f;
 }
 
+void ACharacterPlayer::WritePlayerSaveData(FPlayerSaveData& OutSaveData) const
+{
+	OutSaveData.PlayerTransform = GetActorTransform();
+
+	if (HealthComponent)
+	{
+		OutSaveData.CurrentHealth = HealthComponent->GetCurrentHealth();
+	}
+
+	//-------------------
+	//TODO: 이미 WirteInventorySaveData가 const라서 const_cast는 필요 없을 듯 함
+
+	// <const Version>
+	if (InventorySystem)
+	{
+		/*
+		 * WriteInventorySaveData가 비-const인 이유는
+		 * 각 AItem::Serialize()가 비-const이기 때문입니다.
+		 */
+		const_cast<UInventorySystemComponent*>(InventorySystem.Get())->WriteInventorySaveData(OutSaveData.ItemInventorySlots, EInventoryName::Item);
+		const_cast<UInventorySystemComponent*>(InventorySystem.Get())->WriteInventorySaveData(OutSaveData.WeaponInventorySlots, EInventoryName::Weapon);
+		const_cast<UInventorySystemComponent*>(InventorySystem.Get())->WriteInventorySaveData(OutSaveData.ThrowableWeaponInventorySlots, EInventoryName::ThrowableWeapon);
+		OutSaveData.EquippedWeaponIndex = InventorySystem->GetCurrentWeaponIndex();
+
+		//OutSaveData.EquippedWeaponID = InventorySystem->GetCurrentWeaponID();
+	}
+}
+
+void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData)
+{
+	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData)"));
+
+	SetActorTransform(SaveData.PlayerTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	if (HealthComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData 1)"));
+		HealthComponent->SetCurrHealth(SaveData.CurrentHealth);
+	}
+	if (InventorySystem)
+	{
+		UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData 2)"));
+		InventorySystem->RestoreInventoryFromSaveData(SaveData.ItemInventorySlots, EInventoryName::Item);
+		InventorySystem->RestoreInventoryFromSaveData(SaveData.WeaponInventorySlots, EInventoryName::Weapon);
+		InventorySystem->RestoreInventoryFromSaveData(SaveData.ThrowableWeaponInventorySlots, EInventoryName::ThrowableWeapon);
+
+		InventorySystem->RestoreEquippedWeapon(SaveData.EquippedWeaponIndex);
+	}
+}
+
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);

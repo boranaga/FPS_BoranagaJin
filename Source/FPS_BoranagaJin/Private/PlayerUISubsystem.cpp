@@ -5,8 +5,11 @@
 #include "UI/MainMenuWidget.h"
 #include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/CharacterPlayer.h"
+//#include "SaveSystem/SaveGameSubsystem.h"
+//#include "SaveSystem/SaveGameCustom.h"
 
 #include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
 
 void UPlayerUISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -18,12 +21,24 @@ void UPlayerUISubsystem::Deinitialize()
 {
     UnbindCharacterDelegates();
 
-    for (const TPair<EUIType, TObjectPtr<UBaseUIWidget>> &Pair : UIWidgets)
+    //for (const TPair<EUIType, TObjectPtr<UBaseUIWidget>> &Pair : UIWidgets_Legacy)
+    //{
+    //    if (IsValid(Pair.Value))
+    //    {
+    //        Pair.Value->RemoveFromParent();
+    //    }
+    //}
+
+    for (TPair<EUIType, FUIWidgetArray>& Pair : UIWidgets)
     {
-        if (IsValid(Pair.Value))
+        for (UBaseUIWidget* Widget : Pair.Value.Widgets)
         {
-            Pair.Value->RemoveFromParent();
+            if (IsValid(Widget))
+            {
+                Widget->RemoveFromParent();
+            }
         }
+        Pair.Value.Widgets.Reset();
     }
 
     UIWidgets.Reset();
@@ -35,10 +50,40 @@ void UPlayerUISubsystem::Deinitialize()
 
 void UPlayerUISubsystem::RegisterUIWidget(UBaseUIWidget* NewWidget)
 {
+    //if (!IsValid(NewWidget)) { return; }
+
+    //const EUIType UIType = NewWidget->GetUIType();
+    ////const int32* Layer = UILayers.Find(UIType);
+    //const int32 Layer = GetUIZOrder(UIType);
+
+    //if (!Layer)
+    //{
+    //    UE_LOG(LogTemp, Error, TEXT("UI layer is missing: %s"), *UEnum::GetValueAsString(UIType));
+    //    return;
+    //}
+
+    //if (TObjectPtr<UBaseUIWidget>* Existing = UIWidgets_Legacy.Find(UIType))
+    //{
+    //    if (IsValid(*Existing) && *Existing != NewWidget)
+    //    {
+    //        (*Existing)->RemoveFromParent();
+    //    }
+    //}
+
+    //UIWidgets_Legacy.Add(UIType, NewWidget);
+
+    //if (!NewWidget->IsInViewport())
+    //{
+    //    NewWidget->AddToPlayerScreen(Layer);
+    //}
+
+    ////TODO:
+    //NewWidget->SetOwnerUIManager(this);
+
+    //-----------------------------------------------------
     if (!IsValid(NewWidget)) { return; }
 
     const EUIType UIType = NewWidget->GetUIType();
-    //const int32* Layer = UILayers.Find(UIType);
     const int32 Layer = GetUIZOrder(UIType);
 
     if (!Layer)
@@ -47,23 +92,14 @@ void UPlayerUISubsystem::RegisterUIWidget(UBaseUIWidget* NewWidget)
         return;
     }
 
-    if (TObjectPtr<UBaseUIWidget>* Existing = UIWidgets.Find(UIType))
-    {
-        if (IsValid(*Existing) && *Existing != NewWidget)
-        {
-            (*Existing)->RemoveFromParent();
-        }
-    }
+    FUIWidgetArray& WidgetArray = UIWidgets.FindOrAdd(UIType);
 
-    UIWidgets.Add(UIType, NewWidget);
+    WidgetArray.Widgets.Add(NewWidget);
 
     if (!NewWidget->IsInViewport())
     {
         NewWidget->AddToPlayerScreen(Layer);
     }
-
-    //TODO:
-    //NewWidget->SetOwnerUIManager(this);
 }
 
 void UPlayerUISubsystem::ShowUI(EUIType UIType)
@@ -133,7 +169,9 @@ void UPlayerUISubsystem::InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass
 
     RegisterUIWidget(MainMenuWidget);
 
-    MainMenuWidget->OnPlayRequested.AddUObject(this, &UPlayerUISubsystem::HandlePlayRequested);
+    MainMenuWidget->OnPlayNewGameRequested.AddUObject(this, &UPlayerUISubsystem::HandlePlayRequested);
+    MainMenuWidget->OnContinueRequested.AddUObject(this, &UPlayerUISubsystem::HandleContinueRequested);
+    MainMenuWidget->OnOptionRequested.AddUObject(this, &UPlayerUISubsystem::HandleOptionRequested);
     MainMenuWidget->OnExitRequested.AddUObject(this, &UPlayerUISubsystem::HandleExitRequested);
 
     //TODO: 아래 부분 처리에 대한 고민 필요. 어디서 SetInputMode를 담당할지
@@ -174,6 +212,26 @@ void UPlayerUISubsystem::HandlePlayRequested()
     }
 
     const bool bStarted = GameFlowSubsystem->StartNewGame();
+}
+
+void UPlayerUISubsystem::HandleContinueRequested()
+{
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+    if (!IsValid(LocalPlayer)) { return; }
+    UGameInstance* GameInstance = LocalPlayer->GetGameInstance();
+    if (!IsValid(GameInstance)) { return; }
+
+    UGameFlowSubsystem* GameFlowSubsystem = GameInstance->GetSubsystem<UGameFlowSubsystem>();
+    //USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+
+    if (!GameFlowSubsystem) { return; }
+
+    //SaveSubsystem->StartNewGame(true);
+    GameFlowSubsystem->RestartFromCheckPoint();
+}
+
+void UPlayerUISubsystem::HandleOptionRequested()
+{
 }
 
 void UPlayerUISubsystem::HandleExitRequested()

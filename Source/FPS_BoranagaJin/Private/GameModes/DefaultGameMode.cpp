@@ -4,6 +4,7 @@
 #include "GameModes/DefaultGameMode.h"
 #include "ObjectPoolSubsystem.h"
 #include "GameFlowSubsystem.h"
+#include "SaveSystem/SaveGameSubsystem.h"
 
 #include "Engine/PlayerStartPIE.h"
 #include "Kismet/GameplayStatics.h"
@@ -18,8 +19,7 @@ void ADefaultGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (UObjectPoolSubsystem* Pool =
-		GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
+	if (UObjectPoolSubsystem* Pool = GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("UObjectPoolSubsystem Created!!!"));
 
@@ -29,7 +29,14 @@ void ADefaultGameMode::BeginPlay()
 
 	StartGameplay();
 
+	//----------------------------------------------------------------------------------------
 
+	// GameMode::BeginPlay() 시점에 플레이어의 BeginPlay() 초기화가 완전히 끝나지 않았거나,
+	// 인벤토리 초기화가 다음 프레임에 수행된다면 타이머로 한 프레임 늦추는 편이 안전할 것임.
+	GetWorldTimerManager().SetTimerForNextTick(this, &ADefaultGameMode::TryApplyLoadedGame);
+
+
+	//----------------------------------------------------------------------------------------
 
 
 	//UE_LOG(LogTemp, Error, TEXT("ALevelGameMode::BeginPlay()"));
@@ -107,6 +114,16 @@ void ADefaultGameMode::StartGameplay()
 		{
 			// 별도 공개 함수로 Playing 상태 전환
 		}
+	}
+}
+
+void ADefaultGameMode::TryApplyLoadedGame()
+{
+	USaveGameSubsystem* SaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<USaveGameSubsystem>() : nullptr;
+
+	if (SaveSubsystem && SaveSubsystem->HasPendingLoad())
+	{
+		SaveSubsystem->ApplyLoadedGame();
 	}
 }
 

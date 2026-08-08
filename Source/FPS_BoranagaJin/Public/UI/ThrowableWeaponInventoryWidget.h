@@ -17,7 +17,7 @@ class FPS_BORANAGAJIN_API UThrowableWeaponInventoryWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual EUIType GetUIType() const { return EUIType::UIType_ThrowableWeaponInventory; }
+	virtual EUIType GetUIType() const { return EUIType::ThrowableWeaponInventory; }
 public:
 	UPROPERTY(meta = (BindWidget))
 	UWrapBox* WrapBoxInventory;

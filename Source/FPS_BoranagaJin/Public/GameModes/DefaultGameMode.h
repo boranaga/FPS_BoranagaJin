@@ -29,6 +29,8 @@ public:
 
 private:
 	void StartGameplay();
+	void TryApplyLoadedGame();
+
 
 
 	//void RespawnToLastCheckpoint(ACharacterPlayer* Player);

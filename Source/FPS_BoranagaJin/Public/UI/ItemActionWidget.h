@@ -16,7 +16,7 @@ class FPS_BORANAGAJIN_API UItemActionWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual EUIType GetUIType() const { return EUIType::UIType_Inventory; }
+	virtual EUIType GetUIType() const { return EUIType::Inventory; }
 public:
 	FOnItemActionClicked OnItemActionClicked;
 protected:

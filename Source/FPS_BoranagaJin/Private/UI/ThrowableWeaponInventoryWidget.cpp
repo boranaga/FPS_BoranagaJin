@@ -10,7 +10,7 @@
 void UThrowableWeaponInventoryWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
-	SetUIType(EUIType::UIType_ThrowableWeaponInventory);
+	SetUIType(EUIType::ThrowableWeaponInventory);
 }
 
 void UThrowableWeaponInventoryWidget::NativeConstruct()
@@ -78,7 +78,7 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 		{
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
-				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Count);
+				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
 
 				//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
 			}

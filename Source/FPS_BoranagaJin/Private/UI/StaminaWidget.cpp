@@ -18,7 +18,7 @@
 void UStaminaWidget::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    SetUIType(EUIType::UIType_Stamina);
+    SetUIType(EUIType::Stamina);
 }
 
 void UStaminaWidget::NativeConstruct()

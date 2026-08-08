@@ -13,7 +13,7 @@ class FPS_BORANAGAJIN_API UAmmoCounterWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual EUIType GetUIType() const override { return EUIType::UIType_AmmoCounter; }
+	virtual EUIType GetUIType() const override { return EUIType::AmmoCounter; }
 public:
 	UPROPERTY(EditAnyWhere, BlueprintReadWrite, meta = (BindWidget))
 	class UTextBlock* AmmoCount;

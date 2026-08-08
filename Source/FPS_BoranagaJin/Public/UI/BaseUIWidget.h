@@ -12,10 +12,10 @@ class FPS_BORANAGAJIN_API UBaseUIWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
-	void SetUIType(EUIType NewUIType = EUIType::UIType_Base);
-	virtual EUIType GetUIType() const { return EUIType::UIType_Base; }
+	void SetUIType(EUIType NewUIType = EUIType::Base);
+	virtual EUIType GetUIType() const { return EUIType::Base; }
 protected:
-	EUIType UIType = EUIType::UIType_Base;
+	EUIType UIType = EUIType::Base;
 public:
 	void SetOwnerUIManager(UUIManagerComponent* InUIManager) { OwnerUIManager = InUIManager; }
 	UUIManagerComponent* GetOwnerUIManager() const { return OwnerUIManager; }

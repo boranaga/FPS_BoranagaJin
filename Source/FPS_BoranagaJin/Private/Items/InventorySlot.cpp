@@ -3,6 +3,3 @@
 
 #include "Items/InventorySlot.h"
 
-AInventorySlotStruct::AInventorySlotStruct()
-{
-}

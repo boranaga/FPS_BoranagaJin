@@ -119,6 +119,12 @@ float UHealthComponent::GetHealthPercent() const
 	return MaxHealth > 0.f ? CurrentHealth / MaxHealth : 0.f;
 }
 
+void UHealthComponent::SetCurrHealth(float NewHealthVal)
+{
+	CurrentHealth = FMath::Clamp(NewHealthVal, 0.f, MaxHealth);
+	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+}
+
 void UHealthComponent::ResetHealth()
 {
 	CurrentHealth = MaxHealth;

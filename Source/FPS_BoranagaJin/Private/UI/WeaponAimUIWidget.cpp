@@ -18,7 +18,7 @@
 void UWeaponAimUIWidget::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    SetUIType(EUIType::UIType_WeaponAim);
+    SetUIType(EUIType::WeaponAim);
 }
 
 void UWeaponAimUIWidget::NativeConstruct()

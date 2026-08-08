@@ -54,6 +54,7 @@ public:
 	float GetMaxHealth() const;
 	float GetHealthPercent() const;
 
+	void SetCurrHealth(float NewHealthVal);
 	void ResetHealth();
 private:
 	//void UpdateBleedingState();

@@ -231,7 +231,7 @@ void AEnemyBaseAIController::MoveToLocationPoint(const FVector& Location, float 
 
 	if (!NavPath)
 	{
-		UE_LOG(LogTemp, Error, TEXT("No Path!!!!!!!!!"));
+		//UE_LOG(LogTemp, Error, TEXT("No Path!!!!!!!!!"));
 	}
 }
 

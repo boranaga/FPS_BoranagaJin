@@ -20,7 +20,7 @@
 void UInteractionWidget::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    SetUIType(EUIType::UIType_Interaction);
+    SetUIType(EUIType::Interaction);
 }
 
 void UInteractionWidget::NativeConstruct()

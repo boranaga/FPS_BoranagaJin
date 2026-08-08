@@ -22,6 +22,8 @@
 #include "Items/WeaponState/WeaponChargingState.h"
 #include "Items/WeaponState/WeaponWaitingState.h"
 
+#include "ObjectPoolSubsystem.h"
+
 #include "UI/InteractionWidget.h"
 
 #include "Kismet/GameplayStatics.h"
@@ -95,6 +97,212 @@ void UInventorySystemComponent::InitializePlayerReference()
 	}
 }
 
+bool UInventorySystemComponent::WriteInventorySaveData(TArray<FInventorySlotSaveData>& OutSaveData, EInventoryName inventoryname) const
+{
+	const TArray<FInventorySlot>* InventoryToSave = GetInventoryConst(inventoryname);
+	if (!InventoryToSave) { return false; }
+
+	OutSaveData.Reset();
+	OutSaveData.Reserve(InventoryToSave->Num());
+
+	bool bAllItemsSaved = true;
+
+	for (int32 SlotIndex = 0; SlotIndex < InventoryToSave->Num(); ++SlotIndex)
+	{
+		const FInventorySlot& RuntimeSlot = (*InventoryToSave)[SlotIndex];
+
+		FInventorySlotSaveData SlotSaveData;
+		SlotSaveData.MaxStackCount = RuntimeSlot.MaxStackCount;
+		//SlotSaveData.Count = RuntimeSlot.Count;
+
+		for (AItem* Item : RuntimeSlot.Items)
+		{
+			if (!IsValid(Item))
+			{
+				bAllItemsSaved = false;
+				continue;
+			}
+
+			FItemInstanceSaveData ItemSaveData;
+
+			if (!Item->WriteItemSaveData(ItemSaveData))
+			{
+				bAllItemsSaved = false;
+				continue;
+			}
+
+			SlotSaveData.Items.Add(MoveTemp(ItemSaveData));
+		}
+
+		OutSaveData.Add(MoveTemp(SlotSaveData));
+	}
+
+	return bAllItemsSaved;
+}
+
+bool UInventorySystemComponent::RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName inventoryname)
+{
+	TArray<FInventorySlot>* InventoryToRestore = GetInventory(inventoryname);
+	if (!InventoryToRestore) { return false; }
+	ClearInventoryForRestore(*InventoryToRestore);
+	InventoryToRestore->SetNum(SaveData.Num());
+
+	bool bAllItemsRestored = true;
+
+	for (int32 SlotIndex = 0; SlotIndex < SaveData.Num(); ++SlotIndex)
+	{
+		const FInventorySlotSaveData& SlotSaveData = SaveData[SlotIndex];
+		FInventorySlot& RuntimeSlot = (*InventoryToRestore)[SlotIndex];
+
+		RuntimeSlot.ClearSlot();
+		RuntimeSlot.MaxStackCount = FMath::Max(SlotSaveData.MaxStackCount, 1);
+
+		for (const FItemInstanceSaveData& ItemSaveData : SlotSaveData.Items)
+		{
+			AItem* RestoredItem = CreateRuntimeItemFromSaveData(ItemSaveData);
+
+			if (!IsValid(RestoredItem))
+			{
+				bAllItemsRestored = false;
+				continue;
+			}
+
+			if (!RuntimeSlot.AddItem(RestoredItem))
+			{
+				RestoredItem->DeactivateItem();
+				bAllItemsRestored = false;
+			}
+		}
+	}
+
+	NotifyInventoryRestored();
+
+	UE_LOG(LogTemp, Warning, TEXT("bool UInventorySystemComponent::RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName inventoryname)"));
+
+	return bAllItemsRestored;
+}
+
+AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData)
+{
+	if (!SaveData.IsValid()) { return nullptr; }
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) { return nullptr; }
+
+	//UClass* LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
+	TSubclassOf<AItem> LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
+
+	if (!IsValid(LoadedItemClass)) { 
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr; }
+	if (!LoadedItemClass->IsChildOf(AItem::StaticClass()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 2"));
+		return nullptr;
+	}
+
+
+	//TODO: PoolSubsystem 사용
+	//TODO: ItemPickUp과 결합도가 높은데 얘는 어디서 관리해야할까
+	UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
+	if (!PoolSubsystem) { 
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr; }
+	AItem* NewItem = nullptr;
+	if (PlayerOwner)
+	{
+		NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
+		NewItem->InitItem(PlayerOwner, nullptr); //MEMO: 일단 PickUp은 ullptr로 넣어줬음
+		// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
+	}
+	if (!IsValid(NewItem)) { 
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); return nullptr; }
+
+	if (!NewItem->LoadItemSaveData(SaveData))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 5"));
+		NewItem->DeactivateItem();
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 6"));
+
+	return NewItem;
+}
+
+void UInventorySystemComponent::ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory)
+{
+	if (!&TargetInventory) { return; }
+	for (FInventorySlot& Slot : TargetInventory)
+	{
+		for (AItem* Item : Slot.Items)
+		{
+			if (!IsValid(Item)) { continue; }
+			Item->DeactivateItem();
+		}
+		Slot.ClearSlot();
+	}
+	TargetInventory.Reset();
+}
+
+void UInventorySystemComponent::NotifyInventoryRestored()
+{
+	if (PlayerOwner)
+	{
+		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+		PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+		PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+	}
+
+	if (CurrWeaponIdx != INDEX_NONE)
+	{
+		SwitchToIndex(CurrWeaponIdx);
+	}
+}
+
+void UInventorySystemComponent::RestoreEquippedWeapon(int32 WeaponIndex)
+{
+	if (!WeaponInventory.IsValidIndex(WeaponIndex))
+	{
+		CurrWeaponIdx = INDEX_NONE;
+		return;
+	}
+	CurrWeaponIdx = WeaponIndex;
+}
+
+const TArray<FInventorySlot>* UInventorySystemComponent::GetInventoryConst(EInventoryName InventoryName) const
+{
+	switch (InventoryName)
+	{
+	case EInventoryName::Item:
+		return &ItemInventory;
+
+	case EInventoryName::Weapon:
+		return &WeaponInventory;
+
+	case EInventoryName::ThrowableWeapon:
+		return &ThrowableWeaponInventory;
+
+	default:
+		return nullptr;
+	}
+}
+
+TArray<FInventorySlot>* UInventorySystemComponent::GetInventory(EInventoryName InventoryName)
+{
+	switch (InventoryName)
+	{
+	case EInventoryName::Item:
+		return &ItemInventory;
+
+	case EInventoryName::Weapon:
+		return &WeaponInventory;
+
+	case EInventoryName::ThrowableWeapon:
+		return &ThrowableWeaponInventory;
+
+	default:
+		return nullptr;
+	}
+}
+
 void UInventorySystemComponent::InitInventory()
 {
 	ItemInventory.SetNum(MaxItemSlotsCount);
@@ -122,6 +330,8 @@ void UInventorySystemComponent::InitInventory()
 		1.0f,
 		false
 	);
+
+	UE_LOG(LogTemp, Warning, TEXT("void UInventorySystemComponent::InitInventory()"));
 }
 
 bool UInventorySystemComponent::AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable, int32 AddCount)
@@ -349,7 +559,7 @@ bool UInventorySystemComponent::RemoveItemAtSlot(TArray<FInventorySlot>& TargetI
 		return false;
 	}
 
-	return Slot.RemoveItem(RemoveCount);
+	return Slot.RemoveItem(RemoveCount) == nullptr ? false : true;
 }
 
 bool UInventorySystemComponent::SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex)
@@ -413,33 +623,6 @@ int32 UInventorySystemComponent::GetOccupiedSlotCount(const TArray<FInventorySlo
 const TArray<FInventorySlot>& UInventorySystemComponent::GetInventorySlots() const
 {
 	return ItemInventory;
-}
-
-void UInventorySystemComponent::PrintInventory() const
-{
-	UE_LOG(LogTemp, Warning, TEXT("========== Inventory =========="));
-
-	for (int32 i = 0; i < ItemInventory.Num(); ++i)
-	{
-		const FInventorySlot& Slot = ItemInventory[i];
-
-		if (Slot.IsEmpty())
-		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[%02d] Empty"),
-				i);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[%02d] ItemID=%s Count=%d"),
-				i,
-				*Slot.ItemID.ToString(),
-				Slot.Count);
-		}
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("==============================="));
 }
 
 void UInventorySystemComponent::InitInventoryUI()
@@ -535,8 +718,6 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		{
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 		}
-
-		PrintInventory();
 	}
 	else if (InventoryName == FName("WeaponInventory"))
 	{
@@ -619,8 +800,6 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 
 	// 필요하다면 ToolWidget을 닫는 Delegate도 Broadcast
 	// PlayerOwner->OnItemToolWidgetCloseRequestedDelegate.Broadcast();
-
-	PrintInventory();
 }
 
 bool UInventorySystemComponent::SearchItems()
@@ -988,28 +1167,6 @@ EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 
 void UInventorySystemComponent::SwitchToPreviousWeapon()
 {
-	//if (!CurrWeapon) { return; }
-	//if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-	//	|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-	//	return;
-	//}
-	//if (GetOccupiedSlotCount(WeaponInventory) > 1)
-	//{
-	//	const int32 PrevIndex = CurrWeaponIdx;
-
-	//	CurrWeaponIdx--;
-	//	if (CurrWeaponIdx < 0)
-	//	{
-	//		CurrWeaponIdx = WeaponInventory.Num() + CurrWeaponIdx;
-	//	}
-	//	ChangeWeapon(CurrWeaponIdx);
-
-	//	//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
-	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
-	//}
-
-	//-----------------------------------------------------
-
 	if (!CurrWeapon) { return; }
 	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
@@ -1037,24 +1194,6 @@ void UInventorySystemComponent::SwitchToPreviousWeapon()
 
 void UInventorySystemComponent::SwitchToNextWeapon()
 {
-	//if (!CurrWeapon) { return; }
-	//if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-	//	|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-	//	return;
-	//}
-	//if (GetOccupiedSlotCount(WeaponInventory) > 1)
-	//{
-	//	const int32 PrevIndex = CurrWeaponIdx;
-
-	//	CurrWeaponIdx = (CurrWeaponIdx + 1) % WeaponInventory.Num();
-	//	ChangeWeapon(CurrWeaponIdx);
-
-	//	//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
-	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
-	//}
-
-	//-----------------------------------
-
 	if (!CurrWeapon) { return; }
 	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {

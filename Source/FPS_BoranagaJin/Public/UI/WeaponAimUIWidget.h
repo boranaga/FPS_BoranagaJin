@@ -22,7 +22,7 @@ public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
-	virtual EUIType GetUIType() const { return EUIType::UIType_WeaponAim; }
+	virtual EUIType GetUIType() const { return EUIType::WeaponAim; }
 public:
 	UPROPERTY(meta = (BindWidget))
 	UImage* Dot = nullptr;

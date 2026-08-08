@@ -482,11 +482,11 @@ void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
 
 void UUIManagerComponent::InitUILayersMap()
 {
-	UILayers.Add(EUIType::UIType_Stamina, 0);
-	UILayers.Add(EUIType::UIType_Interaction, 1);
-	UILayers.Add(EUIType::UIType_WeaponAim, 2);
-	UILayers.Add(EUIType::UIType_Inventory, 3);
-	UILayers.Add(EUIType::UIType_ThrowableWeaponInventory, 4);
+	UILayers.Add(EUIType::Stamina, 0);
+	UILayers.Add(EUIType::Interaction, 1);
+	UILayers.Add(EUIType::WeaponAim, 2);
+	UILayers.Add(EUIType::Inventory, 3);
+	UILayers.Add(EUIType::ThrowableWeaponInventory, 4);
 }
 
 void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)

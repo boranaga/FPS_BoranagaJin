@@ -412,7 +412,7 @@ void AWeaponTargeting::FireSingleProjectile(FWeaponFireParams* FireData, int32 N
 	{
 		if (FireData->bAllowFireWithInsufficientAmmo)
 		{
-			if (LeftAmmoInCurrentMag <= 0)
+			if (LeftAmmoInCurrMag <= 0)
 			{
 				return;
 			}

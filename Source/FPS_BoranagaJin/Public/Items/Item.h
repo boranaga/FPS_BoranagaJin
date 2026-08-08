@@ -11,6 +11,8 @@
 class ACharacterPlayer;
 class AItemPickUp;
 
+struct FItemInstanceSaveData;
+
 UCLASS()
 class FPS_BORANAGAJIN_API AItem : public AActor, public IPoolableActorInterface
 {
@@ -77,5 +79,19 @@ private:
 	UPROPERTY()
 	TObjectPtr<UObjectPoolSubsystem> OwningPool;
 	bool bIsActiveInPool = false;
+#pragma endregion
+#pragma region SaveAndLoad
+public:
+	const FGuid& GetInstanceID() const { return InstanceID; }
+
+	// WriteItemSaveData()를 const 함수로 만들지 않은 이유는 Unreal의 Serialize()가 일반적으로 비-const 함수이기 때문임
+	// 억지로 const_cast를 사용하는 것보다 저장 함수 자체를 비-const로 두는 것이 나음
+	virtual bool WriteItemSaveData(FItemInstanceSaveData& OutSaveData);
+	virtual bool LoadItemSaveData(const FItemInstanceSaveData& SaveData);
+	//직렬화된 프로퍼티 복원 이후 실행되는 후처리 함수
+	virtual void OnItemStateRestored();
+protected:
+	UPROPERTY(VisibleInstanceOnly, SaveGame, Category = "Item|Save")
+	FGuid InstanceID;
 #pragma endregion
 };

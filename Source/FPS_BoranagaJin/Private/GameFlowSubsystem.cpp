@@ -1,5 +1,6 @@
 #include "GameFlowSubsystem.h"
 #include "Instance/DefaultGameInstance.h"
+#include "SaveSystem/SaveGameSubsystem.h"
 
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -63,6 +64,19 @@ void UGameFlowSubsystem::ContinueGame()
 {
     // SaveGameSubsystem에서 마지막 저장 데이터를 읽은 뒤
     // 저장된 레벨로 이동하도록 구현합니다.
+}
+
+bool UGameFlowSubsystem::RestartFromCheckPoint()
+{
+    UGameInstance* GameInstance = GetGameInstance();
+    if (!IsValid(GameInstance)) { return false; }
+
+    USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+    if (!IsValid(SaveSubsystem)) { return false; }
+
+    if (!SaveSubsystem->LoadGame()) { return false; }
+
+    return SaveSubsystem->OpenSavedLevel();
 }
 
 void UGameFlowSubsystem::PauseGame()

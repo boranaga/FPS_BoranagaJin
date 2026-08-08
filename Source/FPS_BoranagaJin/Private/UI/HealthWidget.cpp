@@ -5,7 +5,7 @@
 void UHealthWidget::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    SetUIType(EUIType::UIType_Health);
+    SetUIType(EUIType::Health);
 }
 
 void UHealthWidget::NativeConstruct()

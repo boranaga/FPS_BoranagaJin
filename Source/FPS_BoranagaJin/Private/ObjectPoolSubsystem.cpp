@@ -133,6 +133,7 @@ AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, cons
 {
 	if (!ActorClass)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 1"));
 		return nullptr;
 	}
 
@@ -155,17 +156,20 @@ AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, cons
 
 	if (!Actor)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 2"));
 		Actor = CreateNewActor(ActorClass);
 	}
 
 	if (!Actor)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 3"));
 		return nullptr;
 	}
 
 	ActivateActor(Actor, Location, Rotation);
 	AddToActivePool(Pool, Actor);
 
+	UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 4"));
 	return Actor;
 }
 

@@ -12,7 +12,7 @@
 void UPlayerDisplayWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
-	SetUIType(EUIType::UIType_Inventory);
+	SetUIType(EUIType::Inventory);
 
 	//InventoryUIWidget = CreateWidget<UInventoryUIWidget>(GetWorld(), InventoryUIWidgetClass);
 	//InventoryUIWidget->AddToViewport();
