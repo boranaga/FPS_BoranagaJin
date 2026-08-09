@@ -30,18 +30,19 @@ public:
 
 	bool RegisterActor(AActor* Actor,bool bStartActive = true);
 
-	AActor* SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation);
+	AActor* SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation, bool bShouldCreateNewActor = false);
 
 	template<typename T>
-	T* SpawnFromPool(TSubclassOf<T> ActorClass, const FVector& Location, const FRotator& Rotation)
+	T* SpawnFromPool(TSubclassOf<T> ActorClass, const FVector& Location, const FRotator& Rotation, bool bShouldCreateNewActor = false)
 	{
-		return Cast<T>(SpawnFromPool(TSubclassOf<AActor>(ActorClass), Location, Rotation));
+		return Cast<T>(SpawnFromPool(TSubclassOf<AActor>(ActorClass), Location, Rotation, bShouldCreateNewActor));
 	}
 
 	void ReturnToPool(AActor* Actor);
 	void PrewarmPool(TSubclassOf<AActor> ActorClass, int32 Count);
 	bool IsActorInAvailablePool(AActor* Actor) const;
 	AActor* GetActorFromAvailablePool(AActor* Actor, const FVector& Location, const FRotator& Rotation);
+	AActor* FindActorByInstanceIDFromPool(FGuid InInstanceID, TSubclassOf<AActor> ActorClass);
 private:
 	UPROPERTY()
 	TMap<TSubclassOf<AActor>, FActorPool> ActorPools;

@@ -22,9 +22,6 @@ public:
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	//int32 Count = 0;
 
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	//bool bOccupied = false;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 MaxStackCount = 99;
 public:
@@ -36,7 +33,6 @@ public:
 		ItemName = EItemName::ItemName_None;
 		ItemID = NAME_None;
 		//Count = 0;
-		//bOccupied = false;
 		MaxStackCount = 99;
 		Items.Empty();
 		//Items.Reset(); //TODO: Reset하면 AItem이 Destroy 될 수 있기 때문에 일단 그냥 Empty로 놔둠
@@ -44,7 +40,6 @@ public:
 
 	bool IsEmpty() const
 	{
-		//return !bOccupied;
 		return Items.IsEmpty();
 	}
 
@@ -55,7 +50,6 @@ public:
 
 	bool IsSameItem(const EItemName& InItemName) const
 	{
-		//return bOccupied && ItemName == InItemName;
 		return !IsEmpty() && ItemName == InItemName;
 	}
 
@@ -83,7 +77,6 @@ public:
  			ItemName = InItem->GetItemName();
 			ItemID = InItem->GetItemID();
 			//Count = AddCount;
-			//bOccupied = true;
 			return true;
 		}
 
@@ -99,23 +92,6 @@ public:
 		//return false;
 		return true;
 	}
-
-	//bool RemoveItem(int32 RemoveCount = 1)
-	//{
-	//	if (IsEmpty())
-	//	{
-	//		return false;
-	//	}
-
-	//	Count -= RemoveCount;
-
-	//	if (Count <= 0)
-	//	{
-	//		ClearSlot();
-	//	}
-
-	//	return true;
-	//}
 
 	AItem* RemoveItem(int32 ItemIndex)
 	{
@@ -161,11 +137,3 @@ public:
 		return Items.IsValidIndex(ItemIdx) ? Items[ItemIdx].Get() : nullptr;
 	}
 };
-//
-//UCLASS()
-//class FPS_BORANAGAJIN_API AInventorySlotStruct : public AActor
-//{
-//	GENERATED_BODY()
-//public:
-//	AInventorySlotStruct();
-//};

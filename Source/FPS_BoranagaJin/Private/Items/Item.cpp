@@ -16,13 +16,27 @@ AItem::AItem()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	// <Save>
+	if (!InstanceID.IsValid())
+	{
+		InstanceID = FGuid::NewGuid();
+	}
 }
 
 // Called when the game starts or when spawned
 void AItem::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	if (UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
+	{
+		const bool bRegistered = PoolSubsystem->RegisterActor(this, true);
+
+		if (!bRegistered)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AItemPickUp Pool 등록 실패 또는 이미 등록됨: %s"), *GetName());
+		}
+	}
 }
 
 // Called every frame
@@ -42,6 +56,14 @@ void AItem::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 		ItemPickUp = PickUpActor;
 		LoadItemData();
 	}
+}
+
+void AItem::InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
+{
+	Character = NewCharacter;
+
+	bWasInitialized = true;
+	ItemPickUp = PickUpActor;
 }
 
 bool AItem::UseItem(ACharacterPlayer* UsingCharacter)
@@ -76,6 +98,35 @@ bool AItem::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 	return false;
 }
 
+#if WITH_EDITOR
+void AItem::PostEditImport()
+{
+	Super::PostEditImport();
+
+	// 에디터에서 복사된 Actor가 기존 Actor와 같은 ID를 가지지 않도록 합니다.
+	InstanceID = FGuid::NewGuid();
+}
+
+void AItem::PostDuplicate(EDuplicateMode::Type DuplicateMode)
+{
+	Super::PostDuplicate(DuplicateMode);
+
+	if (DuplicateMode == EDuplicateMode::Normal)
+	{
+		InstanceID = FGuid::NewGuid();
+	}
+}
+#endif
+
+void AItem::OnAfterLoad()
+{
+}
+
+void AItem::SetRuntimeSpawned(bool bIsRuntimeSpawned)
+{
+	bRuntimeSpawned = bIsRuntimeSpawned;
+}
+
 void AItem::SetOwningPool(UObjectPoolSubsystem* NewPool)
 {
 	OwningPool = NewPool;
@@ -101,9 +152,24 @@ void AItem::DeactivateItemAndGetItemPickUp()
 	if (OwningPool)
 	{
 		FVector Offset = Character->GetActorLocation() + Character->GetActorForwardVector() * 100.f;
-
-		OwningPool->GetActorFromAvailablePool(ItemPickUp, Offset, Character->GetActorRotation());
-		OwningPool->ReturnToPool(this);
+		if (ItemPickUp)
+		{
+			OwningPool->GetActorFromAvailablePool(ItemPickUp, Offset, Character->GetActorRotation());
+			OwningPool->ReturnToPool(this);
+		}
+		else
+		{
+			if (ItemPickUpClass)
+			{
+				AItemPickUp* NewItemPickUp = OwningPool->SpawnFromPool(ItemPickUpClass, Offset, Character->GetActorRotation());
+				if (NewItemPickUp) 
+				{
+					NewItemPickUp->SetItemPtr(this);
+					ItemPickUp = NewItemPickUp;
+				}
+				OwningPool->ReturnToPool(this);
+			}
+		}
 	}
 }
 

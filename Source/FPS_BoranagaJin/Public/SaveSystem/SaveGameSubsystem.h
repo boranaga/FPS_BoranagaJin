@@ -106,12 +106,13 @@ private:
 	void CaptureCurrentGameState(UFPSGameSave& SaveObject);
 	void CapturePlayerData(UFPSGameSave& SaveObject);
 	void CaptureWorldActorData(UFPSGameSave& SaveObject);
+	void CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject);
 
-	void RestorePlayerData(
-		const UFPSGameSave& SaveObject);
 
-	void RestoreWorldActorData(
-		const UFPSGameSave& SaveObject);
+
+	void RestorePlayerData(const UFPSGameSave& SaveObject);
+	void RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject);
+	void RestoreWorldActorData(const UFPSGameSave& SaveObject);
 
 	void HandleAsyncSaveCompleted(
 		const FString& SlotName,

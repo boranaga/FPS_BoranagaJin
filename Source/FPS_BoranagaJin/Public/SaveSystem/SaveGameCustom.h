@@ -34,6 +34,9 @@ public:
 	TArray<FWorldActorSaveData> WorldActorData;
 
 	UPROPERTY(SaveGame, BlueprintReadOnly)
+	TArray<FWorldActorSaveData> RuntimeSpawnedWorldActorData;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly)
 	TSet<FName> CompletedTutorialIDs;
 
 	UPROPERTY(SaveGame, BlueprintReadOnly)
@@ -44,7 +47,7 @@ public:
 		return WorldActorData.FindByPredicate(
 			[&SaveID](const FWorldActorSaveData& Data)
 			{
-				return Data.SaveID == SaveID;
+				return Data.InstanceID == SaveID;
 			}
 		);
 	}

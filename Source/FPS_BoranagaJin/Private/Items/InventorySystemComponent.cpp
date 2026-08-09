@@ -184,6 +184,52 @@ bool UInventorySystemComponent::RestoreInventoryFromSaveData(const TArray<FInven
 
 AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData)
 {
+	//if (!SaveData.IsValid()) { return nullptr; }
+	//UWorld* World = GetWorld();
+	//if (!IsValid(World)) { return nullptr; }
+
+	////UClass* LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
+	//TSubclassOf<AItem> LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
+
+	//if (!IsValid(LoadedItemClass)) { 
+	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr; }
+	//if (!LoadedItemClass->IsChildOf(AItem::StaticClass()))
+	//{
+	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 2"));
+	//	return nullptr;
+	//}
+
+
+	////TODO: PoolSubsystem 사용
+	////TODO: ItemPickUp과 결합도가 높은데 얘는 어디서 관리해야할까
+	//UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
+	//if (!PoolSubsystem) { 
+	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr; }
+	//AItem* NewItem = nullptr;
+	//if (PlayerOwner)
+	//{
+	//	NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
+	//	NewItem->InitItem(PlayerOwner, nullptr); //MEMO: 일단 PickUp은 ullptr로 넣어줬음
+	//	// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
+	//}
+	//if (!IsValid(NewItem)) { 
+	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); return nullptr; }
+
+	//if (!NewItem->LoadItemSaveData(SaveData))
+	//{
+	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 5"));
+	//	NewItem->DeactivateItem();
+	//	return nullptr;
+	//}
+
+	//UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 6"));
+
+	//return NewItem;
+
+	//----------------------------------------------------------------------------------
+	// <New Version>
+
+
 	if (!SaveData.IsValid()) { return nullptr; }
 	UWorld* World = GetWorld();
 	if (!IsValid(World)) { return nullptr; }
@@ -191,8 +237,9 @@ AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInsta
 	//UClass* LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
 	TSubclassOf<AItem> LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
 
-	if (!IsValid(LoadedItemClass)) { 
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr; }
+	if (!IsValid(LoadedItemClass)) {
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr;
+	}
 	if (!LoadedItemClass->IsChildOf(AItem::StaticClass()))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 2"));
@@ -203,17 +250,44 @@ AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInsta
 	//TODO: PoolSubsystem 사용
 	//TODO: ItemPickUp과 결합도가 높은데 얘는 어디서 관리해야할까
 	UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
-	if (!PoolSubsystem) { 
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr; }
+	if (!PoolSubsystem) {
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr;
+	}
 	AItem* NewItem = nullptr;
 	if (PlayerOwner)
 	{
-		NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
-		NewItem->InitItem(PlayerOwner, nullptr); //MEMO: 일단 PickUp은 ullptr로 넣어줬음
-		// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
+		if (SaveData.InstanceID.IsValid())
+		{
+			NewItem = Cast<AItem>(PoolSubsystem->FindActorByInstanceIDFromPool(SaveData.InstanceID, LoadedItemClass));
+			if (NewItem)
+			{
+				NewItem->InitItem(PlayerOwner, nullptr);
+			}
+			else
+			{
+				NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
+				if (NewItem)
+				{
+					NewItem->InitItem(PlayerOwner, nullptr);
+				}
+			}
+		}
+		else
+		{
+			NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
+			if (NewItem)
+			{
+				NewItem->InitItem(PlayerOwner, nullptr);
+			}
+			//MEMO: 일단 PickUp은 ullptr로 넣어줬음
+			// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
+		}
 	}
-	if (!IsValid(NewItem)) { 
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); return nullptr; }
+	if (!IsValid(NewItem)) 
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); 
+		return nullptr;
+	}
 
 	if (!NewItem->LoadItemSaveData(SaveData))
 	{
@@ -225,6 +299,9 @@ AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInsta
 	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 6"));
 
 	return NewItem;
+
+
+
 }
 
 void UInventorySystemComponent::ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory)

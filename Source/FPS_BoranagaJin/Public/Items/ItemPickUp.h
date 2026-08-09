@@ -28,6 +28,11 @@ public:
 	void DeactivateItemPickUp();
 	void ActivateItemPickUp(FVector location);
 	void DestroyItemPickUp();
+	void SetItemPtr(TObjectPtr<AItem> NewItem);
+#pragma region SaveableActorInterface
+	virtual bool ShouldSaveTransform() const override { return true; }
+	virtual void OnAfterLoad() override;
+#pragma endregion
 #pragma region PoolableActorInterface
 public:
 	virtual void SetOwningPool(UObjectPoolSubsystem* NewPool) override;
@@ -38,6 +43,7 @@ public:
 private:
 	UPROPERTY()
 	TObjectPtr<UObjectPoolSubsystem> OwningPool;
+	UPROPERTY(SaveGame)
 	bool bIsActiveInPool = false;
 #pragma endregion
 protected:
@@ -53,6 +59,8 @@ protected:
 	UPickUpComponent* PickUpComponent = nullptr;
 	UPROPERTY()
 	TObjectPtr<AItem> ItemPtr = nullptr;
+	UPROPERTY(SaveGame)
+	FGuid ItemInstanceID;
 protected:
 	UPROPERTY(EditAnywhere)
 	bool bIsWeapon = false;

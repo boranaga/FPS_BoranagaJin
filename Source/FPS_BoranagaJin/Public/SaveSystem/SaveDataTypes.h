@@ -46,7 +46,11 @@ struct FPS_BORANAGAJIN_API FWorldActorSaveData
     GENERATED_BODY()
 public:
     UPROPERTY(SaveGame, BlueprintReadOnly)
-    FGuid SaveID;
+    FGuid InstanceID;
+
+    UPROPERTY(SaveGame)
+    TSoftClassPtr<AActor> ActorClass;
+
     UPROPERTY(SaveGame, BlueprintReadOnly)
     FTransform ActorTransform = FTransform::Identity;
 
@@ -62,11 +66,14 @@ public:
     FName ActorSaveID = NAME_None;
 
     UPROPERTY(SaveGame)
+    bool bRuntimeSpawned = false;
+
+    UPROPERTY(SaveGame)
     bool bDestroyed = false;
 
     bool IsValid() const
     {
-        return SaveID.IsValid();
+        return InstanceID.IsValid();
     }
 };
 

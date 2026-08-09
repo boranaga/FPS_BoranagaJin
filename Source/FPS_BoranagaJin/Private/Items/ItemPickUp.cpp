@@ -40,22 +40,22 @@ AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character)
 {
 	// <Old Version>
 
+	//if (ItemClass == nullptr) { return nullptr; }
+	//UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
+	//if (PoolSubsystem == nullptr) { return nullptr; }
 	//AItem* NewItem = nullptr;
-	//if (ItemClass != nullptr)
+	//UWorld* const World = GetWorld();
+	//if (World != nullptr && Character != nullptr)
 	//{
-	//	UWorld* const World = GetWorld();
-	//	if (World != nullptr && Character != nullptr)
-	//	{
-	//		FActorSpawnParameters ActorSpawnParams;
-	//		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	//		NewItem = GetWorld()->SpawnActor<AItem>(ItemClass, GetActorTransform(), ActorSpawnParams);
-	//		NewItem->InitItem(Character, this);
-	//	}
+	//	NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation());
+	//	NewItem->InitItem(Character, this);
+	//	ItemPtr = NewItem;
 	//}
+
 	//return NewItem;
 
 	//---------------------------------------------
-	// <Object Pooling Version>
+	// <New Version>
 
 	if (ItemClass == nullptr) { return nullptr; }
 	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
@@ -64,9 +64,56 @@ AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character)
 	UWorld* const World = GetWorld();
 	if (World != nullptr && Character != nullptr)
 	{
-		NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation());
-		NewItem->InitItem(Character, this);
-		ItemPtr = NewItem;
+		if (ItemPtr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 1"));
+
+			NewItem = Cast<AItem>(PoolSubsystem->GetActorFromAvailablePool(ItemPtr, GetActorLocation(), GetActorRotation()));
+			NewItem->InitItem(Character, this);
+			ItemPtr = NewItem;
+			ItemInstanceID = NewItem->GetInstanceID();
+			return NewItem;
+		}
+
+		if (ItemInstanceID.IsValid())
+		{
+			NewItem = Cast<AItem>(PoolSubsystem->FindActorByInstanceIDFromPool(ItemInstanceID, ItemClass));
+			if (NewItem)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 2"));
+
+				//MEMO: Activate가 안되어있을 경우 Activate 시키기 위한 역할
+				Cast<AItem>(PoolSubsystem->GetActorFromAvailablePool(NewItem, GetActorLocation(), GetActorRotation()));
+				NewItem->InitItemPost(Character, this);
+				ItemPtr = NewItem;
+				ItemInstanceID = NewItem->GetInstanceID();
+				return NewItem;
+			}
+			else
+			{
+				NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation(), true);
+				if (NewItem)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 3"));
+
+					NewItem->InitItem(Character, this);
+					ItemPtr = NewItem;
+					ItemInstanceID = NewItem->GetInstanceID();
+					return NewItem;
+				}
+			}
+		}
+
+
+		NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation(), true);
+		if (NewItem)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 4"));
+
+			NewItem->InitItem(Character, this);
+			ItemPtr = NewItem;
+			ItemInstanceID = NewItem->GetInstanceID();
+		}
 	}
 
 	return NewItem;
@@ -94,6 +141,29 @@ void AItemPickUp::DestroyItemPickUp()
 	Destroy();
 }
 
+void AItemPickUp::SetItemPtr(TObjectPtr<AItem> NewItem)
+{
+	if (NewItem)
+	{
+		ItemPtr = NewItem;
+		ItemInstanceID = NewItem->GetInstanceID();
+	}
+}
+
+void AItemPickUp::OnAfterLoad()
+{
+	Super::OnAfterLoad();
+
+	if (bIsActiveInPool)
+	{
+		OnActivateFromPool();
+	}
+	else
+	{
+		DeactivateItemPickUp_Pool();
+	}
+}
+
 void AItemPickUp::SetOwningPool(UObjectPoolSubsystem* NewPool)
 {
 	OwningPool = NewPool;
@@ -102,11 +172,20 @@ void AItemPickUp::SetOwningPool(UObjectPoolSubsystem* NewPool)
 void AItemPickUp::OnActivateFromPool()
 {
 	bIsActiveInPool = true;
+
+	SetActorHiddenInGame(false);
+
+	SetActorEnableCollision(true);
+	SetActorTickEnabled(true);
 }
 
 void AItemPickUp::OnDeactivateToPool()
 {
 	bIsActiveInPool = false;
+
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
 }
 
 bool AItemPickUp::IsActiveInPool() const

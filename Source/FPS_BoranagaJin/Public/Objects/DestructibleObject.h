@@ -26,27 +26,28 @@ public:
 	virtual void PostDuplicate(EDuplicateMode::Type DuplicateMode) override;
 #endif
 public:
-	virtual FGuid GetSaveID() const override
+	virtual FGuid GetInstanceID() const override
 	{
-		return SaveID;
+		return InstanceID;
 	}
 
 	virtual bool ShouldSaveTransform() const override
 	{
 		return false;
 	}
-
+	virtual bool IsRuntimeSpawned() const override
+	{
+		return bRuntimeSpawned;
+	}
 	virtual void OnAfterLoad() override;
-
+	virtual void SetRuntimeSpawned(bool bIsRuntimeSpawned) override;
 protected:
 	UPROPERTY(EditInstanceOnly, Category = "Save", meta = (AllowPrivateAccess = "true"))
-	FGuid SaveID;
-
+	FGuid InstanceID;
+	UPROPERTY(Transient)
+	bool bRuntimeSpawned = false;
 	UPROPERTY(EditAnywhere, SaveGame, Category = "Destructible")
 	float CurrentDurability = 100.0f;
-
-	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Destructible")
-	bool bBroken = false;
 #pragma endregion
 protected:
 	virtual void BeginPlay() override;
@@ -82,10 +83,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	UStaticMeshComponent* BrokenMesh;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Destruction")
 	float MaxHealth = 10.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Destruction")
+	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Destruction")
 	float CurrentHealth = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
@@ -100,7 +101,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
 	bool bHideBrokenMeshAfterDelay = true;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Destruction")
+	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Destruction")
 	bool bDestroyed = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
@@ -121,7 +122,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")
 	float IgnitionDamageThreshold = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fire")
+	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Fire")
 	bool bBurning = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")

@@ -120,6 +120,7 @@ public:
 	TArray<FInputBindingHandle*> InputActionBindingHandles;
 
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
+	virtual void InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
 	void InitializeCamera(ACharacterPlayer* NewCharacter);
 	virtual void InitializeUI();
 protected:
@@ -128,6 +129,7 @@ protected:
 public:
 	void LoadWeaponData();
 	virtual void LoadWeaponData_Upgrade();
+	virtual void LoadWeaponDataPost();
 	void SetMeshVisibility(bool bflag);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")

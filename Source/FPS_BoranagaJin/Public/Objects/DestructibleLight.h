@@ -98,10 +98,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Light|Settings")
 	EDestructibleLightType LightType = EDestructibleLightType::Point;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Light|Settings")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Light|Settings")
 	bool bStartsEnabled = true;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Light|Settings")
+	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Light|Settings")
 	bool bLightEnabled = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Light|Settings",meta = (ClampMin = "0.0"))
@@ -337,6 +337,7 @@ protected:
 
 	UPROPERTY(
 		VisibleInstanceOnly,
+		SaveGame,
 		BlueprintReadOnly,
 		Category = "Light|Malfunction"
 	)

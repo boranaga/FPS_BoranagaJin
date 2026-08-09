@@ -34,9 +34,9 @@ ADestructibleObject::ADestructibleObject()
 	FireAreaComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// <Save>
-	if (!SaveID.IsValid())
+	if (!InstanceID.IsValid())
 	{
-		SaveID = FGuid::NewGuid();
+		InstanceID = FGuid::NewGuid();
 	}
 }
 
@@ -46,7 +46,7 @@ void ADestructibleObject::PostEditImport()
 	Super::PostEditImport();
 
 	// 에디터에서 복사된 Actor가 기존 Actor와 같은 ID를 가지지 않도록 합니다.
-	SaveID = FGuid::NewGuid();
+	InstanceID = FGuid::NewGuid();
 }
 
 void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
@@ -55,31 +55,58 @@ void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 
 	if (DuplicateMode == EDuplicateMode::Normal)
 	{
-		SaveID = FGuid::NewGuid();
+		InstanceID = FGuid::NewGuid();
 	}
 }
 #endif
 
 void ADestructibleObject::OnAfterLoad()
 {
-	if (bBroken)
+	if (bDestroyed)
 	{
-		// 파괴 상태를 시각적으로 다시 적용합니다.
-		HideBrokenMesh();
+		if (IntactMesh)
+		{
+			IntactMesh->SetVisibility(false);
+			IntactMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			IntactMesh->SetSimulatePhysics(false);
+		}
 
-		SetActorEnableCollision(false);
+		if (BrokenMesh)
+		{
+			BrokenMesh->SetWorldTransform(IntactMesh->GetComponentTransform());
 
-		// TODO: 여기서 중요한 점은 로드 시 BreakObject()를 직접 호출하지 않는 것.
-		// BreakObject()가 폭발, 사운드, 아이템 드롭 등을 발생시킨다면 로딩할 때 모든 효과가 다시 실행될 수 있음.
-		//따라서 저장 복원 전용 함수가 필요합니다.
-		// 예시: void ADestructibleObject::ApplyBrokenVisualState() // 효과나 데미지는 발생시키지 않고 상태만 복원
+			BrokenMesh->SetVisibility(true);
+			BrokenMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			BrokenMesh->SetSimulatePhysics(true);
+		}
 
+
+		//TODO: 저장 전에 이미 HidBrokenMesh 된 경우에 대한 처리 필요함
+		if (bDestroyActorAfterBreak)
+		{
+			SetLifeSpan(BrokenMeshLifeTime);
+		}
+		else if (bHideBrokenMeshAfterDelay)
+		{
+			GetWorldTimerManager().SetTimer(
+				HideBrokenMeshTimerHandle,
+				this,
+				&ADestructibleObject::HideBrokenMesh,
+				BrokenMeshLifeTime,
+				false
+			);
+		}
 	}
 	else
 	{
 		SetActorHiddenInGame(false);
 		SetActorEnableCollision(true);
 	}
+}
+
+void ADestructibleObject::SetRuntimeSpawned(bool bIsRuntimeSpawned)
+{
+	bRuntimeSpawned = bIsRuntimeSpawned;
 }
 
 void ADestructibleObject::BeginPlay()

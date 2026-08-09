@@ -4,6 +4,7 @@
 #include "Interface/SaveableActorInterface.h"
 #include "Interface/SaveablePlayerInterface.h"
 #include "SaveSystem/SaveGameArchive.h"
+#include "ObjectPoolSubsystem.h"
 
 #include "Characters/Player/CharacterPlayer.h"
 
@@ -203,6 +204,7 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 	 */
 	//TODO: Map에 설치되어 있는 ItemPickUp의 경우는 어떻게 처리해야하나? 
 	// ItemPickUp과 생성된 Itme과의 매칭을 어떻게 처리해야할지 고려해야함
+	RestoreRuntimeSpawnedWorldActorData(*LoadedSaveGame);
 	RestoreWorldActorData(*LoadedSaveGame);
 	RestorePlayerData(*LoadedSaveGame);
 
@@ -372,7 +374,8 @@ void USaveGameSubsystem::CaptureCurrentGameState(UFPSGameSave& SaveObject)
 	SaveObject.SavedAt = FDateTime::Now();
 
 	CapturePlayerData(SaveObject);
-	CaptureWorldActorData(SaveObject);
+	//CaptureWorldActorData(SaveObject);
+	CaptureWorldActorData_Upgrade(SaveObject);
 }
 
 void USaveGameSubsystem::CapturePlayerData(UFPSGameSave& SaveObject)
@@ -413,34 +416,17 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
 
-		const FGuid SaveID = SaveableActor->GetSaveID();
+		const FGuid SaveID = SaveableActor->GetInstanceID();
 
 		if (!SaveID.IsValid())
 		{
-			UE_LOG(
-				LogSaveGameSubsystem,
-				Warning,
-				TEXT(
-					"Actor '%s' implements SaveableActorInterface "
-					"but has an invalid SaveID."
-				),
-				*Actor->GetName()
-			);
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Actor '%s' implements SaveableActorInterface ""but has an invalid SaveID."), *Actor->GetName());
 			continue;
 		}
 
 		if (UsedSaveIDs.Contains(SaveID))
 		{
-			UE_LOG(
-				LogSaveGameSubsystem,
-				Error,
-				TEXT(
-					"Duplicate SaveID detected. Actor: %s, ID: %s"
-				),
-				*Actor->GetName(),
-				*SaveID.ToString()
-			);
-
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("Duplicate SaveID detected. Actor: %s, ID: %s"), *Actor->GetName(), *SaveID.ToString());
 			continue;
 		}
 
@@ -448,7 +434,62 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 		SaveableActor->OnBeforeSave();
 
 		FWorldActorSaveData ActorSaveData;
-		ActorSaveData.SaveID = SaveID;
+		ActorSaveData.InstanceID = SaveID;
+		ActorSaveData.ActorClass = Actor->GetClass();
+		ActorSaveData.bRuntimeSpawned = SaveableActor->IsRuntimeSpawned();
+
+		if (SaveableActor->ShouldSaveTransform())
+		{
+			//UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject) Save Location"));
+			ActorSaveData.ActorTransform = Actor->GetActorTransform();
+		}
+
+		FMemoryWriter MemoryWriter(ActorSaveData.ActorData, true);
+		FSaveGameArchive Archive(MemoryWriter);
+
+		Actor->Serialize(Archive);
+
+		MemoryWriter.Close();
+
+		SaveObject.WorldActorData.Add(MoveTemp(ActorSaveData));
+	}
+}
+
+void USaveGameSubsystem::CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject)
+{
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) { return; }
+
+	SaveObject.WorldActorData.Reset();
+	SaveObject.RuntimeSpawnedWorldActorData.Reset();
+
+	TSet<FGuid> UsedSaveIDs;
+
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!IsValid(Actor)) { continue; }
+		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
+		if (!SaveableActor) { continue; }
+		const FGuid SaveID = SaveableActor->GetInstanceID();
+		if (!SaveID.IsValid())
+		{
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Actor '%s' implements SaveableActorInterface ""but has an invalid SaveID."), *Actor->GetName());
+			continue;
+		}
+		if (UsedSaveIDs.Contains(SaveID))
+		{
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("Duplicate SaveID detected. Actor: %s, ID: %s"), *Actor->GetName(), *SaveID.ToString());
+			continue;
+		}
+
+		UsedSaveIDs.Add(SaveID);
+		SaveableActor->OnBeforeSave();
+
+		FWorldActorSaveData ActorSaveData;
+		ActorSaveData.InstanceID = SaveID;
+		ActorSaveData.ActorClass = Actor->GetClass();
+		ActorSaveData.bRuntimeSpawned = SaveableActor->IsRuntimeSpawned();
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
@@ -462,7 +503,14 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 
 		MemoryWriter.Close();
 
-		SaveObject.WorldActorData.Add(MoveTemp(ActorSaveData));
+		if (SaveableActor->IsRuntimeSpawned())
+		{
+			SaveObject.RuntimeSpawnedWorldActorData.Add(MoveTemp(ActorSaveData));
+		}
+		else
+		{
+			SaveObject.WorldActorData.Add(MoveTemp(ActorSaveData));
+		}
 	}
 }
 
@@ -517,6 +565,56 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 
 }
 
+void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject)
+{
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) { return; }
+	TArray<ISaveableActorInterface*> RestoredActors;
+	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
+	if (PoolSubsystem == nullptr) { return; }
+
+	for (const FWorldActorSaveData& ActorSaveData : SaveObject.RuntimeSpawnedWorldActorData)
+	{
+		if (!ActorSaveData.InstanceID.IsValid()) { continue; }
+		AActor* Actor = nullptr;
+
+		if (ActorSaveData.bRuntimeSpawned)
+		{
+			Actor = PoolSubsystem->SpawnFromPool(ActorSaveData.ActorClass.Get(), FVector::ZeroVector, FRotator::ZeroRotator, true);
+		}
+
+		if (!IsValid(Actor))
+		{
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Failed to restore Actor. InstanceID=%s"), *ActorSaveData.InstanceID.ToString());
+			continue;
+		}
+
+		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
+
+		if (!SaveableActor) { continue; }
+
+		if (SaveableActor->ShouldSaveTransform())
+		{
+			Actor->SetActorTransform(ActorSaveData.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+
+		FMemoryReader MemoryReader(ActorSaveData.ActorData, true);
+		FSaveGameArchive Archive(MemoryReader);
+
+		Actor->Serialize(Archive);
+
+		RestoredActors.Add(SaveableActor);
+	}
+
+	for (ISaveableActorInterface* SaveableActor : RestoredActors)
+	{
+		if (SaveableActor)
+		{
+			SaveableActor->OnAfterLoad();
+		}
+	}
+}
+
 void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 {
 	UWorld* World = GetWorld();
@@ -526,30 +624,31 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (!IsValid(Actor)) { continue; }
+		if (!IsValid(Actor)) { 
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 1"));
+			continue; }
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
-		if (!SaveableActor) { continue; }
+		if (!SaveableActor) { 
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 2"));
+			continue; }
 
-		const FGuid SaveID = SaveableActor->GetSaveID();
-		if (!SaveID.IsValid()) { continue; }
+		const FGuid SaveID = SaveableActor->GetInstanceID();
+		if (!SaveID.IsValid()) { 
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 3"));
+			continue; }
 
 		const FWorldActorSaveData* ActorSaveData = SaveObject.FindActorData(SaveID);
-		if (!ActorSaveData) { continue; }
+		if (!ActorSaveData) { 
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 4"));
+			continue; }
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
-			Actor->SetActorTransform(
-				ActorSaveData->ActorTransform,
-				false,
-				nullptr,
-				ETeleportType::TeleportPhysics
-			);
+			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) Restore Location"));
+			Actor->SetActorTransform(ActorSaveData->ActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 
-		FMemoryReader MemoryReader(
-			ActorSaveData->ActorData,
-			true
-		);
+		FMemoryReader MemoryReader(ActorSaveData->ActorData, true);
 
 		FSaveGameArchive Archive(MemoryReader);
 

@@ -1,5 +1,6 @@
 #include "ObjectPoolSubsystem.h"
 #include "PoolableActorInterface.h"
+#include "Interface/SaveableActorInterface.h"
 #include "Engine/World.h"
 
 void UObjectPoolSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -88,6 +89,11 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 		 * ActiveActorSet에만 등록한다.
 		 */
 		Pool.ActiveActors.Add(Actor);
+
+		if (IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(Actor))
+		{
+			Poolable->OnActivateFromPool();
+		}
 	}
 	else
 	{
@@ -129,7 +135,7 @@ void UObjectPoolSubsystem::PrewarmPool(
 	}
 }
 
-AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation)
+AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation, bool bShouldCreateNewActor)
 {
 	if (!ActorClass)
 	{
@@ -138,26 +144,32 @@ AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, cons
 	}
 
 	FActorPool& Pool = ActorPools.FindOrAdd(ActorClass);
-
 	AActor* Actor = nullptr;
 
-	while (Pool.AvailableActors.Num() > 0 && !Actor)
+	if (bShouldCreateNewActor)
 	{
-		Actor = Pool.AvailableActors.Pop();
-
-		if (!IsValid(Actor))
+		Actor = CreateNewActor(ActorClass);
+	}
+	else
+	{
+		while (Pool.AvailableActors.Num() > 0 && !Actor)
 		{
-			Actor = nullptr;
-			continue;
+			Actor = Pool.AvailableActors.Pop();
+
+			if (!IsValid(Actor))
+			{
+				Actor = nullptr;
+				continue;
+			}
+
+			Pool.AvailableActorSet.Remove(Actor);
 		}
 
-		Pool.AvailableActorSet.Remove(Actor);
-	}
-
-	if (!Actor)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 2"));
-		Actor = CreateNewActor(ActorClass);
+		if (!Actor)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 2"));
+			Actor = CreateNewActor(ActorClass);
+		}
 	}
 
 	if (!Actor)
@@ -280,6 +292,67 @@ AActor* UObjectPoolSubsystem::GetActorFromAvailablePool(AActor* Actor, const FVe
 	return Actor;
 }
 
+AActor* UObjectPoolSubsystem::FindActorByInstanceIDFromPool(FGuid InInstanceID, TSubclassOf<AActor> ActorClass)
+{
+	if (!InInstanceID.IsValid()) { return nullptr; }
+	if (!ActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("FindActorByInstanceIDFromPool 1"));
+		return nullptr;
+	}
+
+	FActorPool* Pool = ActorPools.Find(*ActorClass);
+
+	if (!Pool)
+	{
+		UE_LOG(LogTemp, Error, TEXT("GetActorFromAvailablePool 2"));
+		return nullptr;
+	}
+
+	for (AActor* Actor : Pool->AvailableActors)
+	{
+		if (!IsValid(Actor))
+		{
+			continue;
+		}
+
+		//IPoolableActorInterface* PoolableActor = Cast<IPoolableActorInterface>(Actor);
+		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
+
+		if (!SaveableActor)
+		{
+			continue;
+		}
+
+		if (SaveableActor->GetInstanceID() == InInstanceID)
+		{
+			return Actor;
+		}
+	}
+
+	for (AActor* Actor : Pool->ActiveActors)
+	{
+		if (!IsValid(Actor))
+		{
+			continue;
+		}
+
+		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
+
+		if (!SaveableActor)
+		{
+			continue;
+		}
+
+		if (SaveableActor->GetInstanceID() == InInstanceID)
+		{
+			return Actor;
+		}
+	}
+
+	return nullptr;
+}
+
 AActor* UObjectPoolSubsystem::ExtractActorFromAvailablePool(AActor* Actor)
 {
 	if (!IsValid(Actor)) { return nullptr; }
@@ -340,6 +413,11 @@ AActor* UObjectPoolSubsystem::CreateNewActor(TSubclassOf<AActor> ActorClass)
 	if (IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(NewActor))
 	{
 		Poolable->SetOwningPool(this);
+	}
+
+	if (ISaveableActorInterface* Poolable = Cast<ISaveableActorInterface>(NewActor))
+	{
+		Poolable->SetRuntimeSpawned(true);
 	}
 
 	return NewActor;
