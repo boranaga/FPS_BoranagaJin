@@ -3,9 +3,11 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "SaveSystem/SaveGameCustom.h"
+#include "SaveSystem/SaveSlotInfo.h"
 #include "SaveGameSubsystem.generated.h"
 
 class UFPSGameSave;
+class USaveSlotIndexSaveGame;
 class ACharacterPlayer;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSaveGameCompleted, bool);
@@ -21,67 +23,38 @@ public:
 	virtual void Deinitialize() override;
 public:
 	bool SaveGameAsync();
+	bool SaveGameSync();
 
-	/**
-	 * 파일을 동기식으로 읽습니다.
-	 *
-	 * 로드 버튼처럼 곧바로 레벨 이름을 알아야 하는 경우에 사용합니다.
-	 * 실제 상태 적용은 레벨 이동 후 ApplyLoadedGame()에서 수행합니다.
-	 */
-	bool LoadGame();
+	//bool LoadGame();
+	//bool LoadGame_Upgrade();
+	bool LoadGameFromSlot(const FString& SlotName);
 
-	/**
-	 * 로드된 세이브의 레벨로 이동합니다.
-	 */
 	bool OpenSavedLevel();
-
-	/**
-	 * 현재 월드와 플레이어에 LoadedSaveGame 데이터를 적용합니다.
-	 */
 	bool ApplyLoadedGame();
 
-	bool DoesSaveExist() const;
+	//bool DoesSaveExist() const;
+	//bool DeleteSave();
+	bool DoesSaveExist(const FString& SlotName) const;
+	bool DeleteSave(const FString& SlotName);
 
-	bool DeleteSave();
 
-	/**
-	 * 새 게임 시작 시 기존 메모리 데이터를 초기화합니다.
-	 *
-	 * bDeleteSaveFile이 true이면 디스크의 세이브도 삭제합니다.
-	 */
-	void StartNewGame(bool bDeleteSaveFile);
+	const TArray<FSaveSlotInfo>& GetSaveSlots() const;
+	const FString& GetCurrentSaveSlotName() const { return CurrSaveSlotName; }
+
+
+	//void StartNewGame(bool bDeleteSaveFile);
+	bool StartNewGame();
 
 	void SetCurrentCheckpoint(FName NewCheckpointID, const FTransform& RespawnTransform);
-
 	void SetCompletedTutorialIDs(const TSet<FName>& TutorialIDs);
-
 	void AddCompletedTutorialID(FName TutorialID);
-
 public:
-	bool IsSaving() const
-	{
-		return bIsSaving;
-	}
-
-	bool HasLoadedSave() const
-	{
-		return IsValid(LoadedSaveGame);
-	}
-
-	bool HasPendingLoad() const
-	{
-		return bPendingApplyLoadedGame;
-	}
-
-	bool HasValidCheckpoint() const
-	{
-		return CurrentCheckpointData.IsValid();
-	}
-
-	UFPSGameSave* GetLoadedSaveGame() const
-	{
-		return LoadedSaveGame;
-	}
+	bool HasCurrentSaveSlot() const { return !CurrSaveSlotName.IsEmpty(); }
+	bool IsSaving() const { return bIsSaving; }
+	bool HasLoadedSave() const { return IsValid(LoadedSaveGame); }
+	bool HasPendingLoad() const { return bPendingApplyLoadedGame; }
+	bool HasValidCheckpoint() const { return CurrentCheckpointData.IsValid(); }
+	UFPSGameSave* GetLoadedSaveGame() const { return LoadedSaveGame; }
 
 	FName GetSavedLevelName() const;
 
@@ -90,16 +63,20 @@ public:
 	{
 		return CurrentCheckpointData;
 	}
-
 	const TSet<FName>& GetCompletedTutorialIDs() const;
-
 public:
 	FOnSaveGameCompleted OnSaveGameCompleted;
 	FOnLoadGameCompleted OnLoadGameCompleted;
 	FOnSaveGameApplied OnSaveGameApplied;
-
 private:
 	UFPSGameSave* CreateSaveGameObject() const;
+
+	FString GenerateSaveSlotName() const;
+
+	void LoadSlotIndex();
+	bool SaveSlotIndex();
+	void UpdateCurrentSlotInfo(const UFPSGameSave& SaveObject);
+	void RemoveInvalidSlotEntries();
 
 	ACharacterPlayer* FindPlayerCharacter() const;
 
@@ -108,25 +85,28 @@ private:
 	void CaptureWorldActorData(UFPSGameSave& SaveObject);
 	void CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject);
 
-
-
 	void RestorePlayerData(const UFPSGameSave& SaveObject);
 	void RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject);
 	void RestoreWorldActorData(const UFPSGameSave& SaveObject);
 
-	void HandleAsyncSaveCompleted(
-		const FString& SlotName,
-		const int32 UserIndex,
-		bool bSuccess);
+	void HandleAsyncSaveCompleted(const FString& SlotName, const int32 UserIndex, bool bSuccess);
 
 	FName GetCurrentLevelName() const;
 
-	bool ValidateLoadedSave(
-		const UFPSGameSave* SaveObject) const;
+	bool ValidateLoadedSave(const UFPSGameSave* SaveObject) const;
 
 private:
 	UPROPERTY()
 	FCheckpointSaveData CurrentCheckpointData;
+
+	UPROPERTY()
+	FString CurrSaveSlotName = TEXT("MainSave");
+
+	UPROPERTY()
+	FString SlotIndexSaveName = TEXT("SaveSlotIndex");
+
+	UPROPERTY()
+	TObjectPtr<USaveSlotIndexSaveGame> SlotIndex;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFPSGameSave> LoadedSaveGame;
@@ -134,8 +114,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UFPSGameSave> SaveGameBeingWritten;
 
-	UPROPERTY()
-	FString SaveSlotName = TEXT("MainSave");
+	//UPROPERTY()
+	//FString SaveSlotName_Main = TEXT("MainSave");
+	//UPROPERTY()
+	//FString SaveSlotName_1 = TEXT("SaveSlot_1");
+	//UPROPERTY()
+	//FString SaveSlotName_2 = TEXT("SaveSlot_2");
+	//UPROPERTY()
+	//FString SaveSlotName_3 = TEXT("SaveSlot_3");
 
 	UPROPERTY()
 	int32 SaveUserIndex = 0;
@@ -148,9 +134,6 @@ private:
 
 	UPROPERTY()
 	bool bPendingApplyLoadedGame = false;
-
-	//UPROPERTY()
-	//FName CurrentCheckpointID = NAME_None;
 
 	UPROPERTY()
 	TSet<FName> CompletedTutorialIDs;

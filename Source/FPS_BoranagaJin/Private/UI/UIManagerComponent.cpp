@@ -96,7 +96,8 @@ void UUIManagerComponent::BeginPlay()
 		{
 			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
 			RegisterUIWidget(StaminaWidget);
-			StaminaWidget->SetVisibility(ESlateVisibility::Visible);
+			//StaminaWidget->SetVisibility(ESlateVisibility::Visible);
+			StaminaWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
 	}
 
@@ -106,10 +107,12 @@ void UUIManagerComponent::BeginPlay()
 		if (HealthWidget)
 		{
 			RegisterUIWidget(HealthWidget);
-			HealthWidget->SetVisibility(ESlateVisibility::Visible);
+			//HealthWidget->SetVisibility(ESlateVisibility::Visible);
+			HealthWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
 	}
 
+	//MEMO: test를 위해서 임시로 비활성화했음
 	if (PlayerDisplayWidgetClass)
 	{
 		PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
@@ -483,6 +486,7 @@ void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
 void UUIManagerComponent::InitUILayersMap()
 {
 	UILayers.Add(EUIType::Stamina, 0);
+	UILayers.Add(EUIType::Health, 0);
 	UILayers.Add(EUIType::Interaction, 1);
 	UILayers.Add(EUIType::WeaponAim, 2);
 	UILayers.Add(EUIType::Inventory, 3);

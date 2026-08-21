@@ -6,16 +6,21 @@
 #include "UI/UIType.h"
 #include "PlayerUISubsystem.generated.h"
 
+
 class UBaseUIWidget;
 class UMainMenuWidget;
+class UMapSelectMenuWidget;
+class USaveFileSlotMenuWidget;
+class UPauseMenuWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
+
+struct FPlayableMapInfo;
 
 USTRUCT()
 struct FUIWidgetArray
 {
     GENERATED_BODY()
-
     UPROPERTY()
     TArray<TObjectPtr<UBaseUIWidget>> Widgets;
 };
@@ -51,37 +56,56 @@ private:
         case EUIType::WeaponAim: return 2;
         case EUIType::AmmoCounter: return 2;
         case EUIType::MainMenu: return 3;
+        case EUIType::MapSelectMenu: return 3;
+        case EUIType::SaveFileSlotMenu: return 3;
+        case EUIType::PauseMenu: return 10;
         case EUIType::Inventory: return 3;
         case EUIType::ThrowableWeaponInventory: return 3;
-        case EUIType::Base: return 4;
+        case EUIType::Base: return 0;
         default: return 0;
         }
     }
 
-    //void InitializeUILayers();
-
     void BindCharacterDelegates();
     void UnbindCharacterDelegates();
 
+    void SetUIOnlyInput(UBaseUIWidget* FocusWidget);
+    void SetGameOnlyInput();
 public:
     void InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass);
+    void InitMapSelectUI(TSubclassOf<UMapSelectMenuWidget> WidgetClass);
+    void InitSaveFileSlotUI(TSubclassOf<USaveFileSlotMenuWidget> WidgetClass);
     void InitGameplayUI();
+
+    // <PauseMenu>
+public:
+    void InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass);
+    void TogglePauseMenu();
+    void OpenPauseMenu();
+    void ClosePauseMenu();
+    bool IsPauseMenuOpened() const;
 private:
+    void HandlePauseMenuPlayRequested();
+    void HandlePauseMenuOptionRequested();
+    void HandlePauseMenuSaveAndExitRequested();
+private:
+    // <MainMenu>
     void HandlePlayRequested();
     void HandleContinueRequested();
     void HandleOptionRequested();
     void HandleExitRequested();
+    // <MapSelect>
 private:
-    //TODO: Weapon Aim UI는 같은 Type으로 여러개 존재하는데 이에 대한 처리 필요
-    //UPROPERTY()
-    //TMap<EUIType, TObjectPtr<UBaseUIWidget>> UIWidgets_Legacy;
-
+    void HandlePlayableMapSelected(FPlayableMapInfo MapInfo);
+    void HandleMapSelectBackRequested();
+    // <SaveSlotMenu>
+    //void HandleSaveFileSlotSelected(int32 SlotIndex);
+    void HandleSaveFileSlotSelected(FString SlotName);
+    void HandleSaveFileSlotBackRequested();
+private:
     UPROPERTY()
     TMap<EUIType, FUIWidgetArray> UIWidgets;
 
-
-    //UPROPERTY()
-    //TMap<EUIType, int32> UILayers;
     UPROPERTY()
     TObjectPtr<ACharacterPlayer> CharacterPlayer;
 };

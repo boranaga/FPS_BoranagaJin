@@ -7,6 +7,8 @@
 
 
 class UMainMenuWidget;
+class USaveFileSlotMenuWidget;
+class UMapSelectMenuWidget;
 
 class UInputMappingContext;
 
@@ -38,7 +40,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* MouseLeftClickAction = nullptr;
 
+#pragma region UI
 	UPROPERTY(EditAnywhere, Category = "MainMenuWidget")
 	TSubclassOf<UMainMenuWidget> MainMenuWidgetClass;
-
+	UPROPERTY(EditAnywhere, Category = "MapSelectMenuWidget")
+	TSubclassOf<UMapSelectMenuWidget> MapSelectMenuWidgetClass;
+	UPROPERTY(EditAnywhere, Category = "SaveFileSlotWidget")
+	TSubclassOf<USaveFileSlotMenuWidget> SaveFileSlotWidgetClass;
+#pragma endregion
 };

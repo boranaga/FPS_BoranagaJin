@@ -8,6 +8,9 @@
 
 class UUIManagerComponent;
 
+class UPauseMenuWidget;
+
+class UInputAction;
 class UInputMappingContext;
 
 UCLASS(abstract, config = "Game")
@@ -33,5 +36,15 @@ public:
 
 public:
 	void InitUIManager();
+
+private:
+	void HandlePauseInput();
+
+private:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> IA_Pause;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UPauseMenuWidget> PauseMenuWidgetClass;
 };
 

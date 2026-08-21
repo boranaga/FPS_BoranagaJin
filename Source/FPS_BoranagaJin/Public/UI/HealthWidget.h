@@ -15,7 +15,7 @@ public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-	virtual EUIType GetUIType() const { return EUIType::Stamina; }
+	virtual EUIType GetUIType() const { return EUIType::Health; }
 public:
 	UPROPERTY(meta = (BindWidget))
 	UProgressBar* HealthBar = nullptr;

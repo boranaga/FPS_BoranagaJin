@@ -15,10 +15,12 @@ public:
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
 public:
-    bool StartNewGame();
+    //TODO: Map Load와 관련해서 동기/비동기 설정하기. DataTable로 관리하기
+    bool StartNewGame(const TSoftObjectPtr<UWorld>& LevelAsset);
     void ContinueGame();
 
-    bool RestartFromCheckPoint();
+    //bool RestartFromCheckPoint();
+    bool LoadGameFromSlot(const FString& SlotName);
 
     void PauseGame();
     void ResumeGame();
@@ -27,6 +29,9 @@ public:
     void HandleLevelCompleted();
 
     bool ReturnToMainMenu();
+
+    void SaveAndQuitGame();
+
     void QuitGame();
 
     EGameFlowState GetCurrentState() const { return CurrentState; }
@@ -50,4 +55,6 @@ private:
 
 private:
     FDelegateHandle PostLoadMapDelegateHandle;
+private:
+    bool bPendingInitialSave = false;
 };

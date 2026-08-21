@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 //#include "Items/Weapons/WeaponName.h"
+#include "PlayableMapInfo.h"
+
 #include "DefaultGameInstance.generated.h"
 
 class USettingSaveGame;
@@ -23,16 +25,28 @@ public:
 	{
 		return MainMenuLevel;
 	}
+	const TArray<FPlayableMapInfo>& GetPlayableMaps() const { return PlayableMaps; }
+
 	const TSoftObjectPtr<UWorld>& GetFirstGameLevel() const
 	{
 		return FirstGameLevel;
+	}
+	const TSoftObjectPtr<UWorld>& GetSecondGameLevel() const
+	{
+		return SecondGameLevel;
 	}
 
 private:
 	UPROPERTY(EditDefaultsOnly, Category = "Game Flow|Levels")
 	TSoftObjectPtr<UWorld> MainMenuLevel;
-		UPROPERTY(EditDefaultsOnly, Category = "Game Flow|Levels")
+
+	UPROPERTY(EditDefaultsOnly, Category = "Level")
+	TArray<FPlayableMapInfo> PlayableMaps;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Game Flow|Levels")
 	TSoftObjectPtr<UWorld> FirstGameLevel;
+	UPROPERTY(EditDefaultsOnly, Category = "Game Flow|Levels")
+	TSoftObjectPtr<UWorld> SecondGameLevel;
 
 
 //---------------------------------------------

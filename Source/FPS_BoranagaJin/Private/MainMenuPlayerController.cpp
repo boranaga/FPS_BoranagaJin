@@ -4,6 +4,8 @@
 #include "MainMenuPlayerController.h"
 #include "PlayerUISubsystem.h"
 #include "UI/MainMenuWidget.h"
+#include "UI/MapSelectMenuWidget.h"
+#include "UI/SaveFileSlotMenuWidget.h"
 
 #include "EnhancedInputSubsystems.h"
 
@@ -27,6 +29,16 @@ void AMainMenuPlayerController::BeginPlay()
         if (MainMenuWidgetClass)
         {
             UISubsystem->InitMainMenuUI(MainMenuWidgetClass);
+        }
+
+        if (MapSelectMenuWidgetClass)
+        {
+            UISubsystem->InitMapSelectUI(MapSelectMenuWidgetClass);
+        }
+
+        if (SaveFileSlotWidgetClass)
+        {
+            UISubsystem->InitSaveFileSlotUI(SaveFileSlotWidgetClass);
         }
     }
 

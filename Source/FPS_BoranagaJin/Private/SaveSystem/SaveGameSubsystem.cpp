@@ -1,6 +1,8 @@
 #include "SaveSystem/SaveGameSubsystem.h"
 
 #include "SaveSystem/SaveGameCustom.h"
+#include "SaveSystem/SaveSlotIndexSaveGame.h"
+#include "SaveSystem/SaveSlotInfo.h"
 #include "Interface/SaveableActorInterface.h"
 #include "Interface/SaveablePlayerInterface.h"
 #include "SaveSystem/SaveGameArchive.h"
@@ -28,9 +30,12 @@ void USaveGameSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bIsSaving = false;
 	bPendingApplyLoadedGame = false;
 
-	CurrentCheckpointData.Reset();
+	CurrSaveSlotName.Empty();
 
+	CurrentCheckpointData.Reset();
 	CompletedTutorialIDs.Reset();
+
+	LoadSlotIndex();
 
 	UE_LOG(LogSaveGameSubsystem, Log, TEXT("SaveGameSubsystem initialized."));
 }
@@ -52,6 +57,12 @@ bool USaveGameSubsystem::SaveGameAsync()
 	if (bIsSaving)
 	{
 		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Save request ignored because another save is in progress."));
+		return false;
+	}
+
+	if (CurrSaveSlotName.IsEmpty())
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Save failed: CurrentSaveSlotName is empty."));
 		return false;
 	}
 
@@ -81,51 +92,168 @@ bool USaveGameSubsystem::SaveGameAsync()
 	bIsSaving = true;
 
 	FAsyncSaveGameToSlotDelegate SaveDelegate;
-	SaveDelegate.BindUObject(
-		this,
-		&USaveGameSubsystem::HandleAsyncSaveCompleted
-	);
+	SaveDelegate.BindUObject(this,&USaveGameSubsystem::HandleAsyncSaveCompleted);
 
-	UGameplayStatics::AsyncSaveGameToSlot(
-		NewSaveGame,
-		SaveSlotName,
-		SaveUserIndex,
-		SaveDelegate
-	);
+	UGameplayStatics::AsyncSaveGameToSlot(NewSaveGame, CurrSaveSlotName, SaveUserIndex, SaveDelegate);
 
-	UE_LOG(
-		LogSaveGameSubsystem,
-		Log,
-		TEXT("Async save started. Slot: %s"),
-		*SaveSlotName
-	);
+	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Async save started. Slot: %s"), *CurrSaveSlotName);
 
 	return true;
 }
 
-bool USaveGameSubsystem::LoadGame()
+bool USaveGameSubsystem::SaveGameSync()
 {
 	if (bIsSaving)
 	{
-		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Load failed: Save is currently in progress."));
-		OnLoadGameCompleted.Broadcast(false);
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Save failed: Async save is already in progress."));
 		return false;
 	}
 
-	if (!DoesSaveExist())
+	if (CurrSaveSlotName.IsEmpty())
 	{
-		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Load failed: Save slot does not exist. Slot: %s"), *SaveSlotName);
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Save failed: No active save slot."));
+		return false;
+	}
+
+	UFPSGameSave* NewSaveGame = CreateSaveGameObject();
+	if (!IsValid(NewSaveGame))
+	{
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("USaveGameSubsystem::SaveGameSync(): No active save slot."));
+		return false;
+	}
+
+	CaptureCurrentGameState(*NewSaveGame);
+
+	const bool bSuccess = UGameplayStatics::SaveGameToSlot(NewSaveGame, CurrSaveSlotName, SaveUserIndex);
+
+	if (!bSuccess)
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Save failed. Slot: %s"), *CurrSaveSlotName);
+		OnSaveGameCompleted.Broadcast(false);
+		return false;
+	}
+
+	LoadedSaveGame = NewSaveGame;
+
+	UpdateCurrentSlotInfo(*NewSaveGame);
+	SaveSlotIndex();
+
+	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Game saved. Slot: %s"), *CurrSaveSlotName);
+
+	OnSaveGameCompleted.Broadcast(true);
+
+	return true;
+}
+
+//bool USaveGameSubsystem::LoadGame()
+//{
+//	if (bIsSaving)
+//	{
+//		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Load failed: Save is currently in progress."));
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	if (!DoesSaveExist())
+//	{
+//		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Load failed: Save slot does not exist. Slot: %s"), *SaveSlotName_Main);
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(SaveSlotName_Main, SaveUserIndex);
+//	UFPSGameSave* LoadedFPSGame = Cast<UFPSGameSave>(LoadedObject);
+//
+//	if (!ValidateLoadedSave(LoadedFPSGame))
+//	{
+//		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Load failed: Save data is invalid or incompatible."));
+//
+//		LoadedSaveGame = nullptr;
+//		bPendingApplyLoadedGame = false;
+//
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	LoadedSaveGame = LoadedFPSGame;
+//	//CurrentCheckpointID = LoadedSaveGame->CheckpointID;
+//	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
+//	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
+//
+//	bPendingApplyLoadedGame = true;
+//
+//	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Save loaded. Level: %s"), *LoadedSaveGame->SavedLevelName.ToString());
+//
+//	OnLoadGameCompleted.Broadcast(true);
+//	return true;
+//}
+
+//bool USaveGameSubsystem::LoadGame_Upgrade()
+//{
+//	if (bIsSaving)
+//	{
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	if (!DoesSaveExist())
+//	{
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(SaveSlotName_Main, SaveUserIndex);
+//	UFPSGameSave* LoadedFPSGame = Cast<UFPSGameSave>(LoadedObject);
+//
+//	if (!ValidateLoadedSave(LoadedFPSGame))
+//	{
+//		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Load failed: Save data is invalid or incompatible."));
+//
+//		LoadedSaveGame = nullptr;
+//		bPendingApplyLoadedGame = false;
+//
+//		OnLoadGameCompleted.Broadcast(false);
+//		return false;
+//	}
+//
+//	LoadedSaveGame = LoadedFPSGame;
+//	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
+//	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
+//
+//	bPendingApplyLoadedGame = true;
+//
+//	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Save loaded. Level: %s"), *LoadedSaveGame->SavedLevelName.ToString());
+//
+//	OnLoadGameCompleted.Broadcast(true);
+//	return true;
+//}
+
+bool USaveGameSubsystem::LoadGameFromSlot(const FString& SlotName)
+{
+	if (bIsSaving)
+	{
 		OnLoadGameCompleted.Broadcast(false);
 		return false;
 	}
 
-	USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(SaveSlotName, SaveUserIndex);
+	if (SlotName.IsEmpty())
+	{
+		OnLoadGameCompleted.Broadcast(false);
+		return false;
+	}
+
+	if (!DoesSaveExist(SlotName))
+	{
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Save slot does not exist: %s"), *SlotName);
+		OnLoadGameCompleted.Broadcast(false);
+		return false;
+	}
+
+	USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(SlotName, SaveUserIndex);
 	UFPSGameSave* LoadedFPSGame = Cast<UFPSGameSave>(LoadedObject);
 
 	if (!ValidateLoadedSave(LoadedFPSGame))
 	{
-		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Load failed: Save data is invalid or incompatible."));
-
 		LoadedSaveGame = nullptr;
 		bPendingApplyLoadedGame = false;
 
@@ -133,16 +261,18 @@ bool USaveGameSubsystem::LoadGame()
 		return false;
 	}
 
+	CurrSaveSlotName = SlotName;
+
 	LoadedSaveGame = LoadedFPSGame;
-	//CurrentCheckpointID = LoadedSaveGame->CheckpointID;
 	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
 	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
 
 	bPendingApplyLoadedGame = true;
 
-	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Save loaded. Level: %s"), *LoadedSaveGame->SavedLevelName.ToString());
+	UE_LOG(LogSaveGameSubsystem, Log, TEXT("Save loaded. Slot: %s, Level: %s"), *CurrSaveSlotName, *LoadedSaveGame->SavedLevelName.ToString());
 
 	OnLoadGameCompleted.Broadcast(true);
+
 	return true;
 }
 
@@ -219,84 +349,156 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 	return true;
 }
 
-bool USaveGameSubsystem::DoesSaveExist() const
+//bool USaveGameSubsystem::DoesSaveExist() const
+//{
+//	return UGameplayStatics::DoesSaveGameExist(SaveSlotName_Main, SaveUserIndex);
+//}
+
+//bool USaveGameSubsystem::DeleteSave()
+//{
+//	if (bIsSaving)
+//	{
+//		UE_LOG(
+//			LogSaveGameSubsystem,
+//			Warning,
+//			TEXT("DeleteSave failed: Save is currently in progress.")
+//		);
+//
+//		return false;
+//	}
+//
+//	if (!DoesSaveExist())
+//	{
+//		LoadedSaveGame = nullptr;
+//		SaveGameBeingWritten = nullptr;
+//
+//		bPendingApplyLoadedGame = false;
+//		CurrentCheckpointData.Reset();
+//		CompletedTutorialIDs.Reset();
+//
+//		return true;
+//	}
+//
+//	const bool bDeleted =
+//		UGameplayStatics::DeleteGameInSlot(
+//			SaveSlotName_Main,
+//			SaveUserIndex
+//		);
+//
+//	if (bDeleted)
+//	{
+//		LoadedSaveGame = nullptr;
+//		SaveGameBeingWritten = nullptr;
+//
+//		bPendingApplyLoadedGame = false;
+//		CurrentCheckpointData.Reset();
+//		CompletedTutorialIDs.Reset();
+//
+//		UE_LOG(
+//			LogSaveGameSubsystem,
+//			Log,
+//			TEXT("Save deleted. Slot: %s"),
+//			*SaveSlotName_Main
+//		);
+//	}
+//	else
+//	{
+//		UE_LOG(
+//			LogSaveGameSubsystem,
+//			Error,
+//			TEXT("Failed to delete save. Slot: %s"),
+//			*SaveSlotName_Main
+//		);
+//	}
+//
+//	return bDeleted;
+//}
+
+bool USaveGameSubsystem::DoesSaveExist(const FString& SlotName) const
 {
-	return UGameplayStatics::DoesSaveGameExist(SaveSlotName, SaveUserIndex);
+	if (SlotName.IsEmpty()) { return false; }
+	return UGameplayStatics::DoesSaveGameExist(SlotName, SaveUserIndex);
 }
 
-bool USaveGameSubsystem::DeleteSave()
+bool USaveGameSubsystem::DeleteSave(const FString& SlotName)
 {
-	if (bIsSaving)
-	{
-		UE_LOG(
-			LogSaveGameSubsystem,
-			Warning,
-			TEXT("DeleteSave failed: Save is currently in progress.")
-		);
+	if (bIsSaving) { return false; }
+	if (SlotName.IsEmpty()) { return false; }
 
+	if (!UGameplayStatics::DoesSaveGameExist(SlotName, SaveUserIndex))
+	{
 		return false;
 	}
 
-	if (!DoesSaveExist())
+	const bool bDeleted = UGameplayStatics::DeleteGameInSlot(SlotName, SaveUserIndex);
+
+	if (!bDeleted)
 	{
+		return false;
+	}
+
+	if (IsValid(SlotIndex))
+	{
+		SlotIndex->Slots.RemoveAll([&SlotName](const FSaveSlotInfo& Info)
+			{
+				return Info.SlotName == SlotName;
+			});
+
+		SaveSlotIndex();
+	}
+
+	if (CurrSaveSlotName == SlotName)
+	{
+		CurrSaveSlotName.Empty();
 		LoadedSaveGame = nullptr;
-		SaveGameBeingWritten = nullptr;
-
 		bPendingApplyLoadedGame = false;
-		CurrentCheckpointData.Reset();
-		CompletedTutorialIDs.Reset();
-
-		return true;
 	}
 
-	const bool bDeleted =
-		UGameplayStatics::DeleteGameInSlot(
-			SaveSlotName,
-			SaveUserIndex
-		);
-
-	if (bDeleted)
-	{
-		LoadedSaveGame = nullptr;
-		SaveGameBeingWritten = nullptr;
-
-		bPendingApplyLoadedGame = false;
-		CurrentCheckpointData.Reset();
-		CompletedTutorialIDs.Reset();
-
-		UE_LOG(
-			LogSaveGameSubsystem,
-			Log,
-			TEXT("Save deleted. Slot: %s"),
-			*SaveSlotName
-		);
-	}
-	else
-	{
-		UE_LOG(
-			LogSaveGameSubsystem,
-			Error,
-			TEXT("Failed to delete save. Slot: %s"),
-			*SaveSlotName
-		);
-	}
-
-	return bDeleted;
+	return true;
 }
 
-void USaveGameSubsystem::StartNewGame(bool bDeleteSaveFile)
+const TArray<FSaveSlotInfo>& USaveGameSubsystem::GetSaveSlots() const
 {
-	if (bDeleteSaveFile)
+	static const TArray<FSaveSlotInfo> EmptyArray;
+	if (!IsValid(SlotIndex))
 	{
-		DeleteSave();
+		return EmptyArray;
 	}
+	return SlotIndex->Slots;
+}
+
+//void USaveGameSubsystem::StartNewGame(bool bDeleteSaveFile)
+//{
+//	if (bDeleteSaveFile)
+//	{
+//		DeleteSave();
+//	}
+//
+//	LoadedSaveGame = nullptr;
+//	SaveGameBeingWritten = nullptr;
+//
+//	bPendingApplyLoadedGame = false;
+//	CurrentCheckpointData.Reset();
+//	CompletedTutorialIDs.Reset();
+//}
+
+bool USaveGameSubsystem::StartNewGame()
+{
+	if (bIsSaving) { return false; }
 
 	LoadedSaveGame = nullptr;
 	SaveGameBeingWritten = nullptr;
 
 	bPendingApplyLoadedGame = false;
+
 	CurrentCheckpointData.Reset();
 	CompletedTutorialIDs.Reset();
+
+	CurrSaveSlotName = GenerateSaveSlotName();
+
+	UE_LOG(LogSaveGameSubsystem, Log, TEXT("New game slot created: %s"), *CurrSaveSlotName);
+
+	return true;
 }
 
 void USaveGameSubsystem::SetCurrentCheckpoint(FName CheckpointID, const FTransform& RespawnTransform)
@@ -354,6 +556,73 @@ UFPSGameSave* USaveGameSubsystem::CreateSaveGameObject() const
 {
 	USaveGame* SaveObject = UGameplayStatics::CreateSaveGameObject(UFPSGameSave::StaticClass());
 	return Cast<UFPSGameSave>(SaveObject);
+}
+
+FString USaveGameSubsystem::GenerateSaveSlotName() const
+{
+	return FString::Printf(TEXT("Save_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+}
+
+void USaveGameSubsystem::LoadSlotIndex()
+{
+	if (UGameplayStatics::DoesSaveGameExist(SlotIndexSaveName, SaveUserIndex))
+	{
+		USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(SlotIndexSaveName, SaveUserIndex);
+		SlotIndex = Cast<USaveSlotIndexSaveGame>(LoadedObject);
+	}
+
+	if (!IsValid(SlotIndex))
+	{
+		SlotIndex = Cast<USaveSlotIndexSaveGame>(UGameplayStatics::CreateSaveGameObject(USaveSlotIndexSaveGame::StaticClass()));
+	}
+
+	RemoveInvalidSlotEntries();
+}
+
+bool USaveGameSubsystem::SaveSlotIndex()
+{
+	if (!IsValid(SlotIndex)) { return false; }
+	return UGameplayStatics::SaveGameToSlot(SlotIndex, SlotIndexSaveName, SaveUserIndex);
+}
+
+void USaveGameSubsystem::UpdateCurrentSlotInfo(const UFPSGameSave& SaveObject)
+{
+	if (!IsValid(SlotIndex)) { return; }
+	if (CurrSaveSlotName.IsEmpty()) { return; }
+
+	FSaveSlotInfo* ExistingSlot = SlotIndex->Slots.FindByPredicate([this](const FSaveSlotInfo& Info)
+	{
+		return Info.SlotName == CurrSaveSlotName;
+	});
+
+	if (ExistingSlot)
+	{
+		ExistingSlot->SavedLevelName = SaveObject.SavedLevelName;
+		ExistingSlot->SavedAt = SaveObject.SavedAt;
+	}
+	else
+	{
+		FSaveSlotInfo NewInfo;
+		NewInfo.SlotName = CurrSaveSlotName;
+		NewInfo.SavedLevelName = SaveObject.SavedLevelName;
+		NewInfo.SavedAt = SaveObject.SavedAt;
+
+		SlotIndex->Slots.Add(MoveTemp(NewInfo));
+	}
+
+	SlotIndex->Slots.Sort([](const FSaveSlotInfo& A, const FSaveSlotInfo& B)
+		{
+			return A.SavedAt > B.SavedAt;
+		});
+}
+
+void USaveGameSubsystem::RemoveInvalidSlotEntries()
+{
+	if (!IsValid(SlotIndex)) { return; }
+	SlotIndex->Slots.RemoveAll([this](const FSaveSlotInfo& Info)
+		{
+			return !UGameplayStatics::DoesSaveGameExist(Info.SlotName, SaveUserIndex);
+		});
 }
 
 ACharacterPlayer* USaveGameSubsystem::FindPlayerCharacter() const
@@ -520,12 +789,7 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 
 	if (!IsValid(Player))
 	{
-		UE_LOG(
-			LogSaveGameSubsystem,
-			Warning,
-			TEXT("Player data was not restored: Player was not found.")
-		);
-
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Player data was not restored: Player was not found."));
 		return;
 	}
 
@@ -533,16 +797,7 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 
 	if (!SaveablePlayer)
 	{
-		UE_LOG(
-			LogSaveGameSubsystem,
-			Error,
-			TEXT(
-				"Player data was not restored: "
-				"CharacterPlayer does not implement "
-				"ISaveablePlayerInterface."
-			)
-		);
-
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Player data was not restored: CharacterPlayer does not implement ISaveablePlayerInterface."));
 		return;
 	}
 
@@ -550,10 +805,11 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 
 	FTransform TargetTransform = SaveObject.PlayerData.PlayerTransform;
 
-	if (SaveObject.CheckpointData.IsValid())
-	{
-		TargetTransform = SaveObject.CheckpointData.RespawnTransform;
-	}
+	// TODO: 향후 Respawn 기능 구현시 사용.
+	//if (SaveObject.CheckpointData.IsValid())
+	//{
+	//	TargetTransform = SaveObject.CheckpointData.RespawnTransform;
+	//}
 
 	Player->SetActorTransform(
 		TargetTransform,
@@ -660,16 +916,20 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	}
 }
 
-void USaveGameSubsystem::HandleAsyncSaveCompleted(
-	const FString& SlotName,
-	const int32 UserIndex,
-	bool bSuccess)
+void USaveGameSubsystem::HandleAsyncSaveCompleted(const FString& SlotName, const int32 UserIndex, bool bSuccess)
 {
 	bIsSaving = false;
 
 	if (bSuccess)
 	{
 		LoadedSaveGame = SaveGameBeingWritten;
+
+		if (IsValid(LoadedSaveGame))
+		{
+			UpdateCurrentSlotInfo(*LoadedSaveGame);
+			SaveSlotIndex();
+		}
+
 
 		UE_LOG(
 			LogSaveGameSubsystem,

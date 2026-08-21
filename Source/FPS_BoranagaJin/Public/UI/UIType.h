@@ -20,6 +20,11 @@ enum class EUIType : uint8
 {
 	Base UMETA(DisplayName = "BaseUIWidget"),
 	MainMenu UMETA(DisplayName = "MainMenu"),
+	MapSelectMenu UMETA(DisplayName = "MapSelectMenu"),
+	MapSelectEntry UMETA(DisplayName = "MapSelectEntry"),
+	SaveFileSlotMenu UMETA(DisplayName = "SaveFileSlotMenu"),
+	SaveFileSlotEntry UMETA(DisplayName = "SaveFileSlotEntry"),
+	PauseMenu UMETA(DisplayName = "PauseMenu"),
 	WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
 	AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	Stamina UMETA(DisplayName = "StaminaWidget"),

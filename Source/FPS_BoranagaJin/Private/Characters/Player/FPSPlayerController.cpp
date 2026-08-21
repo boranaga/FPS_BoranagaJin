@@ -3,8 +3,13 @@
 
 #include "Characters/Player/FPSPlayerController.h"
 #include "UI/UIManagerComponent.h"
+#include "UI/PauseMenuWidget.h"
+
+#include "PlayerUISubsystem.h"
 
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
 #include "Engine/LocalPlayer.h"
 #include "InputMappingContext.h"
 
@@ -52,6 +57,14 @@ void AFPSPlayerController::BeginPlay()
 			ViewportClient->SetMouseCaptureMode(EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 		}
 	}
+
+	//---------------------------------
+
+	if (!IsLocalPlayerController()) { return; }
+
+	UPlayerUISubsystem* UISubsystem = GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(UISubsystem)) { return; }
+	UISubsystem->InitPauseMenuUI(PauseMenuWidgetClass);
 }
 
 void AFPSPlayerController::OnPossess(APawn* aPawn)
@@ -71,19 +84,44 @@ void AFPSPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	if (IsLocalPlayerController())
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
-		{
-			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
-			{
-				Subsystem->AddMappingContext(CurrentContext, 0);
-			}
-		}
-	}
+
+	//// <Old Version>
+	//if (IsLocalPlayerController())
+	//{
+	//	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	//	{
+	//		for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
+	//		{
+	//			Subsystem->AddMappingContext(CurrentContext, 0);
+	//		}
+	//	}
+	//}
+	//---------------------------------
+	// <New Version>
+
+	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
+
+	if (!IsValid(EnhancedInputComponent)) { return; }
+	if (!IsValid(IA_Pause)) { return; }
+
+	EnhancedInputComponent->BindAction(IA_Pause, ETriggerEvent::Started, this, &AFPSPlayerController::HandlePauseInput);
+
 }
 
 void AFPSPlayerController::InitUIManager()
 {
 	if (UIManagerComponent) UIManagerComponent->InitUIManagerComponent();
+}
+
+void AFPSPlayerController::HandlePauseInput()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+
+	if (!IsValid(LocalPlayer)) { return; }
+
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	PlayerUISubsystem->TogglePauseMenu();
 }

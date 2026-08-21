@@ -3,6 +3,7 @@
 #include "SaveSystem/SaveGameSubsystem.h"
 
 #include "Engine/World.h"
+#include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/PlayerController.h"
@@ -35,30 +36,62 @@ void UGameFlowSubsystem::Deinitialize()
     Super::Deinitialize();
 }
 
-bool UGameFlowSubsystem::StartNewGame()
+//bool UGameFlowSubsystem::StartNewGame()
+//{
+//    ChangeState(EGameFlowState::Loading);
+//
+//    const UCustomGameInstance* FPSGameInstance = Cast<UCustomGameInstance>(GetGameInstance());
+//
+//    if (!IsValid(FPSGameInstance))
+//    {
+//        UE_LOG(LogGameFlowSubsystem, Error, TEXT("StartNewGame failed: ""GameInstance is not UFPSGameInstance."));
+//
+//        return false;
+//    }
+//
+//     USaveGameSubsystem* SaveSubsystem = GetGameInstance()->GetSubsystem<USaveGameSubsystem>();
+//     SaveSubsystem->StartNewGame();
+//
+//    return OpenLevel(FPSGameInstance->GetFirstGameLevel());
+//}
+
+bool UGameFlowSubsystem::StartNewGame(const TSoftObjectPtr<UWorld>& LevelAsset)
 {
-    ChangeState(EGameFlowState::Loading);
-
-    const UCustomGameInstance* FPSGameInstance = Cast<UCustomGameInstance>(GetGameInstance());
-
-    if (!IsValid(FPSGameInstance))
+    if (LevelAsset.IsNull())
     {
-        UE_LOG(LogGameFlowSubsystem, Error, TEXT("StartNewGame failed: ""GameInstance is not UFPSGameInstance."));
-
+        UE_LOG(LogGameFlowSubsystem, Error, TEXT("StartNewGame failed: LevelAsset is invalid."));
         return false;
     }
 
-    /*
-     * 세이브 시스템을 도입한 경우 여기에서 새 게임 데이터를
-     * 초기화하면 됩니다.
-     *
-     * USaveGameSubsystem* SaveSubsystem = GetGameInstance()->GetSubsystem<USaveGameSubsystem>();
-     *
-     * SaveSubsystem->StartNewGame(...);
-     */
+    UGameInstance* GameInstance = GetGameInstance();
 
-    return OpenLevel(FPSGameInstance->GetFirstGameLevel());
+    if (!IsValid(GameInstance)) { return false; }
+
+    USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+
+    if (!IsValid(SaveSubsystem))
+    {
+        UE_LOG(LogGameFlowSubsystem, Error, TEXT("StartNewGame failed: SaveGameSubsystem is invalid."));
+        return false;
+    }
+
+    if (!SaveSubsystem->StartNewGame())
+    {
+        UE_LOG(LogGameFlowSubsystem, Error, TEXT("StartNewGame failed: Could not create new save slot."));
+        return false;
+    }
+
+    ChangeState(EGameFlowState::Loading);
+
+    if (!OpenLevel(LevelAsset))
+    {
+        bPendingInitialSave = false;
+        return false;
+    }
+
+    return true;
 }
+
 
 void UGameFlowSubsystem::ContinueGame()
 {
@@ -66,7 +99,28 @@ void UGameFlowSubsystem::ContinueGame()
     // 저장된 레벨로 이동하도록 구현합니다.
 }
 
-bool UGameFlowSubsystem::RestartFromCheckPoint()
+//bool UGameFlowSubsystem::RestartFromCheckPoint()
+//{
+//    UGameInstance* GameInstance = GetGameInstance();
+//    if (!IsValid(GameInstance)) { return false; }
+//
+//    USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+//    if (!IsValid(SaveSubsystem)) { return false; }
+//
+//    if (!SaveSubsystem->LoadGame()) { return false; }
+//
+//    return SaveSubsystem->OpenSavedLevel();
+//}
+
+//bool UGameFlowSubsystem::LoadGameFromSlot(int32 SlotIndex)
+//{
+//    if (SlotIndex <= 0) { return false; }
+//    USaveGameSubsystem* SaveGameSubsystem = GetGameInstance()->GetSubsystem<USaveGameSubsystem>();
+//    if (!IsValid(SaveGameSubsystem)) { return false; }
+//    return SaveGameSubsystem->LoadGameFromSlot(SlotIndex);
+//}
+
+bool UGameFlowSubsystem::LoadGameFromSlot(const FString& SlotName)
 {
     UGameInstance* GameInstance = GetGameInstance();
     if (!IsValid(GameInstance)) { return false; }
@@ -74,7 +128,10 @@ bool UGameFlowSubsystem::RestartFromCheckPoint()
     USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
     if (!IsValid(SaveSubsystem)) { return false; }
 
-    if (!SaveSubsystem->LoadGame()) { return false; }
+    if (!SaveSubsystem->LoadGameFromSlot(SlotName))
+    {
+        return false;
+    }
 
     return SaveSubsystem->OpenSavedLevel();
 }
@@ -173,29 +230,92 @@ bool UGameFlowSubsystem::ReturnToMainMenu()
     return OpenLevel(FPSGameInstance->GetMainMenuLevel());
 }
 
-void UGameFlowSubsystem::QuitGame()
+void UGameFlowSubsystem::SaveAndQuitGame()
 {
-    UWorld* World = GetWorld();
-
-    if (!IsValid(World))
+    UGameInstance* GameInstance = GetGameInstance();
+    if (!IsValid(GameInstance)) { return; }
+    USaveGameSubsystem* SaveGameSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+    if (!IsValid(SaveGameSubsystem))
     {
-        UE_LOG(
-            LogGameFlowSubsystem,
-            Error,
-            TEXT("QuitGame failed: World is invalid.")
-        );
-
+        UE_LOG(LogTemp, Warning, TEXT("SaveAndQuitGame: Invalid SaveGameSubsystem"));
+        QuitGame();
         return;
     }
 
-    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(World, 0);
+    if (!SaveGameSubsystem->HasCurrentSaveSlot())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SaveAndQuitGame: Current save slot does not exist."));
+        QuitGame();
+        return;
+    }
 
-    UKismetSystemLibrary::QuitGame(
-        World,
-        PlayerController,
-        EQuitPreference::Quit,
-        false
-    );
+    const bool bSaved = SaveGameSubsystem->SaveGameSync();
+
+    if (!bSaved)
+    {
+        UE_LOG(LogTemp, Error, TEXT("SaveAndQuitGame: Failed to save game."));
+        return;
+    }
+
+    QuitGame();
+}
+
+void UGameFlowSubsystem::QuitGame()
+{
+    //// <Old Version>
+
+    //UWorld* World = GetWorld();
+
+    //if (!IsValid(World))
+    //{
+    //    UE_LOG(
+    //        LogGameFlowSubsystem,
+    //        Error,
+    //        TEXT("QuitGame failed: World is invalid.")
+    //    );
+
+    //    return;
+    //}
+
+    //APlayerController* PlayerController = UGameplayStatics::GetPlayerController(World, 0);
+
+    //UKismetSystemLibrary::QuitGame(
+    //    World,
+    //    PlayerController,
+    //    EQuitPreference::Quit,
+    //    false
+    //);
+
+    //----------------------------------------
+    //// <New Version>
+
+    //UGameInstance* GameInstance = GetGameInstance();
+
+    //if (!IsValid(GameInstance)) { return; }
+
+    //USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+
+    //if (IsValid(SaveSubsystem) && SaveSubsystem->HasCurrentSaveSlot())
+    //{
+    //    SaveSubsystem->SaveGameSync();
+    //}
+
+    //APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+
+    //if (!IsValid(PlayerController)) { return; }
+
+    //UKismetSystemLibrary::QuitGame(GetWorld(), PlayerController, EQuitPreference::Quit, false);
+
+    //------------------------------------
+    // <New New Version>
+
+    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+
+    if (!IsValid(PlayerController)) { return; }
+
+    UKismetSystemLibrary::QuitGame(GetWorld(), PlayerController, EQuitPreference::Quit, false);
+
+    UE_LOG(LogTemp, Error, TEXT("void UGameFlowSubsystem::QuitGame()"));
 }
 
 void UGameFlowSubsystem::ChangeState(EGameFlowState NewState)
@@ -304,15 +424,26 @@ void UGameFlowSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
     if (!IsValid(FPSGameInstance)) { return; }
 
     const FName LoadedLevelName = FName(*UGameplayStatics::GetCurrentLevelName(LoadedWorld, true));
-
     const FName MainMenuLevelName = FPSGameInstance->GetMainMenuLevel().ToSoftObjectPath().GetAssetFName();
 
     if (LoadedLevelName == MainMenuLevelName)
     {
+        bPendingInitialSave = false;
         ChangeState(EGameFlowState::MainMenu);
+        return;
     }
-    else
+
+    ChangeState(EGameFlowState::Playing);
+
+    if (bPendingInitialSave)
     {
-        ChangeState(EGameFlowState::Playing);
+        bPendingInitialSave = false;
+
+        USaveGameSubsystem* SaveSubsystem = GetGameInstance()->GetSubsystem<USaveGameSubsystem>();
+
+        if (IsValid(SaveSubsystem))
+        {
+            SaveSubsystem->SaveGameAsync();
+        }
     }
 }
