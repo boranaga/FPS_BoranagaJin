@@ -33,6 +33,20 @@ void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy BeginPlay: %s"), *GetName());
+
+	AAIController* AIController = Cast<AAIController>(GetController());
+
+	if (IsValid(AIController))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AIController Valid: %s"), *AIController->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("AIController INVALID: %s"), *GetName());
+	}
+
 	if (HealthComponent)
 	{
 		HealthComponent->OnDeath.AddUObject(this, &AEnemyBase::OnDeath);
