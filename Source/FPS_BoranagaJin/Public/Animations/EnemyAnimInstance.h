@@ -35,7 +35,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|Animation")
 	bool bIsDead = false;
 
-	UPROPERTY(VisibleAnywhere, Category = "Enemy|Animation")
+	UPROPERTY(BlueprintReadOnly, Category = "Enemy|Animation")
 	EEnemyStateType EnemyState = EEnemyStateType::Idle;
 
 public:

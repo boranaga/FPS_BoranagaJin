@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
 #include "EnemyStateType.generated.h"
 
 UENUM(BlueprintType)
@@ -16,4 +17,12 @@ enum class EEnemyStateType : uint8
 	Hide UMETA(DisplayName = "Hide"),
 	Recover UMETA(DisplayName = "Recover"),
 	Dead	UMETA(DisplayName = "Dead")
+};
+
+UCLASS()
+class FPS_BORANAGAJIN_API AEnemyStateType : public AActor
+{
+	GENERATED_BODY()
+public:
+	AEnemyStateType();
 };

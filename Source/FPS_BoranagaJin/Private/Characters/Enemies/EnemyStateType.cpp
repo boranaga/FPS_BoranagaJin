@@ -2,3 +2,7 @@
 
 
 #include "Characters/Enemies/EnemyStateType.h"
+
+AEnemyStateType::AEnemyStateType()
+{
+}
