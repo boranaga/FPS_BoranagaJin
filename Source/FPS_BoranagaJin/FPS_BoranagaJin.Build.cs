@@ -25,7 +25,8 @@ public class FPS_BoranagaJin : ModuleRules
 			"Niagara",        //Added for the use of ParticleSystem
             "AnimGraphRuntime", //Added for Animation
             "MotionWarping", // Added for Enemy motion warping
-            "PhysicsCore" //Added by Boranaga for Animation
+            "PhysicsCore", //Added for Animation
+			"DeveloperSettings" //Added for SoundSystem
         });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

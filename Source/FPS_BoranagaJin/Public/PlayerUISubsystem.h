@@ -4,6 +4,7 @@
 //#include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/LocalPlayerSubsystem.h"
 #include "UI/UIType.h"
+#include "SoundSystem/SoundID.h"
 #include "PlayerUISubsystem.generated.h"
 
 
@@ -14,6 +15,7 @@ class USaveFileSlotMenuWidget;
 class UPauseMenuWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
+class UGameAudioSubsystem;
 
 struct FPlayableMapInfo;
 
@@ -45,6 +47,7 @@ public:
 private:
     AFPSPlayerController* GetFPSPlayerController() const;
     APlayerController* GetCustomPlayerController() const;
+    UGameAudioSubsystem* GetAudioSubsystem() const;
 
     FORCEINLINE int32 GetUIZOrder(EUIType Type)
     {
@@ -65,6 +68,8 @@ private:
         default: return 0;
         }
     }
+
+    void PlayUISound(ESoundID SoundID);
 
     void BindCharacterDelegates();
     void UnbindCharacterDelegates();

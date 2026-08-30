@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "UIType.h"
+#include "SoundSystem/SoundID.h"
 #include "BaseUIWidget.generated.h"
 
 class UUIManagerComponent;
@@ -21,4 +22,6 @@ public:
 	UUIManagerComponent* GetOwnerUIManager() const { return OwnerUIManager; }
 protected:
 	UUIManagerComponent* OwnerUIManager = nullptr;
+protected:
+	void PlayUISound(ESoundID SoundID) const;
 };

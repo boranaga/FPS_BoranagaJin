@@ -12,6 +12,8 @@
 #include "SaveSystem/SaveGameSubsystem.h"
 //#include "SaveSystem/SaveGameCustom.h"
 
+#include "SoundSystem/GameAudioSubsystem.h"
+
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -141,6 +143,28 @@ APlayerController* UPlayerUISubsystem::GetCustomPlayerController() const
     const ULocalPlayer* LocalPlayer = GetLocalPlayer();
     if (!LocalPlayer) { return nullptr; }
     return Cast<APlayerController>(LocalPlayer->GetPlayerController(GetWorld()));
+}
+
+UGameAudioSubsystem* UPlayerUISubsystem::GetAudioSubsystem() const
+{
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+    if (!IsValid(LocalPlayer)) { return nullptr; }
+
+    UGameInstance* GameInstance = LocalPlayer->GetGameInstance();
+
+    if (!IsValid(GameInstance))
+    {
+        return nullptr;
+    }
+
+    return GameInstance->GetSubsystem<UGameAudioSubsystem>();
+}
+
+void UPlayerUISubsystem::PlayUISound(ESoundID SoundID)
+{
+    UGameAudioSubsystem* AudioSubsystem = GetAudioSubsystem();
+    if (!IsValid(AudioSubsystem)) { return; }
+    AudioSubsystem->PlaySound2D(SoundID);
 }
 
 void UPlayerUISubsystem::BindCharacterDelegates()
@@ -305,6 +329,7 @@ void UPlayerUISubsystem::OpenPauseMenu()
     //UGameplayStatics::SetGamePaused(this, true);
 
     ShowUI(EUIType::PauseMenu);
+    PlayUISound(ESoundID::UI_Open);
 
     PlayerController->SetShowMouseCursor(true);
 
@@ -331,6 +356,7 @@ void UPlayerUISubsystem::ClosePauseMenu()
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
     HideUI(EUIType::PauseMenu);
+    PlayUISound(ESoundID::UI_Close);
 
     //TODO: 일시정지에 대한 고려 필요
     //UGameplayStatics::SetGamePaused(this, false);
@@ -350,6 +376,8 @@ void UPlayerUISubsystem::HandlePauseMenuPlayRequested()
 void UPlayerUISubsystem::HandlePauseMenuOptionRequested()
 {
     // TODO: Option UI
+
+    PlayUISound(ESoundID::UI_Open);
 }
 
 void UPlayerUISubsystem::HandlePauseMenuSaveAndExitRequested()
@@ -397,6 +425,7 @@ void UPlayerUISubsystem::HandlePlayRequested()
     MapSelectMenuWidget->RefreshPlayableMaps(CustomGameInstance->GetPlayableMaps());
     HideUI(EUIType::MainMenu);
     ShowUI(EUIType::MapSelectMenu);
+    PlayUISound(ESoundID::UI_Click);
     SetUIOnlyInput(MapSelectMenuWidget);
 }
 
@@ -413,6 +442,8 @@ void UPlayerUISubsystem::HandlePlayableMapSelected(FPlayableMapInfo MapInfo)
 
     if (!IsValid(GameFlowSubsystem)) { return; }
 
+    PlayUISound(ESoundID::UI_Click);
+
     GameFlowSubsystem->StartNewGame(MapInfo.LevelAsset);
 }
 
@@ -424,6 +455,8 @@ void UPlayerUISubsystem::HandleMapSelectBackRequested()
 
     HideUI(EUIType::MapSelectMenu);
     ShowUI(EUIType::MainMenu);
+
+    PlayUISound(ESoundID::UI_Click);
 
     SetUIOnlyInput(MainMenuWidget);
 }
@@ -463,12 +496,14 @@ void UPlayerUISubsystem::HandleContinueRequested()
 
     HideUI(EUIType::MainMenu);
     ShowUI(EUIType::SaveFileSlotMenu);
+    PlayUISound(ESoundID::UI_Click);
 
     SetUIOnlyInput(SaveFileSlotMenuWidget);
 }
 
 void UPlayerUISubsystem::HandleOptionRequested()
 {
+    PlayUISound(ESoundID::UI_Click);
 }
 
 void UPlayerUISubsystem::HandleExitRequested()
@@ -503,6 +538,8 @@ void UPlayerUISubsystem::HandleSaveFileSlotSelected(FString SlotName)
     UGameFlowSubsystem* GameFlowSubsystem = GameInstance->GetSubsystem<UGameFlowSubsystem>();
     if (!IsValid(GameFlowSubsystem)) { return; }
 
+    PlayUISound(ESoundID::UI_Click);
+
     GameFlowSubsystem->LoadGameFromSlot(SlotName);
 }
 
@@ -517,4 +554,6 @@ void UPlayerUISubsystem::HandleSaveFileSlotBackRequested()
     HideUI(EUIType::SaveFileSlotMenu);
     ShowUI(EUIType::MainMenu);
     SetUIOnlyInput(MainMenuWidget);
+
+    PlayUISound(ESoundID::UI_Click);
 }

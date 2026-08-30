@@ -129,6 +129,8 @@ FReply UInventorySlotWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InG
         ).NativeReply;
     }
 
+    PlayUISound(ESoundID::UI_Click);
+
     return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
 }
 
@@ -208,6 +210,8 @@ void UInventorySlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const
         SetItemToolPosition(InGeometry);
         DisplayItemTool();
     }
+
+    PlayUISound(ESoundID::UI_Hover);
 }
 
 void UInventorySlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
