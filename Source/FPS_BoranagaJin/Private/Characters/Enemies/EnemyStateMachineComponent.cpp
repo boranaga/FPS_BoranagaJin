@@ -5,6 +5,7 @@
 #include "Characters/HealthComponent.h"
 #include "Characters/StaminaComponent.h"
 #include "Characters/BloodStainActor.h"
+#include "SoundSystem/EnemyAudioComponent.h"
 
 #include "EngineUtils.h"
 #include "NavigationSystem.h"
@@ -28,6 +29,7 @@ void UEnemyStateMachineComponent::BeginPlay()
 		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
 		HealthComponent = Enemy->GetHealthComponent();
 		StaminaComponent = Enemy->GetStaminaComponent();
+		EnemyAudioComponent = Enemy->GetAudioComponent();
 	}
 
 	TargetActor = nullptr;
@@ -204,6 +206,11 @@ void UEnemyStateMachineComponent::SetState(EEnemyStateType NewState)
 	ExitState(CurrentState);
 	CurrentState = NewState;
 	EnterState(CurrentState);
+
+	if (EnemyAudioComponent)
+	{
+		EnemyAudioComponent->NotifyStateChanged(CurrentState);
+	}
 }
 
 EEnemyStateType UEnemyStateMachineComponent::GetCurrentState() const
@@ -255,6 +262,11 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		if (GetWorld()->GetTimerManager().IsTimerActive(TargetDurationTimerHandle))
 		{
 			GetWorld()->GetTimerManager().ClearTimer(TargetDurationTimerHandle);
+		}
+
+		if (EnemyAudioComponent)
+		{
+			EnemyAudioComponent->PlayEvent(EEnemyAudioEvent::ChaseStart);
 		}
 
 		break;
@@ -334,6 +346,11 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		UE_LOG(LogTemp, Warning, TEXT("Enter Dead"));
 		Task_StopMovement();
 		ClearTarget();
+
+		if (EnemyAudioComponent)
+		{
+			EnemyAudioComponent->NotifyDeath();
+		}
 
 		SetComponentTickEnabled(false);
 		break;
@@ -1271,6 +1288,13 @@ void UEnemyStateMachineComponent::Task_AttackTarget()
 	if (!Enemy || !HasTarget()) return;
 
 	LastAttackTime = GetWorld()->GetTimeSeconds();
+
+	//TODO: AnimNotify에서 해결하기
+	if (EnemyAudioComponent)
+	{
+		EnemyAudioComponent->NotifyAttack();
+	}
+
 	Enemy->AttackTarget(TargetActor);
 }
 
@@ -1458,6 +1482,14 @@ void UEnemyStateMachineComponent::NotifyDamageReceived(float DamageAmount, AActo
 
 	if (DamageAmount <= 0.f) { return; }
 	if (DamageInstigator) { TargetActor = DamageInstigator; }
+
+	if (EnemyAudioComponent)
+	{
+		EnemyAudioComponent->NotifyDamage(
+			DamageAmount
+		);
+	}
+
 
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
 

@@ -7,6 +7,8 @@
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
 #include "Characters/GameDamageType.h"
 
+#include "SoundSystem/EnemyAudioComponent.h"
+
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -24,6 +26,7 @@ AEnemyBase::AEnemyBase()
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
 	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
+	EnemyAudioComponent = CreateDefaultSubobject<UEnemyAudioComponent>(TEXT("AudioComponent"));
 	StateMachineComponent = CreateDefaultSubobject<UEnemyStateMachineComponent>(TEXT("StateMachineComponent"));
 
 	Tags.AddUnique(TEXT("Enemy"));

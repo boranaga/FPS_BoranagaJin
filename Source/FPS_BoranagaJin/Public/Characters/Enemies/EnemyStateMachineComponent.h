@@ -11,6 +11,7 @@ class AEnemyPatrolPoint;
 
 class UHealthComponent;
 class UStaminaComponent;
+class UEnemyAudioComponent;
 class ABloodStainActor;
 
 enum class EEnemyIdleLookPhase : uint8
@@ -57,6 +58,10 @@ private:
 
 	float LastAttackTime = -999.f;
 
+// <AudioComponent>
+private:
+	UPROPERTY()
+	TObjectPtr<UEnemyAudioComponent> EnemyAudioComponent;
 // <Stamina and Health>
 private:
 	UPROPERTY()
