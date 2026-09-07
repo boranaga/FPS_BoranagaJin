@@ -55,11 +55,11 @@ private:
 
 	FTimerHandle AmbientVocalTimerHandle;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Audio|Ambient", meta = (AllowPrivateAccess = "true", ClampMin = "0.1"))
-	float AmbientIntervalMin = 3.f;
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Audio|Ambient", meta = (AllowPrivateAccess = "true", ClampMin = "0.1"))
+	//float AmbientIntervalMin = 3.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Audio|Ambient", meta = (AllowPrivateAccess = "true", ClampMin = "0.1"))
-	float AmbientIntervalMax = 7.f;
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Audio|Ambient", meta = (AllowPrivateAccess = "true", ClampMin = "0.1"))
+	//float AmbientIntervalMax = 7.f;
 #pragma endregion
 
 #pragma region Damage

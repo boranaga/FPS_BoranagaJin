@@ -38,6 +38,18 @@ enum class ESoundID : uint8
     Enemy_Footstep,
     Enemy_Alert,
 
+    Enemy_Idle,
+    Enemy_Patrol,
+    Enemy_Investigate,
+    Enemy_TraceBlood,
+    Enemy_Chase,
+    Enemy_Attack,
+    Enemy_Flee,
+    Enemy_Hide,
+    Enemy_Recover,
+    Enemy_Dead,
+
+
     // Environment
     Door_Open,
     Door_Close,

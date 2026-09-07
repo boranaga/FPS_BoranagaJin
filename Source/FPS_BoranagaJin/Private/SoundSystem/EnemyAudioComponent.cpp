@@ -24,17 +24,11 @@ void UEnemyAudioComponent::BeginPlay()
 bool UEnemyAudioComponent::CanPlayEvent(EEnemyAudioEvent AudioEvent) const
 {
 	if (!GetWorld()) { return false; }
-	if (AudioEvent == EEnemyAudioEvent::None)
-	{
-		return false;
-	}
+	if (AudioEvent == EEnemyAudioEvent::None) { return false; }
 
 	const float* NextAllowedTime = NextAllowedPlayTimes.Find(AudioEvent);
 
-	if (!NextAllowedTime)
-	{
-		return true;
-	}
+	if (!NextAllowedTime) { return true; }
 
 	return GetWorld()->GetTimeSeconds() >= *NextAllowedTime;
 }
@@ -54,114 +48,8 @@ bool UEnemyAudioComponent::PassesPlayProbability(const FEnemyAudioEventData& Eve
 	return FMath::FRand() <= EventData.PlayProbability;
 }
 
+
 ESoundID UEnemyAudioComponent::SelectWeightedSound_1(EEnemyAudioEvent AudioEvent, const FEnemyAudioEventData& EventData) const
-{
-	if (EventData.Variations.IsEmpty())
-	{
-		return ESoundID::None;
-	}
-
-	const ESoundID* LastPlayedSound = LastPlayedSounds.Find(AudioEvent);
-
-	float TotalWeight = 0.f;
-
-	for (const FEnemySoundVariation& Variation : EventData.Variations)
-	{
-		if (Variation.SoundID == ESoundID::None)
-		{
-			continue;
-		}
-
-		if (Variation.Weight <= 0.f)
-		{
-			continue;
-		}
-
-		if (EventData.Variations.Num() > 1 && LastPlayedSound && Variation.SoundID == *LastPlayedSound)
-		{
-			continue;
-		}
-
-		TotalWeight += Variation.Weight;
-	}
-
-	/*
-	 * 마지막 Sound 제외로 인해 후보가 전부 사라졌다면
-	 * Repeat Prevention을 무시하고 다시 계산한다.
-	 */
-	// ??? 
-
-	if (TotalWeight <= 0.f)
-	{
-		for (const FEnemySoundVariation& Variation : EventData.Variations)
-		{
-			if (Variation.SoundID == ESoundID::None)
-			{
-				continue;
-			}
-
-			if (Variation.Weight <= 0.f)
-			{
-				continue;
-			}
-
-			TotalWeight += Variation.Weight;
-		}
-	}
-
-	if (TotalWeight <= 0.f)
-	{
-		return ESoundID::None;
-	}
-
-	float RandomValue = FMath::FRandRange(0.f, TotalWeight);
-
-	for (const FEnemySoundVariation& Variation : EventData.Variations)
-	{
-		if (Variation.SoundID == ESoundID::None ||
-			Variation.Weight <= 0.f)
-		{
-			continue;
-		}
-
-		const bool bShouldSkipRepeatedSound =
-			EventData.Variations.Num() > 1 &&
-			LastPlayedSound &&
-			Variation.SoundID == *LastPlayedSound;
-
-		if (bShouldSkipRepeatedSound)
-		{
-			continue;
-		}
-
-		RandomValue -= Variation.Weight;
-
-		if (RandomValue <= 0.f)
-		{
-			return Variation.SoundID;
-		}
-	}
-
-	/*
-	 * Repeat Prevention 때문에 선택이 실패했다면
-	 * 정상적인 첫 번째 후보 반환.
-	 */
-	for (const FEnemySoundVariation& Variation : EventData.Variations)
-	{
-		if (Variation.SoundID != ESoundID::None &&
-			Variation.Weight > 0.f)
-		{
-			return Variation.SoundID;
-		}
-	}
-
-	return ESoundID::None;
-}
-
-
-ESoundID UEnemyAudioComponent::SelectWeightedSound_2(
-	EEnemyAudioEvent AudioEvent,
-	const FEnemyAudioEventData& EventData) const
 {
 	if (EventData.Variations.IsEmpty())
 	{
@@ -175,15 +63,11 @@ ESoundID UEnemyAudioComponent::SelectWeightedSound_2(
 
 	for (const FEnemySoundVariation& Variation : EventData.Variations)
 	{
-		if (Variation.SoundID == ESoundID::None ||
-			Variation.Weight <= 0.f)
+		if (Variation.SoundID == ESoundID::None || Variation.Weight <= 0.f)
 		{
 			continue;
 		}
-
-		if (LastPlayedSound &&
-			EventData.Variations.Num() > 1 &&
-			Variation.SoundID == *LastPlayedSound)
+		if (LastPlayedSound && EventData.Variations.Num() > 1 && Variation.SoundID == *LastPlayedSound)
 		{
 			continue;
 		}
@@ -196,8 +80,7 @@ ESoundID UEnemyAudioComponent::SelectWeightedSound_2(
 	{
 		for (const FEnemySoundVariation& Variation : EventData.Variations)
 		{
-			if (Variation.SoundID == ESoundID::None ||
-				Variation.Weight <= 0.f)
+			if (Variation.SoundID == ESoundID::None || Variation.Weight <= 0.f)
 			{
 				continue;
 			}
@@ -216,10 +99,7 @@ ESoundID UEnemyAudioComponent::SelectWeightedSound_2(
 
 	for (const FEnemySoundVariation* Candidate : Candidates)
 	{
-		if (!Candidate)
-		{
-			continue;
-		}
+		if (!Candidate) { continue; }
 
 		RandomWeight -= Candidate->Weight;
 
@@ -230,6 +110,59 @@ ESoundID UEnemyAudioComponent::SelectWeightedSound_2(
 	}
 
 	return Candidates.Last()->SoundID;
+}
+
+ESoundID UEnemyAudioComponent::SelectWeightedSound_2(EEnemyAudioEvent AudioEvent, const FEnemyAudioEventData& EventData) const
+{
+	if (EventData.Variations.IsEmpty())
+	{
+		return ESoundID::None;
+	}
+
+	const ESoundID* LastPlayedSound = LastPlayedSounds.Find(AudioEvent);
+
+	ESoundID SelectedSound = ESoundID::None;
+	ESoundID FallbackSound = ESoundID::None;
+
+	float AccumulatedWeight = 0.f;
+
+	for (const FEnemySoundVariation& Variation : EventData.Variations)
+	{
+		if (Variation.SoundID == ESoundID::None || Variation.Weight <= 0.f)
+		{
+			continue;
+		}
+
+		/*
+		 * Repeat Prevention 때문에 제외되더라도,
+		 * 다른 후보가 하나도 없을 때 사용할 fallback으로 저장한다.
+		 */
+		if (LastPlayedSound && Variation.SoundID == *LastPlayedSound)
+		{
+			FallbackSound = Variation.SoundID;
+			continue;
+		}
+
+		AccumulatedWeight += Variation.Weight;
+
+		/*
+		 * 지금까지 확인한 후보들 중
+		 * 현재 Variation이 선택될 확률:
+		 *
+		 * Weight / AccumulatedWeight
+		 */
+		if (FMath::FRand() < Variation.Weight / AccumulatedWeight)
+		{
+			SelectedSound = Variation.SoundID;
+		}
+	}
+
+	if (SelectedSound != ESoundID::None)
+	{
+		return SelectedSound;
+	}
+
+	return FallbackSound;
 }
 
 void UEnemyAudioComponent::UpdateEventCooldown(EEnemyAudioEvent AudioEvent,const FEnemyAudioEventData& EventData)
@@ -252,23 +185,11 @@ void UEnemyAudioComponent::UpdateEventCooldown(EEnemyAudioEvent AudioEvent,const
 		GetWorld()->GetTimeSeconds() + Cooldown;
 }
 
-bool UEnemyAudioComponent::CanInterruptCurrentVocal(
-	const FEnemyAudioEventData& NewEventData) const
+bool UEnemyAudioComponent::CanInterruptCurrentVocal(const FEnemyAudioEventData& NewEventData) const
 {
-	if (!IsValid(VocalAudioComponent))
-	{
-		return true;
-	}
-
-	if (!VocalAudioComponent->IsPlaying())
-	{
-		return true;
-	}
-
-	if (!NewEventData.bInterruptLowerPriority)
-	{
-		return false;
-	}
+	if (!IsValid(VocalAudioComponent)) { return true; }
+	if (!VocalAudioComponent->IsPlaying()) { return true; }
+	if (!NewEventData.bInterruptLowerPriority) { return false; }
 
 	return NewEventData.Priority > CurrentVocalPriority;
 }
@@ -276,45 +197,22 @@ bool UEnemyAudioComponent::CanInterruptCurrentVocal(
 
 void UEnemyAudioComponent::PlayVocalSound(EEnemyAudioEvent AudioEvent, ESoundID SoundID, const FEnemyAudioEventData& EventData)
 {
-	if (!IsValid(Enemy))
-	{
-		return;
-	}
-
+	if (!IsValid(Enemy)) { return; }
 	UGameInstance* GameInstance = Enemy->GetGameInstance();
-
-	if (!IsValid(GameInstance))
-	{
-		return;
-	}
-
-	UGameAudioSubsystem* AudioSubsystem =
-		GameInstance->GetSubsystem<UGameAudioSubsystem>();
-
-	if (!IsValid(AudioSubsystem))
-	{
-		return;
-	}
+	if (!IsValid(GameInstance)) { return; }
+	UGameAudioSubsystem* AudioSubsystem = GameInstance->GetSubsystem<UGameAudioSubsystem>();
+	if (!IsValid(AudioSubsystem)) { return; }
 
 	if (IsValid(VocalAudioComponent))
 	{
-		VocalAudioComponent->OnAudioFinished.RemoveDynamic(
-			this,
-			&UEnemyAudioComponent::HandleVocalFinished
-		);
-
+		VocalAudioComponent->OnAudioFinished.RemoveDynamic(this, &UEnemyAudioComponent::HandleVocalFinished);
 		if (VocalAudioComponent->IsPlaying())
 		{
 			VocalAudioComponent->Stop();
 		}
 	}
 
-	VocalAudioComponent =
-		AudioSubsystem->PlaySoundAttached(
-			SoundID,
-			Enemy->GetRootComponent()
-		);
-
+	VocalAudioComponent = AudioSubsystem->PlaySoundAttached(SoundID, Enemy->GetRootComponent());
 	if (!IsValid(VocalAudioComponent))
 	{
 		ResetCurrentVocalState();
@@ -324,20 +222,14 @@ void UEnemyAudioComponent::PlayVocalSound(EEnemyAudioEvent AudioEvent, ESoundID 
 	CurrentVocalEvent = AudioEvent;
 	CurrentVocalPriority = EventData.Priority;
 
-	VocalAudioComponent->OnAudioFinished.AddDynamic(
-		this,
-		&UEnemyAudioComponent::HandleVocalFinished
-	);
+	VocalAudioComponent->OnAudioFinished.AddDynamic(this, &UEnemyAudioComponent::HandleVocalFinished);
 }
 
 void UEnemyAudioComponent::HandleVocalFinished()
 {
 	if (IsValid(VocalAudioComponent))
 	{
-		VocalAudioComponent->OnAudioFinished.RemoveDynamic(
-			this,
-			&UEnemyAudioComponent::HandleVocalFinished
-		);
+		VocalAudioComponent->OnAudioFinished.RemoveDynamic(this, &UEnemyAudioComponent::HandleVocalFinished);
 	}
 
 	ResetCurrentVocalState();
@@ -356,14 +248,9 @@ void UEnemyAudioComponent::StopVocal()
 {
 	if (IsValid(VocalAudioComponent))
 	{
-		VocalAudioComponent->OnAudioFinished.RemoveDynamic(
-			this,
-			&UEnemyAudioComponent::HandleVocalFinished
-		);
-
+		VocalAudioComponent->OnAudioFinished.RemoveDynamic(this, &UEnemyAudioComponent::HandleVocalFinished);
 		VocalAudioComponent->Stop();
 	}
-
 	ResetCurrentVocalState();
 }
 
@@ -375,37 +262,16 @@ bool UEnemyAudioComponent::PlayEvent(EEnemyAudioEvent AudioEvent)
 
 	const FEnemyAudioEventData* EventData = GetEventData(AudioEvent);
 	if (!EventData) { return false; }
+	if (!PassesPlayProbability(*EventData)) { return false; }
+	if (!CanInterruptCurrentVocal(*EventData)) { return false; }
 
-	if (!PassesPlayProbability(*EventData))
-	{
-		return false;
-	}
+	const ESoundID SelectedSound = SelectWeightedSound_1(AudioEvent, *EventData);
+	if (SelectedSound == ESoundID::None) { return false; }
 
-	if (!CanInterruptCurrentVocal(*EventData))
-	{
-		return false;
-	}
+	PlayVocalSound(AudioEvent, SelectedSound, *EventData);
+	LastPlayedSounds.FindOrAdd(AudioEvent) = SelectedSound;
 
-	const ESoundID SelectedSound = SelectWeightedSound_2(AudioEvent, *EventData);
-
-	if (SelectedSound == ESoundID::None)
-	{
-		return false;
-	}
-
-	PlayVocalSound(
-		AudioEvent,
-		SelectedSound,
-		*EventData
-	);
-
-	LastPlayedSounds.FindOrAdd(AudioEvent) =
-		SelectedSound;
-
-	UpdateEventCooldown(
-		AudioEvent,
-		*EventData
-	);
+	UpdateEventCooldown(AudioEvent, *EventData);
 
 	return true;
 }
@@ -438,26 +304,19 @@ void UEnemyAudioComponent::ScheduleNextAmbientVocal()
 
 	//---------------------
 	// <TODO: Interval 설정>
+	const FEnemyAudioEventData* EventData = GetEventData(CurrentAmbientAudioEvent);
 
-	//const FEnemyAudioEventData* EventData =
-	//	GetEventData(CurrentAmbientAudioEvent);
-
-	//const float Interval =
-	//	FMath::FRandRange(
-	//		EventData->AmbientIntervalMin,
-	//		EventData->AmbientIntervalMax
-	//	);
+	const float Interval = FMath::FRandRange(EventData->AmbientIntervalMin, EventData->AmbientIntervalMax);
 
 	//----------------------
 
-	const float MinInterval =
-		FMath::Min(AmbientIntervalMin, AmbientIntervalMax);
+	//const float MinInterval =
+	//	FMath::Min(AmbientIntervalMin, AmbientIntervalMax);
 
-	const float MaxInterval =
-		FMath::Max(AmbientIntervalMin, AmbientIntervalMax);
+	//const float MaxInterval =
+	//	FMath::Max(AmbientIntervalMin, AmbientIntervalMax);
 
-	const float Interval =
-		FMath::FRandRange(MinInterval, MaxInterval);
+	//const float Interval = FMath::FRandRange(MinInterval, MaxInterval);
 
 	GetWorld()->GetTimerManager().SetTimer(
 		AmbientVocalTimerHandle,
@@ -476,7 +335,6 @@ void UEnemyAudioComponent::HandleAmbientVocalTimer()
 	}
 
 	PlayEvent(CurrentAmbientAudioEvent);
-
 	ScheduleNextAmbientVocal();
 }
 
@@ -689,10 +547,6 @@ void UEnemyAudioComponent::UpdateBreathingFromState(EEnemyStateType NewState)
 
 const FEnemyAudioEventData* UEnemyAudioComponent::GetEventData(EEnemyAudioEvent AudioEvent) const
 {
-	if (!IsValid(AudioDataAsset))
-	{
-		return nullptr;
-	}
-
+	if (!IsValid(AudioDataAsset)) { return nullptr; }
 	return AudioDataAsset->FindEventData(AudioEvent);
 }

@@ -41,8 +41,6 @@ struct FEnemyAudioEventData
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")
 	bool bInterruptLowerPriority = false;
 
-	//--------------------
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ambient", meta = (ClampMin = "0.1"))
 	float AmbientIntervalMin = 3.f;
 

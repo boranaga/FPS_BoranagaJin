@@ -2,9 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "GameSoundDataAsset.h"
 #include "GameAudioSettings.generated.h"
 
-class UGameSoundDataAsset;
+//class UGameSoundDataAsset;
 
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Game Audio Settings"))
 class FPS_BORANAGAJIN_API UGameAudioSettings : public UDeveloperSettings
