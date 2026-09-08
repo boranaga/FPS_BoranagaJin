@@ -29,6 +29,13 @@ private:
     TObjectPtr<UAudioComponent> CurrentBGMComponent;
 #pragma endregion
 
+#pragma region Footstep
+public:
+    void PlayFootstepSound(FName FootstepProfile, EPhysicalSurface SurfaceType, const FVector& Location);
+
+
+#pragma endregion
+
 #pragma region SoundData
 private:
     const struct FGameSoundData* GetSoundData(ESoundID SoundID) const;

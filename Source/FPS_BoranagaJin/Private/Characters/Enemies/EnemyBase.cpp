@@ -8,6 +8,7 @@
 #include "Characters/GameDamageType.h"
 
 #include "SoundSystem/EnemyAudioComponent.h"
+#include "SoundSystem/FootstepComponent.h"
 
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -27,6 +28,7 @@ AEnemyBase::AEnemyBase()
 	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
 	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
 	EnemyAudioComponent = CreateDefaultSubobject<UEnemyAudioComponent>(TEXT("AudioComponent"));
+	FootstepComponent = CreateDefaultSubobject<UFootstepComponent>(TEXT("FootstepComponent"));
 	StateMachineComponent = CreateDefaultSubobject<UEnemyStateMachineComponent>(TEXT("StateMachineComponent"));
 
 	Tags.AddUnique(TEXT("Enemy"));
@@ -48,6 +50,11 @@ void AEnemyBase::BeginPlay()
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("AIController INVALID: %s"), *GetName());
+	}
+
+	if (IsValid(FootstepComponent))
+	{
+		FootstepComponent->SetFootstepMesh(GetMesh());
 	}
 
 	if (HealthComponent)

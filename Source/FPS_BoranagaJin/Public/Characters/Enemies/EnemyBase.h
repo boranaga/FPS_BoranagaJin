@@ -10,6 +10,7 @@ class UHealthComponent;
 class UStaminaComponent;
 class UBloodTrailComponent;
 class UEnemyAudioComponent;
+class UFootstepComponent;
 class UEnemyStateMachineComponent;
 
 UCLASS()
@@ -29,6 +30,8 @@ protected:
 	TObjectPtr<UBloodTrailComponent> BloodTrailComponent;
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|Components")
 	TObjectPtr<UEnemyAudioComponent> EnemyAudioComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Audio", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFootstepComponent> FootstepComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|AI")
 	UEnemyStateMachineComponent* StateMachineComponent;
 
@@ -36,6 +39,7 @@ public:
 	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
 	UStaminaComponent* GetStaminaComponent() const { return StaminaComponent; }
 	UEnemyAudioComponent* GetAudioComponent() const { return EnemyAudioComponent; }
+	UFootstepComponent* GetFootstepComponent() const { return FootstepComponent; }
 	UEnemyStateMachineComponent* GetStateMachineComponent() const { return StateMachineComponent; };
 	float GetCurrentHealth() const;
 	float GetMaxHealth() const;

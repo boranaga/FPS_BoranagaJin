@@ -8,6 +8,7 @@
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/InteractionComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
+#include "SoundSystem/FootstepComponent.h"
 #include "Items/InventorySystemComponent.h"
 #include "GameModes/DefaultGameMode.h"
 #include "Instance/DefaultGameInstance.h"
@@ -71,6 +72,9 @@ ACharacterPlayer::ACharacterPlayer()
 	// <BloodTrailComponent>
 	BloodTrailComponent = CreateDefaultSubobject<UBloodTrailComponent>(TEXT("BloodTrailComponent"));
 
+	// <FootstepComponent>
+	FootstepComponent = CreateDefaultSubobject<UFootstepComponent>(TEXT("FootstepComponent"));
+
 	// <InteractionComponent>
 	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 	// for damage interactions with enemies
@@ -125,6 +129,11 @@ void ACharacterPlayer::BeginPlay()
 	if (HealthComponent)
 	{
 		HealthComponent->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
+	}
+
+	if (IsValid(FootstepComponent))
+	{
+		FootstepComponent->SetFootstepMesh(HandsMesh); //TODO: 발바닥이 있는 Mesh로 변경하기
 	}
 
 	//GetDamageSystemComponent()->OnDamaged.AddUObject(CameraMovementComponent, &UPlayerCameraComponent::OnDamaged);

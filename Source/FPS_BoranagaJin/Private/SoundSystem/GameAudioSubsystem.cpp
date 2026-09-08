@@ -159,6 +159,16 @@ void UGameAudioSubsystem::StopBGM(float FadeOutDuration)
     CurrentBGMComponent = nullptr;
 }
 
+void UGameAudioSubsystem::PlayFootstepSound(FName FootstepProfile, EPhysicalSurface SurfaceType, const FVector& Location)
+{
+    if (!IsValid(SoundDataAsset)) { return; }
+
+    const ESoundID SoundID = SoundDataAsset->FindFootstepSoundID(FootstepProfile, SurfaceType);
+    if (SoundID == ESoundID::None) { return; }
+
+    PlaySoundAtLocation(SoundID, Location);
+}
+
 const FGameSoundData* UGameAudioSubsystem::GetSoundData(ESoundID SoundID) const
 {
     if (!IsValid(SoundDataAsset))

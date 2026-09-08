@@ -17,6 +17,8 @@ class UInputAction;
 class UInputMappingContext;
 class UNiagaraComponent;
 
+class UFootstepComponent; //TODO: Á¡°Ë
+
 class UPlayerMovementComponent;
 class UHealthComponent;
 class UBloodTrailComponent;
@@ -83,6 +85,9 @@ public:
 	FVector2D GetPlayerLookInputVector() const { return PlayerLookInputVector2D; }
 	UPlayerMovementComponent* GetPlayerMovementComponent() { return MovementComponent; }
 	UHealthComponent* GetHealthComponent() { return HealthComponent; }
+
+
+	UFootstepComponent* GetFootstepComponent() const { return FootstepComponent; }
 
 	// for damage system comp and interactions with enemies
 	//UACDamageSystem* GetDamageSystemComponent() const { return DamageSystemComponent; }
@@ -161,6 +166,10 @@ protected:
 	TObjectPtr<UInventorySystemComponent> InventorySystem;
 	UPROPERTY(VisibleAnywhere, Category = "BloodTrailComponent")
 	TObjectPtr<UBloodTrailComponent> BloodTrailComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFootstepComponent> FootstepComponent;
+
 
 	// This actor component is for handling camera shakes and state-based movement
 	// IT IS NOT THE CAMERA!!
