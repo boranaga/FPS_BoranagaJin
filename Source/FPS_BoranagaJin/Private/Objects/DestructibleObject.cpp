@@ -167,6 +167,19 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 
 	bDestroyed = true;
 
+	if (BreakEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), BreakEffect, HitLocation, HitDirection.Rotation());
+	}
+
+	if (BreakSound)
+	{
+		//TODO: Integrate with SoundSystem
+		UGameplayStatics::PlaySoundAtLocation(GetWorld(), BreakSound, HitLocation);
+	}
+
+	if (!bIsDestructible) return;
+
 	if (IntactMesh)
 	{
 		IntactMesh->SetVisibility(false);
@@ -184,30 +197,7 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 
 		const FVector ImpulseDirection = HitDirection.GetSafeNormal();
 
-		BrokenMesh->AddImpulseAtLocation(
-			ImpulseDirection * BreakImpulse,
-			HitLocation,
-			NAME_None
-		);
-	}
-
-	if (BreakEffect)
-	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(),
-			BreakEffect,
-			HitLocation,
-			HitDirection.Rotation()
-		);
-	}
-
-	if (BreakSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(
-			GetWorld(),
-			BreakSound,
-			HitLocation
-		);
+		BrokenMesh->AddImpulseAtLocation(ImpulseDirection * BreakImpulse, HitLocation, NAME_None);
 	}
 
 	if (bDestroyActorAfterBreak)

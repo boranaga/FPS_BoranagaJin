@@ -251,8 +251,6 @@ void ADestructibleLight::SetLightEnabled(bool bEnabled)
 	//}
 	////-------------------
 
-
-
 	UpdateActiveLightType();
 }
 
@@ -330,43 +328,24 @@ void ADestructibleLight::UpdateLightSettings()
 
 void ADestructibleLight::UpdateActiveLightType() //TODO: ¼öÁ¤
 {
-	const bool bCanActivateLight =
-		bLightEnabled && !bDestroyed;
+	const bool bCanActivateLight = bLightEnabled && !bDestroyed;
 
 	if (PointLightComponent)
 	{
-		const bool bEnablePointLight =
-			bCanActivateLight &&
-			LightType == EDestructibleLightType::Point;
-
-		PointLightComponent->SetVisibility(
-			bEnablePointLight,
-			true
-		);
+		const bool bEnablePointLight = bCanActivateLight && LightType == EDestructibleLightType::Point;
+		PointLightComponent->SetVisibility(bEnablePointLight, true);
 	}
 
 	if (SpotLightComponent)
 	{
-		const bool bEnableSpotLight =
-			bCanActivateLight &&
-			LightType == EDestructibleLightType::Spot;
-
-		SpotLightComponent->SetVisibility(
-			bEnableSpotLight,
-			true
-		);
+		const bool bEnableSpotLight = bCanActivateLight && LightType == EDestructibleLightType::Spot;
+		SpotLightComponent->SetVisibility(bEnableSpotLight, true);
 	}
 
 	if (RectLightComponent)
 	{
-		const bool bEnableRectLight =
-			bCanActivateLight &&
-			LightType == EDestructibleLightType::Rect;
-
-		RectLightComponent->SetVisibility(
-			bEnableRectLight,
-			true
-		);
+		const bool bEnableRectLight = bCanActivateLight && LightType == EDestructibleLightType::Rect;
+		RectLightComponent->SetVisibility(bEnableRectLight, true);
 	}
 
 	//----------

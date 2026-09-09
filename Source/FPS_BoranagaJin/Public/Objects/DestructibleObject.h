@@ -90,6 +90,12 @@ protected:
 	float CurrentHealth = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
+	bool bIsDestructible = true;
+
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
+	//float BreakImpulse = 1500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
 	float BreakImpulse = 1500.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
