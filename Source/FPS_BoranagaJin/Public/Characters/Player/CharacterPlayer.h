@@ -176,12 +176,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UPlayerCameraComponent> CameraMovementComponent;
 
-	//UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attack Tokens")
-	//UACPlayerAttackTokens* AttackTokensComponent;
-	// 
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "BaseUI", meta = (AllowPrivateAccess = "true"))
-	//UACHitScreenManager* HitScreenManager;
-
 	UPROPERTY(EditDefaultsOnly, Category = "Editor Assign")
 	TObjectPtr<UNiagaraComponent> ForwardDashEffectComponent;
 	UPROPERTY(EditDefaultsOnly, Category = "Editor Assign")

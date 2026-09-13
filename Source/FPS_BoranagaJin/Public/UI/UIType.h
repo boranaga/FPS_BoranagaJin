@@ -25,6 +25,7 @@ enum class EUIType : uint8
 	SaveFileSlotMenu UMETA(DisplayName = "SaveFileSlotMenu"),
 	SaveFileSlotEntry UMETA(DisplayName = "SaveFileSlotEntry"),
 	PauseMenu UMETA(DisplayName = "PauseMenu"),
+	GameOver UMETA(DisplayName = "GameOver"),
 	WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
 	AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	Stamina UMETA(DisplayName = "StaminaWidget"),

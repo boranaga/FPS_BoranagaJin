@@ -13,10 +13,8 @@ UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class FPS_BORANAGAJIN_API UHealthComponent : public UActorComponent
 {
 	GENERATED_BODY()
-
 public:
 	UHealthComponent();
-
 protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

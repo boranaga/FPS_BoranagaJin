@@ -168,6 +168,11 @@ void ACharacterPlayer::BeginPlay()
 	//		}
 	//	}
 	//}	
+
+
+	//-----------------------
+
+
 }
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)

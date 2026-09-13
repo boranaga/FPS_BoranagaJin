@@ -3,9 +3,11 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameFlowState.h"
+#include "GameEndReason.h"
 #include "GameFlowSubsystem.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGameFlowStateChanged, EGameFlowState,EGameFlowState);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGameFlowStateChanged, EGameFlowState, EGameFlowState);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnGameEnded, EGameEndReason);
 
 UCLASS()
 class FPS_BORANAGAJIN_API UGameFlowSubsystem : public UGameInstanceSubsystem
@@ -25,9 +27,9 @@ public:
     void PauseGame();
     void ResumeGame();
 
-    void HandlePlayerDeath();
     void HandleLevelCompleted();
 
+    //bool RestartFromLastSave();
     bool ReturnToMainMenu();
 
     void SaveAndQuitGame();
@@ -43,7 +45,6 @@ public:
     FOnGameFlowStateChanged OnGameFlowStateChanged;
 private:
     void ChangeState(EGameFlowState NewState);
-    //void OpenLevel(FName LevelName);
     bool OpenLevel(const TSoftObjectPtr<UWorld>& LevelAsset);
 private:
     EGameFlowState CurrentState = EGameFlowState::None;
@@ -57,4 +58,26 @@ private:
     FDelegateHandle PostLoadMapDelegateHandle;
 private:
     bool bPendingInitialSave = false;
+
+
+public:
+    FOnGameEnded OnGameEnded;
+public:
+    bool EndGame(EGameEndReason EndReason);
+
+    bool IsGameEnded() const { return bGameEnded; }
+    EGameEndReason GetGameEndReason() const { return GameEndReason; }
+
+private:
+    void ResetGameEndState();
+
+private:
+    void HandlePlayerEscape();
+    void HandlePlayerDeath();
+private:
+    UPROPERTY()
+    bool bGameEnded = false;
+
+    UPROPERTY()
+    EGameEndReason GameEndReason = EGameEndReason::None;
 };

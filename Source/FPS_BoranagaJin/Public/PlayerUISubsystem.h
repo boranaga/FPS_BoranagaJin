@@ -5,14 +5,16 @@
 #include "Subsystems/LocalPlayerSubsystem.h"
 #include "UI/UIType.h"
 #include "SoundSystem/SoundID.h"
+#include "GameEndReason.h"
 #include "PlayerUISubsystem.generated.h"
-
 
 class UBaseUIWidget;
 class UMainMenuWidget;
 class UMapSelectMenuWidget;
 class USaveFileSlotMenuWidget;
 class UPauseMenuWidget;
+class UGameOverWidget;
+class UHealthWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
 class UGameAudioSubsystem;
@@ -62,6 +64,7 @@ private:
         case EUIType::MapSelectMenu: return 3;
         case EUIType::SaveFileSlotMenu: return 3;
         case EUIType::PauseMenu: return 10;
+        case EUIType::GameOver: return 9;
         case EUIType::Inventory: return 3;
         case EUIType::ThrowableWeaponInventory: return 3;
         case EUIType::Base: return 0;
@@ -80,11 +83,13 @@ public:
     void InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass);
     void InitMapSelectUI(TSubclassOf<UMapSelectMenuWidget> WidgetClass);
     void InitSaveFileSlotUI(TSubclassOf<USaveFileSlotMenuWidget> WidgetClass);
-    void InitGameplayUI();
+    void InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass);
+    void InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass);
+    void InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass);
+    void InitGameplayUI(); //TODO: ¼³Á¤
 
     // <PauseMenu>
 public:
-    void InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass);
     void TogglePauseMenu();
     void OpenPauseMenu();
     void ClosePauseMenu();
@@ -93,6 +98,11 @@ private:
     void HandlePauseMenuPlayRequested();
     void HandlePauseMenuOptionRequested();
     void HandlePauseMenuSaveAndExitRequested();
+    // <GameOver>
+public:
+    void OpenGameOverUI(EGameEndReason EndReason);
+    void CloseGameOverUI();
+    bool IsGameOverUIOpened() const;
 private:
     // <MainMenu>
     void HandlePlayRequested();
@@ -107,6 +117,10 @@ private:
     //void HandleSaveFileSlotSelected(int32 SlotIndex);
     void HandleSaveFileSlotSelected(FString SlotName);
     void HandleSaveFileSlotBackRequested();
+    // <GameEnded>
+private:
+    void HandleBackToMainMenuRequested();
+    //void HandleGameEnded(EGameEndReason EndReason);
 private:
     UPROPERTY()
     TMap<EUIType, FUIWidgetArray> UIWidgets;

@@ -4,6 +4,8 @@
 #include "Characters/Player/FPSPlayerController.h"
 #include "UI/UIManagerComponent.h"
 #include "UI/PauseMenuWidget.h"
+#include "UI/GameOverWidget.h"
+#include "UI/HealthWidget.h"
 
 #include "PlayerUISubsystem.h"
 
@@ -22,8 +24,7 @@ AFPSPlayerController::AFPSPlayerController()
 	// set the player camera manager class
 	PlayerCameraManagerClass = AFPS_BoranagaJinCameraManager::StaticClass();
 
-
-	// TODO: SubSystem으로 변경해야함
+	// TODO: SubSystem으로 통합해야함
 	UIManagerComponent = CreateDefaultSubobject<UUIManagerComponent>(TEXT("UIManagerComponent"));
 }
 
@@ -32,7 +33,6 @@ void AFPSPlayerController::BeginPlay()
 	Super::BeginPlay();
 
 	//-------------------------
-
 	if (!IsLocalPlayerController())
 	{
 		return;
@@ -65,6 +65,8 @@ void AFPSPlayerController::BeginPlay()
 	UPlayerUISubsystem* UISubsystem = GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(UISubsystem)) { return; }
 	UISubsystem->InitPauseMenuUI(PauseMenuWidgetClass);
+	UISubsystem->InitGameOverUI(GameOverWidgetClass);
+	//UISubsystem->InitHealthBarUI(HelathBarWidgetClass);
 }
 
 void AFPSPlayerController::OnPossess(APawn* aPawn)
@@ -73,10 +75,7 @@ void AFPSPlayerController::OnPossess(APawn* aPawn)
 
 	if (IsLocalPlayerController())
 	{
-		//if (AHorrorCharacter* HorrorCharacter = Cast<AHorrorCharacter>(aPawn))
-		//{
 
-		//}
 	}
 }
 

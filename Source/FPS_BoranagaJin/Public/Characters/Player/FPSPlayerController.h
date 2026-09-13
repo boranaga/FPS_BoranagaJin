@@ -1,7 +1,4 @@
-
-
 #pragma once
-
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "FPSPlayerController.generated.h"
@@ -9,6 +6,8 @@
 class UUIManagerComponent;
 
 class UPauseMenuWidget;
+class UGameOverWidget;
+class UHealthWidget;
 
 class UInputAction;
 class UInputMappingContext;
@@ -20,7 +19,6 @@ class FPS_BORANAGAJIN_API AFPSPlayerController : public APlayerController
 public:
 	AFPSPlayerController();
 protected:
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
 	UUIManagerComponent* UIManagerComponent;
 
@@ -46,5 +44,12 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UPauseMenuWidget> PauseMenuWidgetClass;
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UGameOverWidget> GameOverWidgetClass;
+
+	//-----------------------------------------
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UHealthWidget> HelathBarWidgetClass;
+
 };
 

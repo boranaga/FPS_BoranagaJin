@@ -1,6 +1,7 @@
 #include "GameFlowSubsystem.h"
 #include "Instance/DefaultGameInstance.h"
 #include "SaveSystem/SaveGameSubsystem.h"
+#include "PlayerUISubsystem.h"
 
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
@@ -21,6 +22,8 @@ void UGameFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
     PostLoadMapDelegateHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UGameFlowSubsystem::HandlePostLoadMap);
 
+    ResetGameEndState();
+
     UE_LOG(LogGameFlowSubsystem, Log, TEXT("GameFlowSubsystem initialized."));
 }
 
@@ -33,6 +36,7 @@ void UGameFlowSubsystem::Deinitialize()
     }
 
     OnGameFlowStateChanged.Clear();
+    OnGameEnded.Clear();
     Super::Deinitialize();
 }
 
@@ -124,7 +128,6 @@ bool UGameFlowSubsystem::LoadGameFromSlot(const FString& SlotName)
 {
     UGameInstance* GameInstance = GetGameInstance();
     if (!IsValid(GameInstance)) { return false; }
-
     USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
     if (!IsValid(SaveSubsystem)) { return false; }
 
@@ -194,6 +197,33 @@ void UGameFlowSubsystem::ResumeGame()
     ChangeState(EGameFlowState::Playing);
 }
 
+void UGameFlowSubsystem::HandlePlayerEscape()
+{
+    //TODO: AsyncSave current game state(win)
+    UGameInstance* GameInstance = GetGameInstance();
+    if (!IsValid(GameInstance)) { return; }
+    USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+    if (!IsValid(SaveSubsystem)) { return; }
+    SaveSubsystem;
+
+    //-------------------------
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(World, 0);
+    if (!PlayerController)
+    {
+        return;
+    }
+    UPlayerUISubsystem* PlayerUISubsystem = PlayerController->GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
+    if (!IsValid(PlayerUISubsystem)) { return; }
+    PlayerUISubsystem->OpenGameOverUI(EGameEndReason::Escaped);
+
+    ChangeState(EGameFlowState::Ending);
+}
+
 void UGameFlowSubsystem::HandlePlayerDeath()
 {
     if (CurrentState != EGameFlowState::Playing)
@@ -214,6 +244,34 @@ void UGameFlowSubsystem::HandleLevelCompleted()
     ChangeState(EGameFlowState::LevelCompleted);
 }
 
+//bool UGameFlowSubsystem::RestartFromLastSave()
+//{
+//    UGameInstance* GameInstance = GetGameInstance();
+//
+//    if (!IsValid(GameInstance))
+//    {
+//        return false;
+//    }
+//
+//    USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
+//
+//    if (!IsValid(SaveSubsystem))
+//    {
+//        return false;
+//    }
+//
+//    if (!SaveSubsystem->LoadGame())
+//    {
+//        return false;
+//    }
+//
+//    ResetGameEndState();
+//
+//    UGameplayStatics::SetGamePaused(GetWorld(), false);
+//
+//    return SaveSubsystem->OpenSavedLevel();
+//}
+
 bool UGameFlowSubsystem::ReturnToMainMenu()
 {
     ChangeState(EGameFlowState::Loading);
@@ -226,6 +284,10 @@ bool UGameFlowSubsystem::ReturnToMainMenu()
 
         return false;
     }
+
+    //TODO: 게임 패배 시에 재시작 관련해서 손 봐야함.
+    //ResetGameEndState();
+
 
     return OpenLevel(FPSGameInstance->GetMainMenuLevel());
 }
@@ -308,9 +370,7 @@ void UGameFlowSubsystem::QuitGame()
 
     //------------------------------------
     // <New New Version>
-
     APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-
     if (!IsValid(PlayerController)) { return; }
 
     UKismetSystemLibrary::QuitGame(GetWorld(), PlayerController, EQuitPreference::Quit, false);
@@ -446,4 +506,60 @@ void UGameFlowSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
             SaveSubsystem->SaveGameAsync();
         }
     }
+}
+
+bool UGameFlowSubsystem::EndGame(EGameEndReason EndReason)
+{
+    if (EndReason == EGameEndReason::None)
+    {
+        return false;
+    }
+
+    switch (EndReason)
+    {
+    case EGameEndReason::None:
+        break;
+    case EGameEndReason::PlayerDead:
+        HandlePlayerDeath();
+        break;
+    case EGameEndReason::BossDefeated:
+        break;
+    case EGameEndReason::Escaped:
+        HandlePlayerEscape();
+        break;
+    default:
+        break;
+    }
+
+    //----------------
+
+
+    if (bGameEnded)
+    {
+        return false;
+    }
+
+    //UWorld* World = GetWorld();
+
+    //if (!IsValid(World))
+    //{
+    //    return false;
+    //}
+
+    bGameEnded = true;
+    GameEndReason = EndReason;
+
+    //UGameplayStatics::SetGamePaused(World, true);
+
+    //ChangeState(EGameFlowState::GameOver);
+
+    //OnGameEnded.Broadcast(EndReason);
+
+    return true;
+}
+
+void UGameFlowSubsystem::ResetGameEndState()
+{
+    bGameEnded = false;
+    GameEndReason = EGameEndReason::None;
 }

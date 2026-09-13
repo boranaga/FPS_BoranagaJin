@@ -5,6 +5,8 @@
 #include "UI/MapSelectMenuWidget.h"
 #include "UI/SaveFileSlotMenuWidget.h"
 #include "UI/PauseMenuWidget.h"
+#include "UI/GameOverWidget.h"
+#include "UI/HealthWidget.h"
 
 #include "Instance/DefaultGameInstance.h"
 #include "Characters/Player/FPSPlayerController.h"
@@ -286,6 +288,22 @@ void UPlayerUISubsystem::InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetCla
     UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass)"));
 }
 
+void UPlayerUISubsystem::InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UGameOverWidget* GameOverWidget = CreateWidget<UGameOverWidget>(PlayerController, WidgetClass);
+    if (!IsValid(GameOverWidget)) { return; }
+    RegisterUIWidget(GameOverWidget);
+
+    GameOverWidget->OnMainMenuRequested.AddUObject(this, &UPlayerUISubsystem::HandleBackToMainMenuRequested);
+    //TODO: 현재 게임 slot에 대한 처리를 완료하고 게임을 종료해야함.
+    GameOverWidget->OnExitRequested.AddUObject(this, &UPlayerUISubsystem::HandleExitRequested);
+
+    HideUI(EUIType::GameOver);
+}
+
 bool UPlayerUISubsystem::IsPauseMenuOpened() const
 {
     const UBaseUIWidget* PauseMenuWidget = GetUIWidget(EUIType::PauseMenu);
@@ -297,6 +315,74 @@ bool UPlayerUISubsystem::IsPauseMenuOpened() const
     }
 
     return PauseMenuWidget->GetVisibility() != ESlateVisibility::Collapsed;
+}
+
+void UPlayerUISubsystem::InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass)
+{
+    //if (!WidgetClass) { return; }
+    //APlayerController* PlayerController = GetCustomPlayerController();
+    //if (!IsValid(PlayerController)) { return; }
+    //UHealthWidget* HealthWidget = CreateWidget<UHealthWidget>(PlayerController, WidgetClass);
+    //if (!IsValid(HealthWidget)) { return; }
+    //RegisterUIWidget(HealthWidget);
+
+    ////HealthWidget-
+
+    //SaveFileSlotMenuWidget->OnSaveFileSlotSelected.AddUObject(this, &UPlayerUISubsystem::HandleSaveFileSlotSelected);
+    //SaveFileSlotMenuWidget->OnBackRequested.AddUObject(this, &UPlayerUISubsystem::HandleSaveFileSlotBackRequested);
+
+    ////HideUI(EUIType::SaveFileSlotMenu);
+}
+
+void UPlayerUISubsystem::OpenGameOverUI(EGameEndReason EndReason)
+{
+    UGameOverWidget* GameOverWidget = Cast<UGameOverWidget>(GetUIWidget(EUIType::GameOver));
+    if (!IsValid(GameOverWidget)) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+
+    ShowUI(EUIType::GameOver);
+    //PlayUISound(ESoundID::);
+
+    PlayerController->SetShowMouseCursor(true);
+
+    //FInputModeGameAndUI InputMode;
+    FInputModeUIOnly InputMode;
+    InputMode.SetWidgetToFocus(GameOverWidget->TakeWidget());
+    //InputMode.SetHideCursorDuringCapture(false);
+
+    PlayerController->SetInputMode(InputMode);
+
+
+    //FInputModeUIOnly InputMode;
+    //if (IsValid(FocusWidget))
+    //{
+    //    InputMode.SetWidgetToFocus(FocusWidget->TakeWidget());
+    //}
+    //PlayerController->SetInputMode(InputMode);
+}
+
+void UPlayerUISubsystem::CloseGameOverUI()
+{
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    HideUI(EUIType::GameOver);
+    //PlayUISound(ESoundID::UI_Close);
+
+    PlayerController->SetShowMouseCursor(false);
+
+    FInputModeGameOnly InputMode;
+    PlayerController->SetInputMode(InputMode);
+}
+
+bool UPlayerUISubsystem::IsGameOverUIOpened() const
+{
+    const UBaseUIWidget* GameOverWidget = GetUIWidget(EUIType::GameOver);
+    if (!IsValid(GameOverWidget))
+    {
+        return false;
+    }
+    return GameOverWidget->GetVisibility() != ESlateVisibility::Collapsed;
 }
 
 void UPlayerUISubsystem::TogglePauseMenu()
@@ -556,4 +642,33 @@ void UPlayerUISubsystem::HandleSaveFileSlotBackRequested()
     SetUIOnlyInput(MainMenuWidget);
 
     PlayUISound(ESoundID::UI_Click);
+}
+
+void UPlayerUISubsystem::HandleBackToMainMenuRequested()
+{
+    //UBaseUIWidget* MainMenuWidget = GetUIWidget(EUIType::MainMenu);
+
+    //if (!IsValid(MainMenuWidget)) { return; }
+
+    //HideUI(EUIType::MapSelectMenu);
+    //ShowUI(EUIType::MainMenu);
+
+    //PlayUISound(ESoundID::UI_Click);
+
+    //SetUIOnlyInput(MainMenuWidget);
+
+    //---------------------
+    //TODO: Open MainMenu Level
+
+
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+    if (!IsValid(LocalPlayer)) { return; }
+    UGameInstance* GameInstance = LocalPlayer->GetGameInstance();
+    if (!IsValid(GameInstance)) { return; }
+    UGameFlowSubsystem* GameFlowSubsystem = GameInstance->GetSubsystem<UGameFlowSubsystem>();
+    if (!IsValid(GameFlowSubsystem)) { return; }
+
+    PlayUISound(ESoundID::UI_Click);
+
+    GameFlowSubsystem->ReturnToMainMenu();
 }
