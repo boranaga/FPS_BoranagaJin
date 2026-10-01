@@ -41,6 +41,9 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadOnly)
 	FDateTime SavedAt;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	double AccumulatedPlayTimeSeconds = 0.0;
 public:
 	const FWorldActorSaveData* FindActorData(const FGuid& SaveID) const
 	{
@@ -61,5 +64,6 @@ public:
 		WorldActorData.Reset();
 		CompletedTutorialIDs.Reset();
 		SavedAt = FDateTime();
+		AccumulatedPlayTimeSeconds = 0.0;
 	}
 };

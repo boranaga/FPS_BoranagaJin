@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "UIType.generated.h"
 
+
+//MEMO: Deprecated
 UENUM(BlueprintType)
 enum class EUIZOrder : uint8
 {
@@ -26,6 +28,8 @@ enum class EUIType : uint8
 	SaveFileSlotEntry UMETA(DisplayName = "SaveFileSlotEntry"),
 	PauseMenu UMETA(DisplayName = "PauseMenu"),
 	GameOver UMETA(DisplayName = "GameOver"),
+	GameResultLog UMETA(DisplayName = "GameResultLog"),
+	GameResultEntry UMETA(DisplayName = "GameResultEntry"),
 	WeaponAim UMETA(DisplayName = "WeaponAimUIWidget"),
 	AmmoCounter UMETA(DisplayName = "AmmoCounterWidget"),
 	Stamina UMETA(DisplayName = "StaminaWidget"),

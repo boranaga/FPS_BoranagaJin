@@ -36,11 +36,17 @@ class FPS_BORANAGAJIN_API UPlayerUISubsystem : public ULocalPlayerSubsystem
 public:
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
+
+    template<typename TWidget>
+    TWidget* CreateAndRegisterWidget(TSubclassOf<TWidget> WidgetClass);
+
 public:
     void RegisterUIWidget(UBaseUIWidget* NewWidget);
 
     void ShowUI(EUIType UIType);
     void HideUI(EUIType UIType);
+    void ShowUI(UBaseUIWidget* UIPtr);
+    void HideUI(UBaseUIWidget* UIPtr);
 
     UBaseUIWidget* GetUIWidget(EUIType UIType) const;
 
@@ -86,7 +92,7 @@ public:
     void InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass);
     void InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass);
     void InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass);
-    void InitGameplayUI(); //TODO: 설정
+    //void InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass); //TODO: 설정
 
     // <PauseMenu>
 public:
@@ -128,3 +134,43 @@ private:
     UPROPERTY()
     TObjectPtr<ACharacterPlayer> CharacterPlayer;
 };
+
+
+template<typename TWidget>
+TWidget* UPlayerUISubsystem::CreateAndRegisterWidget(TSubclassOf<TWidget> WidgetClass)
+{
+    static_assert(TIsDerivedFrom<TWidget, UBaseUIWidget>::Value, "TWidget must inherit from UBaseUIWidget.");
+
+    if (!WidgetClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("InitGameplayUI: WidgetClass is invalid."));
+        return nullptr;
+    }
+
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+
+    if (!IsValid(LocalPlayer))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("InitGameplayUI: LocalPlayer is invalid."));
+        return nullptr;
+    }
+
+    APlayerController* PlayerController = LocalPlayer->GetPlayerController(GetWorld());
+    if (!IsValid(PlayerController))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("InitGameplayUI: PlayerController is invalid."));
+        return nullptr;
+    }
+
+    TWidget* NewWidget = CreateWidget<TWidget>(PlayerController, WidgetClass);
+
+    if (!IsValid(NewWidget))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("InitGameplayUI: Failed to create widget. Class: %s"), *GetNameSafe(WidgetClass));
+        return nullptr;
+    }
+
+    RegisterUIWidget(NewWidget);
+
+    return NewWidget;
+}

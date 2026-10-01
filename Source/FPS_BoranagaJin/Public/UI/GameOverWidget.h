@@ -39,6 +39,10 @@ private:
 	TObjectPtr<UTextBlock> Text_Result;
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Text_Description;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_PlayTime;
+
 	//UPROPERTY(meta = (BindWidget))
 	//TObjectPtr<UButton> Button_Retry;
 	UPROPERTY(meta = (BindWidget))

@@ -100,6 +100,23 @@ void UPlayerUISubsystem::HideUI(EUIType UIType)
     }
 }
 
+void UPlayerUISubsystem::ShowUI(UBaseUIWidget* UIPtr)
+{
+    if (IsValid(UIPtr))
+    {
+        UIPtr->SetVisibility(ESlateVisibility::Visible);
+    }
+}
+
+void UPlayerUISubsystem::HideUI(UBaseUIWidget* UIPtr)
+{
+    if (IsValid(UIPtr))
+    {
+        UIPtr->SetVisibility(ESlateVisibility::Collapsed);
+        //Widget->SetVisibility(ESlateVisibility::Hidden);
+    }
+}
+
 UBaseUIWidget* UPlayerUISubsystem::GetUIWidget(EUIType UIType) const
 {
     const FUIWidgetArray* WidgetArray = UIWidgets.Find(UIType);
@@ -257,15 +274,15 @@ void UPlayerUISubsystem::InitSaveFileSlotUI(TSubclassOf<USaveFileSlotMenuWidget>
     HideUI(EUIType::SaveFileSlotMenu);
 }
 
-void UPlayerUISubsystem::InitGameplayUI()
-{
-    SetGameOnlyInput();
-
-    HideUI(EUIType::MainMenu);
-    HideUI(EUIType::SaveFileSlotMenu);
-
-    // Health, Stamina, AmmoCounter 등의 Gameplay UI 초기화
-}
+//void UPlayerUISubsystem::InitGameplayUI()
+//{
+//    SetGameOnlyInput();
+//
+//    HideUI(EUIType::MainMenu);
+//    HideUI(EUIType::SaveFileSlotMenu);
+//
+//    // Health, Stamina, AmmoCounter 등의 Gameplay UI 초기화
+//}
 
 void UPlayerUISubsystem::InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass)
 {
@@ -333,6 +350,11 @@ void UPlayerUISubsystem::InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass)
 
     ////HideUI(EUIType::SaveFileSlotMenu);
 }
+
+//void UPlayerUISubsystem::InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass)
+//{
+//
+//}
 
 void UPlayerUISubsystem::OpenGameOverUI(EGameEndReason EndReason)
 {

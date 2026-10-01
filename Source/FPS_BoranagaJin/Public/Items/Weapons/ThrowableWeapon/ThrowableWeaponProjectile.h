@@ -1,16 +1,16 @@
-ï»¿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/DataTable.h"
 
+#include "PoolableActorInterface.h"
 #include "Characters/GameDamageType.h"
+#include "Data/ThrowableWeaponProjectileData.h"
 
-#include "Data/ProjectileData.h"
+#include "ThrowableWeaponProjectile.generated.h"
 
-#include "Projectile.generated.h"
-
-class AWeapon;
+class AThrowableWeapon;
 class AEnemyBase;
 
 class USphereComponent;
@@ -21,22 +21,19 @@ DECLARE_DELEGATE(FHeadShotDelegate);
 DECLARE_DELEGATE(FBodyShotDelegate);
 
 UCLASS(config = Game)
-class FPS_BORANAGAJIN_API AProjectile : public AActor
+class FPS_BORANAGAJIN_API AThrowableWeaponProjectile : public AActor, public IPoolableActorInterface
 {
 	GENERATED_BODY()
 public:
 	FHeadShotDelegate OnHeadShot;
 	FBodyShotDelegate OnBodyShot;
 
-	const FProjectileData* GetProjectileData() const { return ProjectileData; } //MEMO: í•„ìš”í•œê°€?
+	const FThrowableWeaponProjectileData* GetProjectileData() const { return ProjectileData; } //MEMO: ÇÊ¿äÇÑ°¡?
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Projectile)
 	FDataTableRowHandle ProjectileDataTableHandle;
 
-	//UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (RowType="ProjectileData"))
-	//FDataTableRowHandle ProjectileDataTableHandle;
-
-	FProjectileData* ProjectileData = nullptr;
+	FThrowableWeaponProjectileData* ProjectileData = nullptr;
 
 	UPROPERTY(VisibleDefaultsOnly, Category = Projectile)
 	USphereComponent* CollisionComp = nullptr;
@@ -57,7 +54,7 @@ protected:
 	UNiagaraSystem* ImpactEffect = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects")
-	UMaterialInterface* DecalMaterial = nullptr;
+	UMaterialInterface* ImpactDecalMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects")
 	float TrailOffsetDist = 100.f;
@@ -71,7 +68,7 @@ protected:
 	AActor* ProjectileOwner = nullptr;
 
 	UPROPERTY(VisibleAnywhere)
-	AWeapon* Weapon = nullptr;
+	AThrowableWeapon* ThrowableWeapon = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CustomProjectile")
 	float InitialSpeed = 50000.f;
@@ -97,9 +94,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Explosive")
 	float MaxExplosionRadius = 300.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CustomProjectile")
-	float HomingAccelerationMagnitude = 3000.f;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Penetration")
 	int32 NumPenetrableObjects = 4;
 
@@ -115,14 +109,22 @@ protected:
 	int32 CurrentRicochetCount = 0;
 
 public:
-	AProjectile();
-	void InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon, float additonalDamage = 0.f, float AdditionalRadius = 0.f, int32 NumPenetrable = 0, bool HitScan = false, bool AutoAim = false);
+	AThrowableWeaponProjectile();
+	virtual void Tick(float DeltaTime) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
+
+	/** Called when the actor falls out of the world 'safely' (below KillZ and such) */
+	virtual void FellOutOfWorld(const class UDamageType& dmgType) override;
+
+	/** Called when the Actor is outside the hard limit on world bounds */
+	virtual void OutsideWorldBounds() override;
+	void InitProjectile(AActor* OwnerOfProjectile, AThrowableWeapon* OwnerWeapon, float additonalDamage = 0.f, int32 NumPenetrable = 0, bool HitScan = false);
 	void InitPhysicsProjectile();
 	void InitHitScan();
 	void LoadProjectileData();
-	void SetWeapon(AWeapon* NewWeapon);
-	void SetHomingTarget(bool bIsHoming, AActor* Target);
-	void LaunchProjectile(FVector MuzzlePos, FRotator Direction);
+	void SetWeapon(AThrowableWeapon* NewWeapon);
+	void LaunchProjectile(FVector StartPos, FRotator Direction);
 
 private:
 	UPROPERTY(VisibleAnywhere)
@@ -132,7 +134,6 @@ private:
 public:
 	void StartLifeTimer(float Seconds);
 	void StopLifeTimer();
-	void DeactiveProjectile();
 
 	void ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation);
 	void ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType = SurfaceType1, const FVector ImpulseDirection = FVector::ZeroVector, const FVector ImpactPoint = FVector::ZeroVector);
@@ -154,25 +155,7 @@ public:
 protected:
 	bool bShouldUpdateTrailEffect = false;
 	void UpdateTrailEffect();
-
-
 	void DrawSphere(FVector Location, float Radius);
-
-	//protected:
-	//	// Called when the game starts or when spawned
-	//	virtual void BeginPlay() override;
-	//
-public:
-	virtual void Tick(float DeltaTime) override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void BeginDestroy() override;
-
-	/** Called when the actor falls out of the world 'safely' (below KillZ and such) */
-	virtual void FellOutOfWorld(const class UDamageType& dmgType) override;
-
-	/** Called when the Actor is outside the hard limit on world bounds */
-	virtual void OutsideWorldBounds() override;
-
 
 #pragma region Sound
 protected:
@@ -186,7 +169,7 @@ protected:
 	USoundBase* HitSound_Enemy = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* HitSound_Energy = nullptr;
-	void PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location);
+	void PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location); //TODO: SoundSystem¿¡ ÆíÀÔ
 #pragma endregion
 
 #pragma region HitScan
@@ -212,14 +195,6 @@ public:
 	void LaunchHitScan(FVector StartLocation, FVector TraceDirection, FVector MuzzlePos);
 #pragma endregion
 
-#pragma region AutoAim
-protected:
-	UPROPERTY(VisibleAnywhere)
-	bool bIsAutoAim = false;
-public:
-	void LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector AutoAimDir, FVector MuzzleLoc, float MaxDistance, float AutoAimRadius);
-#pragma endregion
-
 #pragma region Penetration
 protected:
 	int32 NumPenetratedObjects = 0;
@@ -236,19 +211,6 @@ protected:
 	bool CheckHeadOvelap(const AActor* OverlappedActor, const FHitResult& SweepResult);
 #pragma endregion
 
-#pragma region Homing
-protected:
-	float ExlosionTriggerRadius = 10.f; //TODO: DT
-
-	UPROPERTY()
-	AEnemyBase* TargetEnemy = nullptr;
-	FVector RecentTargetLocation;
-protected:
-	bool IsTargetValid();
-	bool IsTargetWithInRange();
-	void UpdateTargetInfo();
-#pragma endregion
-
 #pragma region Impulse
 protected:
 	bool bCanApplyImpulseToEnemy = false;
@@ -262,16 +224,6 @@ protected:
 	bool CheckRicochetAngle(FVector normal, FVector vel);
 	FVector GetReflectionAngle(FVector normal, FVector input);
 #pragma endregion;
-
-#pragma region Damage Decay
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DamageDecay")
-	float DamageDecayTime = 0.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DamageDecay")
-	float DamageDecayRate = 0.5f;
-	FTimerHandle DamageDecayTimer;
-	void ApplyDamageDecay();
-#pragma endregion
 
 #pragma region ProjectileMovement
 protected:
@@ -324,6 +276,19 @@ protected:
 	float ProjectileHitNoiseRange = 3000.f;
 protected:
 	void ReportNoiseToAI();
+#pragma endregion
+
+#pragma region PoolableActorInterface
+public:
+	virtual void SetOwningPool(UObjectPoolSubsystem* NewPool) override;
+	virtual void OnActivateFromPool() override;
+	virtual void OnDeactivateToPool() override;
+	virtual bool IsActiveInPool() const override;
+	void DeactivateProjectile();
+private:
+	UPROPERTY()
+	TObjectPtr<UObjectPoolSubsystem> OwningPool;
+	bool bIsActiveInPool = false;
 #pragma endregion
 };
 

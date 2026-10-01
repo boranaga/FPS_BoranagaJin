@@ -4,10 +4,12 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "SaveSystem/SaveGameCustom.h"
 #include "SaveSystem/SaveSlotInfo.h"
+#include "SaveSystem/GameResultSaveData.h"
 #include "SaveGameSubsystem.generated.h"
 
 class UFPSGameSave;
 class USaveSlotIndexSaveGame;
+class UGameResultLogSaveGame;
 class ACharacterPlayer;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSaveGameCompleted, bool);
@@ -64,6 +66,17 @@ public:
 		return CurrentCheckpointData;
 	}
 	const TSet<FName>& GetCompletedTutorialIDs() const;
+public:
+	void StartPlayTimeTracking();
+	void StopPlayTimeTracking();
+	void ResetPlayTimeTracking();
+	double GetAccumulatedPlayTimeSeconds() const;
+	FString GetFormattedPlayTime() const;
+	bool IsPlayTimeTracking() const { return bPlayTimeTracking; }
+private:
+	double SavedAccumulatedPlayTimeSeconds = 0.0;
+	double PlaySessionStartSeconds = 0.0;
+	bool bPlayTimeTracking = false;
 public:
 	FOnSaveGameCompleted OnSaveGameCompleted;
 	FOnLoadGameCompleted OnLoadGameCompleted;
@@ -137,4 +150,23 @@ private:
 
 	UPROPERTY()
 	TSet<FName> CompletedTutorialIDs;
+
+
+#pragma region GameResultLog
+public:
+	bool ArchiveCurrentGameResult(EGameEndReason EndReason);
+	const TArray<FGameResultSaveData>& GetGameResultLogs() const;
+	bool DeleteGameResult(const FGuid& ResultID);
+	bool ClearGameResultLogs();
+private:
+	void LoadGameResultLog();
+	bool SaveGameResultLog();
+	FGameResultSaveData BuildCurrentGameResult(EGameEndReason EndReason) const;
+	bool ShouldArchiveAndDeleteSlot(EGameEndReason EndReason) const;
+private:
+	UPROPERTY()
+	TObjectPtr<UGameResultLogSaveGame> GameResultLog;
+	UPROPERTY()
+	FString GameResultLogSlotName = TEXT("GameResultLog");
+#pragma endregion
 };

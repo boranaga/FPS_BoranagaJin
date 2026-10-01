@@ -9,6 +9,7 @@
 #include "Items/InventorySlot.h"
 #include "Items/Weapons/WeaponName.h"
 #include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponStateType.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "SaveSystem/InventorySaveData.h"
 #include "InventorySystemComponent.generated.h"
@@ -232,7 +233,7 @@ protected:
 public:
 	AThrowableWeapon* GetCurrentThrowableWeapon() { return CurrThrowableWeapon; }
 	int32 GetThrowableWeaponNum() { return ThrowableWeaponInventory.Num(); }
-	EWeaponStateType GetCurrThrowableWeaponStateType() const;
+	EThrowableWeaponStateType GetCurrThrowableWeaponStateType() const;
 
 	void SwitchToPreviousThrowableWeapon();
 	void SwitchToNextThrowableWeapon();

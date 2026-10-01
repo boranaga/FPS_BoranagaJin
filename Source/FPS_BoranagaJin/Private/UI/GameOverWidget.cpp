@@ -85,6 +85,12 @@ void UGameOverWidget::UpdateGameOverText()
 	//	Text_Description->SetText(FText::GetEmpty());
 	//	break;
 	//}
+
+	//------------------------------------
+	//TODO: 누적 플레이 시간 등의 정보를 SaveSubSystem으로부터 받아와야함.
+	//TODO: 이후에 Display
+
+
 }
 
 //void UGameOverWidget::HandleRetryClicked()

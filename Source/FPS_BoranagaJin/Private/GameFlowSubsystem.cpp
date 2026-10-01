@@ -204,7 +204,10 @@ void UGameFlowSubsystem::HandlePlayerEscape()
     if (!IsValid(GameInstance)) { return; }
     USaveGameSubsystem* SaveSubsystem = GameInstance->GetSubsystem<USaveGameSubsystem>();
     if (!IsValid(SaveSubsystem)) { return; }
-    SaveSubsystem;
+    SaveSubsystem; //TODO: Current Slot과 관련된 처리 필요함.
+
+    SaveSubsystem->ArchiveCurrentGameResult(EGameEndReason::Escaped);
+    SaveSubsystem->StopPlayTimeTracking();
 
     //-------------------------
     UWorld* World = GetWorld();

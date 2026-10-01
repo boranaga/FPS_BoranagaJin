@@ -919,7 +919,7 @@ void AWeapon::DetachWeaponFromPlayer()
 	}
 	else
 	{
-		// Seunghwan - disable first person rendering
+		//disable first person rendering
 		WeaponMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::None;
 		TArray<USceneComponent*> AttachedChildren;
 		WeaponMesh->GetChildrenComponents(true, AttachedChildren);
@@ -1722,23 +1722,6 @@ FTransform AWeapon::GetAimSocketRelativeTransform()
 }
 
 #pragma region Equip/Unequip
-//void AWeapon::EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip)
-//{
-//	if (!TargetCharacter) { return; }
-//
-//	if (bEquip) { EquipWeapon(TargetCharacter); }
-//	else
-//	{
-//		UnequipWeapon(TargetCharacter);
-//		if (UActorComponent* WeaponSystem = TargetCharacter->GetInventorySystemComponent())
-//		{
-//			if (IWeaponInterface* WeaponInterface = Cast<IWeaponInterface>(WeaponSystem))
-//			{
-//				WeaponInterface->SwitchToOtherWeapon();
-//			}
-//		}
-//	}
-//}
 void AWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 {
 	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
@@ -1790,29 +1773,13 @@ void AWeapon::Equip(ACharacterPlayer* TargetCharacter)
 		{
 			if (auto* HardThis = WeakThis.Get())
 			{
-				HardThis->OnDrawWeaponEnded(TargetCharacter);
+				HardThis->OnEquipEnded(TargetCharacter);
 			}
 
 		}), WeaponSwitchingRate, false);
 
 	StartAnimation(AM_Equip_Character, nullptr, WeaponSwitchingRate, WeaponSwitchingRate);
-
 }
-
-//void AWeapon::EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly)
-//{
-//	SetInputActionBinding();
-//	ChangeState(IdleState);
-//
-//	//UE_LOG(LogTemp, Error, TEXT("Weapon: %s"), *UEnum::GetValueAsString(GetWeaponName()));
-//
-//	if (bActivateDirectly)
-//	{
-//		AttachItemToPlayer(TargetCharacter);
-//		//SetMeshVisibility(true);
-//		//ActivateTargetingSkillWidget(true);
-//	}
-//}
 
 void AWeapon::UnequipWeapon_Legacy(ACharacterPlayer* TargetCharacter)
 {
@@ -1835,11 +1802,9 @@ void AWeapon::OnUnequipEnded(ACharacterPlayer* TargetCharacter)
 	}
 }
 
-void AWeapon::OnDrawWeaponEnded(ACharacterPlayer* TargetCharacter)
+void AWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter)
 {
 	if (!TargetCharacter) { return; }
-
-	//EquipWeapon(TargetCharacter);
 
 	SetInputActionBinding();
 	ChangeState(IdleState);

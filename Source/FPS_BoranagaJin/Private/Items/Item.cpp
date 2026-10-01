@@ -144,7 +144,7 @@ void AItem::OnDeactivateToPool()
 
 bool AItem::IsActiveInPool() const
 {
-	return false;
+	return bIsActiveInPool;
 }
 
 void AItem::DeactivateItemAndGetItemPickUp()

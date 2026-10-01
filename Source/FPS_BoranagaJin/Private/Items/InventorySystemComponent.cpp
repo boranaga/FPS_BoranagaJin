@@ -6,7 +6,7 @@
 #include "Items/InventorySlot.h"
 #include "Items/ItemPickUp.h"
 #include "Items/Weapons/Weapon.h"
-#include "Items/Weapons/ThrowableWeapon.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
 #include "Items/FlashlightItem.h"
 #include "Characters/Player/CharacterPlayer.h"
 
@@ -1347,15 +1347,15 @@ void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
 		}
 	}
 }
-EWeaponStateType UInventorySystemComponent::GetCurrThrowableWeaponStateType() const
+EThrowableWeaponStateType UInventorySystemComponent::GetCurrThrowableWeaponStateType() const
 {
-	if (CurrThrowableWeapon) return CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType();
-	else return EWeaponStateType::WeaponStateType_None;
+	if (CurrThrowableWeapon) return CurrThrowableWeapon->GetCurrentState();
+	else return EThrowableWeaponStateType::Idle;
 }
 void UInventorySystemComponent::SwitchToPreviousThrowableWeapon()
 {
-	if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-		|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+	if (CurrThrowableWeapon->GetCurrentState() == EThrowableWeaponStateType::Switching
+		|| CurrThrowableWeapon->GetCurrentState() == EThrowableWeaponStateType::Unequiped) {
 		return;
 	}
 	if (ThrowableWeaponInventory.Num() > 1)
@@ -1375,8 +1375,8 @@ void UInventorySystemComponent::SwitchToPreviousThrowableWeapon()
 }
 void UInventorySystemComponent::SwitchToNextThrowableWeapon()
 {
-	if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-		|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+	if (CurrThrowableWeapon->GetCurrentState() == EThrowableWeaponStateType::Switching
+		|| CurrThrowableWeapon->GetCurrentState() == EThrowableWeaponStateType::Unequiped) {
 		return;
 	}
 	if (ThrowableWeaponInventory.Num() > 1)
