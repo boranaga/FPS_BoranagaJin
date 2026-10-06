@@ -2,10 +2,14 @@
 
 
 #include "Characters/Player/FPSPlayerController.h"
+
+#include "Characters/Player/CharacterPlayer.h"
+
 #include "UI/UIManagerComponent.h"
 #include "UI/PauseMenuWidget.h"
 #include "UI/GameOverWidget.h"
 #include "UI/HealthWidget.h"
+#include "UI/ThrowableWeaponInventoryWidget.h"
 
 #include "PlayerUISubsystem.h"
 
@@ -25,7 +29,7 @@ AFPSPlayerController::AFPSPlayerController()
 	PlayerCameraManagerClass = AFPS_BoranagaJinCameraManager::StaticClass();
 
 	// TODO: SubSystem으로 통합해야함
-	UIManagerComponent = CreateDefaultSubobject<UUIManagerComponent>(TEXT("UIManagerComponent"));
+	//UIManagerComponent = CreateDefaultSubobject<UUIManagerComponent>(TEXT("UIManagerComponent"));
 }
 
 void AFPSPlayerController::BeginPlay()
@@ -66,7 +70,7 @@ void AFPSPlayerController::BeginPlay()
 	if (!IsValid(UISubsystem)) { return; }
 	UISubsystem->InitPauseMenuUI(PauseMenuWidgetClass);
 	UISubsystem->InitGameOverUI(GameOverWidgetClass);
-	//UISubsystem->InitHealthBarUI(HelathBarWidgetClass);
+
 }
 
 void AFPSPlayerController::OnPossess(APawn* aPawn)
@@ -104,23 +108,121 @@ void AFPSPlayerController::SetupInputComponent()
 	if (!IsValid(IA_Pause)) { return; }
 
 	EnhancedInputComponent->BindAction(IA_Pause, ETriggerEvent::Started, this, &AFPSPlayerController::HandlePauseInput);
+	EnhancedInputComponent->BindAction(IA_Tab, ETriggerEvent::Started, this, &AFPSPlayerController::OnTabToggled);
+	EnhancedInputComponent->BindAction(IA_V, ETriggerEvent::Started, this, &AFPSPlayerController::OpenThrowableWeaponInventory);
+	EnhancedInputComponent->BindAction(IA_V, ETriggerEvent::Completed, this, &AFPSPlayerController::CloseThrowableWeaponInventory);
 
 }
 
-void AFPSPlayerController::InitUIManager()
+//void AFPSPlayerController::InitUIManager()
+//{
+//
+//	//if (UIManagerComponent) UIManagerComponent->InitUIManagerComponent();
+//
+//	//------------------------------
+//	////TODO: <임시>
+//
+//	//ULocalPlayer* LocalPlayer = GetLocalPlayer();
+//	//if (!IsValid(LocalPlayer)) { return; }
+//	//UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+//	//if (!IsValid(PlayerUISubsystem)) { return; }
+//
+//	//PlayerUISubsystem->InitThrowableWeaponInventoryUI(ThrowableWeaponInventoryWidgetClass);
+//
+//	//CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
+//    //CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
+//}
+
+void AFPSPlayerController::InitPlayerUISubsystem()
 {
-	if (UIManagerComponent) UIManagerComponent->InitUIManagerComponent();
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	ACharacterPlayer* ControlledCharacter = Cast<ACharacterPlayer>(GetPawn());
+	if (!ControlledCharacter) { return; }
+
+	PlayerUISubsystem->SetControlledCharacter(ControlledCharacter);
+
+	PlayerUISubsystem->InitHealthBarUI(HealthBarWidgetClass);
+	PlayerUISubsystem->InitStaminaUI(StaminaWidgetClass);
+
+	PlayerUISubsystem->InitInteractionWidget(InteractionWidgetClass);
+	PlayerUISubsystem->InitInventoryUI(PlayerDisplayWidgetClass);
+
+	PlayerUISubsystem->InitThrowableWeaponInventoryUI(ThrowableWeaponInventoryWidgetClass);
+	PlayerUISubsystem->Init_BeginPlay();
 }
 
 void AFPSPlayerController::HandlePauseInput()
 {
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
-
 	if (!IsValid(LocalPlayer)) { return; }
-
 	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
-
 	if (!IsValid(PlayerUISubsystem)) { return; }
 
 	PlayerUISubsystem->TogglePauseMenu();
+}
+
+void AFPSPlayerController::OpenInventory()
+{
+	//if (!PlayerDisplayWidget) return;
+	//PlayerDisplayWidget->SetVisibility(ESlateVisibility::Visible);
+	//PlayerDisplayWidget->OpenInventory();
+	//bIsInventoryOpened = true;
+
+
+	//--------------------
+
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	bIsInventoryOpened = true;
+	PlayerUISubsystem->OpenInventory();
+}
+
+void AFPSPlayerController::CloseInventory()
+{
+	//if (!PlayerDisplayWidget) return;
+	//PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
+	//PlayerDisplayWidget->CloseInventory();
+	//bIsInventoryOpened = false;
+
+	//---------------------------
+
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	bIsInventoryOpened = false;
+	PlayerUISubsystem->CloseInventory();
+}
+
+void AFPSPlayerController::OnTabToggled()
+{
+	bIsInventoryOpened ? CloseInventory() : OpenInventory();
+}
+
+void AFPSPlayerController::OpenThrowableWeaponInventory()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	PlayerUISubsystem->OpenThrowableWeaponInventory();
+}
+
+void AFPSPlayerController::CloseThrowableWeaponInventory()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
+	if (!IsValid(PlayerUISubsystem)) { return; }
+
+	PlayerUISubsystem->CloseThrowableWeaponInventory();
 }

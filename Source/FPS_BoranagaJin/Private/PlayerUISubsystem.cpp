@@ -7,10 +7,16 @@
 #include "UI/PauseMenuWidget.h"
 #include "UI/GameOverWidget.h"
 #include "UI/HealthWidget.h"
+#include "UI/StaminaWidget.h"
+#include "UI/InventoryUIWidget.h"
+#include "UI/PlayerDisplayWidget.h"
+#include "UI/ThrowableWeaponInventoryWidget.h"
+#include "UI/InteractionWidget.h"
 
 #include "Instance/DefaultGameInstance.h"
 #include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/HealthComponent.h"
 #include "SaveSystem/SaveGameSubsystem.h"
 //#include "SaveSystem/SaveGameCustom.h"
 
@@ -18,10 +24,13 @@
 
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
 
 void UPlayerUISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
+
+    UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::Initialize(FSubsystemCollectionBase& Collection)"));
 }
 
 void UPlayerUISubsystem::Deinitialize()
@@ -225,6 +234,11 @@ void UPlayerUISubsystem::SetGameOnlyInput()
     PlayerController->SetInputMode(InputMode);
 }
 
+void UPlayerUISubsystem::Init_BeginPlay()
+{
+    
+}
+
 void UPlayerUISubsystem::InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass)
 {
     if (!WidgetClass) { return; }
@@ -336,19 +350,88 @@ bool UPlayerUISubsystem::IsPauseMenuOpened() const
 
 void UPlayerUISubsystem::InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass)
 {
-    //if (!WidgetClass) { return; }
-    //APlayerController* PlayerController = GetCustomPlayerController();
-    //if (!IsValid(PlayerController)) { return; }
-    //UHealthWidget* HealthWidget = CreateWidget<UHealthWidget>(PlayerController, WidgetClass);
-    //if (!IsValid(HealthWidget)) { return; }
-    //RegisterUIWidget(HealthWidget);
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UHealthWidget* HealthWidget = CreateWidget<UHealthWidget>(PlayerController, WidgetClass);
+    if (!IsValid(HealthWidget)) { return; }
+    RegisterUIWidget(HealthWidget);
 
-    ////HealthWidget-
+    HealthWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 
-    //SaveFileSlotMenuWidget->OnSaveFileSlotSelected.AddUObject(this, &UPlayerUISubsystem::HandleSaveFileSlotSelected);
-    //SaveFileSlotMenuWidget->OnBackRequested.AddUObject(this, &UPlayerUISubsystem::HandleSaveFileSlotBackRequested);
+    if (!CharacterPlayer) return;
+    CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
+}
 
-    ////HideUI(EUIType::SaveFileSlotMenu);
+void UPlayerUISubsystem::InitStaminaUI(TSubclassOf<UStaminaWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UStaminaWidget* StaminaWidget = CreateWidget<UStaminaWidget>(PlayerController, WidgetClass);
+    if (!IsValid(StaminaWidget)) { return; }
+    RegisterUIWidget(StaminaWidget);
+    StaminaWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+    if (!CharacterPlayer) return;
+    CharacterPlayer->OnStaminaUpdated.AddUObject(StaminaWidget, &UStaminaWidget::UpdateStaminaBar);
+}
+
+void UPlayerUISubsystem::InitInteractionWidget(TSubclassOf<UInteractionWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UInteractionWidget* InteractionWidget = CreateWidget<UInteractionWidget>(PlayerController, WidgetClass);
+    if (!IsValid(InteractionWidget)) { return; }
+    RegisterUIWidget(InteractionWidget);
+
+    InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+
+    CharacterPlayer->OnInteractionUIPopUpDelegate.AddUObject(this, &UPlayerUISubsystem::PlayPopUpInteractionWidgetAnim);
+    CharacterPlayer->OnInteractionUIUpdatedDelegate.AddUObject(this, &UPlayerUISubsystem::UpdateInteractionUI);
+}
+
+void UPlayerUISubsystem::InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UPlayerDisplayWidget* InventoryWidget = CreateWidget<UPlayerDisplayWidget>(PlayerController, WidgetClass);
+    if (!IsValid(InventoryWidget)) { return; }
+    RegisterUIWidget(InventoryWidget);
+    HideUI(InventoryWidget);
+
+    InventoryWidget->GetItemInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
+    InventoryWidget->GetItemInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
+    InventoryWidget->GetItemInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+
+    InventoryWidget->GetWeaponInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
+    InventoryWidget->GetWeaponInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
+    InventoryWidget->GetWeaponInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+
+    CharacterPlayer->OnInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreateItemInventorySlots);
+    CharacterPlayer->OnInventoryUpdatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdateItemInventorySlots);
+
+    CharacterPlayer->OnWeaponInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreateWeaponInventorySlots);
+    CharacterPlayer->OnWeaponInventoryUpdatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdateWeaponInventorySlots);
+}
+
+void UPlayerUISubsystem::InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UThrowableWeaponInventoryWidget* ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(PlayerController, WidgetClass);
+    if (!IsValid(ThrowableWeaponInventoryWidget)) { return; }
+    RegisterUIWidget(ThrowableWeaponInventoryWidget);
+    HideUI(EUIType::ThrowableWeaponInventory);
+
+    ThrowableWeaponInventoryWidget->OnThrowableWeaponEquipRequested.AddUObject(this, &UPlayerUISubsystem::HandleThrowableWeaponEquipRequested);
+
+    CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddUObject(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
+    CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddUObject(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
+
 }
 
 //void UPlayerUISubsystem::InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass)
@@ -693,4 +776,246 @@ void UPlayerUISubsystem::HandleBackToMainMenuRequested()
     PlayUISound(ESoundID::UI_Click);
 
     GameFlowSubsystem->ReturnToMainMenu();
+}
+
+void UPlayerUISubsystem::UpdateStaminaBar(float maxstamina, float currstamina)
+{
+    UStaminaWidget* StaminaWidget = Cast<UStaminaWidget>(GetUIWidget(EUIType::Stamina));
+    if (!IsValid(StaminaWidget)) { return; }
+    StaminaWidget->UpdateStaminaBar(maxstamina, currstamina);
+}
+
+void UPlayerUISubsystem::OpenInventory()
+{
+    UPlayerDisplayWidget* InventoryWidget = Cast<UPlayerDisplayWidget>(GetUIWidget(EUIType::Inventory));
+    if (!IsValid(InventoryWidget)) { return; }
+
+    ShowUI(InventoryWidget);
+    InventoryWidget->OpenInventory();
+}
+void UPlayerUISubsystem::CloseInventory()
+{
+    UPlayerDisplayWidget* InventoryWidget = Cast<UPlayerDisplayWidget>(GetUIWidget(EUIType::Inventory));
+    if (!IsValid(InventoryWidget)) { return; }
+
+    HideUI(InventoryWidget);
+    InventoryWidget->CloseInventory();
+}
+
+void UPlayerUISubsystem::RequestDropInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+    if (CharacterPlayer)
+    {
+        CharacterPlayer->OnInventorySlotDropRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+    }
+}
+
+void UPlayerUISubsystem::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)
+{
+    UE_LOG(LogTemp, Error, TEXT("void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)"));
+    if (CharacterPlayer)
+    {
+        CharacterPlayer->OnInventorySlotUseRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+    }
+}
+
+void UPlayerUISubsystem::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
+{
+    if (CharacterPlayer)
+    {
+        CharacterPlayer->OnInventorySwapRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
+    }
+}
+
+void UPlayerUISubsystem::HandleThrowableWeaponEquipRequested(int32 SlotIndex)
+{
+    if (!IsValid(CharacterPlayer)) { return; }
+    if (SlotIndex == INDEX_NONE) { return; }
+
+    CharacterPlayer->OnThrowableWeaponEquipRequestedDelegate.Broadcast(SlotIndex);
+}
+
+void UPlayerUISubsystem::OpenThrowableWeaponInventory()
+{
+    UThrowableWeaponInventoryWidget* ThrowableWeaponInventoryWidget = Cast<UThrowableWeaponInventoryWidget>(GetUIWidget(EUIType::ThrowableWeaponInventory));
+    if (!IsValid(ThrowableWeaponInventoryWidget)) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+
+    ShowUI(EUIType::ThrowableWeaponInventory);
+    //PlayUISound(ESoundID::);
+
+    PlayerController->SetShowMouseCursor(true);
+
+    FInputModeGameAndUI InputMode;
+    //FInputModeUIOnly InputMode;
+    InputMode.SetWidgetToFocus(ThrowableWeaponInventoryWidget->TakeWidget());
+    //InputMode.SetHideCursorDuringCapture(false);
+
+    PlayerController->SetInputMode(InputMode);
+
+    //---------------
+    //if (!ThrowableWeaponInventoryWidget) return;
+    //ThrowableWeaponInventoryWidget->OpenUI();
+}
+
+void UPlayerUISubsystem::CloseThrowableWeaponInventory()
+{
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    HideUI(EUIType::ThrowableWeaponInventory);
+    //PlayUISound(ESoundID::UI_Close);
+
+    PlayerController->SetShowMouseCursor(false);
+
+    FInputModeGameOnly InputMode;
+    PlayerController->SetInputMode(InputMode);
+
+    //-----------
+
+    //if (!ThrowableWeaponInventoryWidget) return;
+    //ThrowableWeaponInventoryWidget->CloseUI();
+}
+
+void UPlayerUISubsystem::PlayPopUpInteractionWidgetAnim()
+{
+    UInteractionWidget* InteractionWidget = Cast<UInteractionWidget>(GetUIWidget(EUIType::Interaction));
+    if (!IsValid(InteractionWidget)) { return; }
+    if (InteractionWidget) InteractionWidget->PlayPopUpAnim();
+
+    UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::PlayPopUpInteractionWidgetAnim()"));
+}
+
+
+void UPlayerUISubsystem::UpdateInteractionUI(bool bFlag, FVector NewLocation)
+{
+    UInteractionWidget* InteractionWidget = Cast<UInteractionWidget>(GetUIWidget(EUIType::Interaction));
+    if (!IsValid(InteractionWidget)) { return; }
+
+    FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(NewLocation).Get<0>();
+
+    if (bFlag)
+    {
+        if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
+        {
+            InteractionWidget->SetPositionInViewport(TargetScreenPosition);
+
+            if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
+            {
+                InteractionWidget->SetVisibility(ESlateVisibility::Visible);
+            }
+        }
+    }
+    else
+    {
+        if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+        {
+            InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+        }
+    }
+
+    //UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::UpdateInteractionUI(bool bFlag, FVector NewLocation)"));
+}
+
+
+TTuple<FVector2D, bool> UPlayerUISubsystem::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
+{
+    FVector2D ScreenLocation = FVector2D::ZeroVector;
+    bool bResult = UGameplayStatics::ProjectWorldToScreen(GetCustomPlayerController(), SearchLocation, ScreenLocation);
+
+    return MakeTuple(ScreenLocation, bResult);
+}
+
+bool UPlayerUISubsystem::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
+{
+    FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
+
+    bool bIsInWidth = true;
+    bool bIsInHeight = true;
+
+    // Check Width
+    if (ScreenRatio_Width == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Width) > 1.0f || (ScreenRatio_Width == (1.0f - ScreenRatio_Width)))
+    {
+        if (ActorScreenPosition.X >= 0.0f && ActorScreenPosition.X <= ViewportSize.X)
+        {
+            bIsInWidth = true;
+        }
+        else
+        {
+            bIsInWidth = false;
+        }
+    }
+    else
+    {
+        float LargeScreenRatio_Width;
+        float SmallScreenRatio_Width;
+
+        if (ScreenRatio_Width < (1.0f - ScreenRatio_Width))
+        {
+            LargeScreenRatio_Width = 1.0f - ScreenRatio_Width;
+            SmallScreenRatio_Width = ScreenRatio_Width;
+        }
+        else
+        {
+            LargeScreenRatio_Width = ScreenRatio_Width;
+            SmallScreenRatio_Width = 1.0f - ScreenRatio_Width;
+        }
+
+        if (ActorScreenPosition.X >= ViewportSize.X * SmallScreenRatio_Width && ActorScreenPosition.X <= ViewportSize.X * LargeScreenRatio_Width)
+        {
+            bIsInWidth = true;
+        }
+        else
+        {
+            bIsInWidth = false;
+        }
+    }
+
+    // Check Height
+    if (ScreenRatio_Height == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Height) > 1.0f || (ScreenRatio_Height == (1.0f - ScreenRatio_Height)))
+    {
+        if (ActorScreenPosition.Y >= 0.0f && ActorScreenPosition.Y <= ViewportSize.Y)
+        {
+            bIsInHeight = true;
+        }
+        else
+        {
+            bIsInHeight = false;
+        }
+    }
+    else
+    {
+        float LargeScreenRatio_Height;
+        float SmallScreenRatio_Height;
+
+        if (ScreenRatio_Height < (1.0f - ScreenRatio_Height))
+        {
+            LargeScreenRatio_Height = 1.0f - ScreenRatio_Height;
+            SmallScreenRatio_Height = ScreenRatio_Height;
+        }
+        else
+        {
+            LargeScreenRatio_Height = ScreenRatio_Height;
+            SmallScreenRatio_Height = 1.0f - ScreenRatio_Height;
+        }
+
+        if (ActorScreenPosition.Y >= ViewportSize.Y * SmallScreenRatio_Height && ActorScreenPosition.Y <= ViewportSize.Y * LargeScreenRatio_Height)
+        {
+            bIsInHeight = true;
+        }
+        else
+        {
+            bIsInHeight = false;
+        }
+    }
+
+    // Return
+    if (bIsInWidth && bIsInHeight)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }

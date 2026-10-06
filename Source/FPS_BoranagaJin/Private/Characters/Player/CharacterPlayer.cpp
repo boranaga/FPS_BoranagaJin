@@ -116,6 +116,9 @@ void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
 
+	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::BeginPlay()"));
+
+
 	Camera->SetRelativeLocation(DefaultCameraRelativeLocation);
 
 	// Crash the game if there is no data asset assigned
@@ -172,7 +175,8 @@ void ACharacterPlayer::BeginPlay()
 
 	//-----------------------
 
-
+	//InitUIManager();
+	InitPlayerUISubsystem();
 }
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -874,17 +878,32 @@ void ACharacterPlayer::OnDashEnd()
 	RightDashEffectComponent->Deactivate();
 }
 
-void ACharacterPlayer::InitUIManager()
+//void ACharacterPlayer::InitUIManager()
+//{
+//	if (GetController())
+//	{
+//		AFPSPlayerController* PlayerController = Cast<AFPSPlayerController>(GetOwner());
+//		if (PlayerController)
+//		{
+//			PlayerController->InitUIManager();
+//		}
+//	}
+//}
+
+void ACharacterPlayer::InitPlayerUISubsystem()
 {
+	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::InitPlayerUISubsystem()"));
+
 	if (GetController())
 	{
 		AFPSPlayerController* PlayerController = Cast<AFPSPlayerController>(GetOwner());
 		if (PlayerController)
 		{
-			PlayerController->InitUIManager();
+			PlayerController->InitPlayerUISubsystem();
 		}
 	}
 }
+
 
 void ACharacterPlayer::InputInteract(const FInputActionValue& InputActionValue)
 {

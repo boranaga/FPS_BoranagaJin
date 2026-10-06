@@ -16,6 +16,8 @@ public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual EUIType GetUIType() const { return EUIType::Inventory; }
+	UInventoryUIWidget* GetItemInventoryUIWidget() { return ItemInventoryUIWidget; }
+	UInventoryUIWidget* GetWeaponInventoryUIWidget() { return WeaponInventoryUIWidget; }
 public:
 	void OpenInventory();
 	void CloseInventory();

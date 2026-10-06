@@ -23,54 +23,55 @@ UUIManagerComponent::UUIManagerComponent()
 
 }
 
-void UUIManagerComponent::InitUIManagerComponent()
-{
-	if (GetOwner())
-	{
-		PlayerController = Cast<AFPSPlayerController>(GetOwner());
-		if (PlayerController)
-		{
-			if (PlayerController->GetPawn())
-			{
-				CharacterPlayer = Cast<ACharacterPlayer>(PlayerController->GetPawn());
-			}
-
-			if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-			{
-				// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
-				Subsystem->AddMappingContext(UISystemMappingContext, 1);
-			}
-
-			if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
-			{
-				EnhancedInputComponent->BindAction(TabAction, ETriggerEvent::Started, this, &UUIManagerComponent::OnTabToggled);
-				EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Started, this, &UUIManagerComponent::OpenThrowableWeaponInventory);
-				EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Completed, this, &UUIManagerComponent::CloseThrowableWeaponInventory);
-			}
-
-		}
-	}
-
-	if (CharacterPlayer)
-	{
-		CharacterPlayer->OnUIWidgetCreatedDelegate.AddDynamic(this, &UUIManagerComponent::RegisterUIWidget);
-		CharacterPlayer->OnStaminaInit.AddDynamic(this, &UUIManagerComponent::InitStaminaBar);
-		CharacterPlayer->OnStaminaUpdated.AddDynamic(this, &UUIManagerComponent::SetStaminaBarPercent);
-		CharacterPlayer->OnInteractionUIPopUpDelegate.AddDynamic(this, &UUIManagerComponent::PlayPopUpInteractionWidgetAnim);
-		CharacterPlayer->OnInteractionUIUpdatedDelegate.AddDynamic(this, &UUIManagerComponent::UpdateInteractionUI);
-
-		CharacterPlayer->OnInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateItemInventorySlots);
-		CharacterPlayer->OnInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateItemInventorySlots);
-
-		CharacterPlayer->OnWeaponInventoryCreatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateWeaponInventorySlots);
-		CharacterPlayer->OnWeaponInventoryUpdatedDelegate.AddDynamic(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateWeaponInventorySlots);
-
-		CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
-		CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
-	
-		CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
-	}
-}
+//void UUIManagerComponent::InitUIManagerComponent()
+//{
+//	if (GetOwner())
+//	{
+//		PlayerController = Cast<AFPSPlayerController>(GetOwner());
+//		if (PlayerController)
+//		{
+//			if (PlayerController->GetPawn())
+//			{
+//				CharacterPlayer = Cast<ACharacterPlayer>(PlayerController->GetPawn());
+//			}
+//
+//			//if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+//			//{
+//			//	// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
+//			//	Subsystem->AddMappingContext(UISystemMappingContext, 1);
+//			//}
+//
+//			//if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
+//			//{
+//			//	//EnhancedInputComponent->BindAction(TabAction, ETriggerEvent::Started, this, &UUIManagerComponent::OnTabToggled);
+//			//	//EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Started, this, &UUIManagerComponent::OpenThrowableWeaponInventory);
+//			//	//EnhancedInputComponent->BindAction(VAction, ETriggerEvent::Completed, this, &UUIManagerComponent::CloseThrowableWeaponInventory);
+//			//}
+//
+//		}
+//	}
+//
+//	if (CharacterPlayer)
+//	{
+//		//CharacterPlayer->OnUIWidgetCreatedDelegate.AddDynamic(this, &UUIManagerComponent::RegisterUIWidget);
+//		//CharacterPlayer->OnStaminaInit.AddDynamic(this, &UUIManagerComponent::InitStaminaBar);
+//		//CharacterPlayer->OnStaminaUpdated.AddDynamic(this, &UUIManagerComponent::SetStaminaBarPercent);
+//
+//		//CharacterPlayer->OnInteractionUIPopUpDelegate.AddDynamic(this, &UUIManagerComponent::PlayPopUpInteractionWidgetAnim);
+//		//CharacterPlayer->OnInteractionUIUpdatedDelegate.AddDynamic(this, &UUIManagerComponent::UpdateInteractionUI);
+//
+//		//CharacterPlayer->OnInventoryCreatedDelegate.AddUObject(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateItemInventorySlots);
+//		//CharacterPlayer->OnInventoryUpdatedDelegate.AddUObject(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateItemInventorySlots);
+//
+//		//CharacterPlayer->OnWeaponInventoryCreatedDelegate.AddUObject(PlayerDisplayWidget, &UPlayerDisplayWidget::CreateWeaponInventorySlots);
+//		//CharacterPlayer->OnWeaponInventoryUpdatedDelegate.AddUObject(PlayerDisplayWidget, &UPlayerDisplayWidget::UpdateWeaponInventorySlots);
+//
+//		//CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
+//		//CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
+//	
+//		//CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
+//	}
+//}
 
 void UUIManagerComponent::BeginPlay()
 {
@@ -87,279 +88,279 @@ void UUIManagerComponent::BeginPlay()
 
 	//-------------------------
 
-	InitUILayersMap();
+	//InitUILayersMap();
 
-	if (StaminaWidgetClass)
-	{
-		StaminaWidget = CreateWidget<UStaminaWidget>(GetWorld(), StaminaWidgetClass);
-		if (StaminaWidget)
-		{
-			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
-			RegisterUIWidget(StaminaWidget);
-			//StaminaWidget->SetVisibility(ESlateVisibility::Visible);
-			StaminaWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-		}
-	}
+	//if (StaminaWidgetClass)
+	//{
+	//	StaminaWidget = CreateWidget<UStaminaWidget>(GetWorld(), StaminaWidgetClass);
+	//	if (StaminaWidget)
+	//	{
+	//		//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), StaminaWidget->GetUIType());
+	//		RegisterUIWidget(StaminaWidget);
+	//		//StaminaWidget->SetVisibility(ESlateVisibility::Visible);
+	//		StaminaWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	//	}
+	//}
 
-	if (HealthWidgetClass)
-	{
-		HealthWidget = CreateWidget<UHealthWidget>(GetWorld(), HealthWidgetClass);
-		if (HealthWidget)
-		{
-			RegisterUIWidget(HealthWidget);
-			//HealthWidget->SetVisibility(ESlateVisibility::Visible);
-			HealthWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-		}
-	}
+	//if (HealthWidgetClass)
+	//{
+	//	HealthWidget = CreateWidget<UHealthWidget>(GetWorld(), HealthWidgetClass);
+	//	if (HealthWidget)
+	//	{
+	//		RegisterUIWidget(HealthWidget);
+	//		//HealthWidget->SetVisibility(ESlateVisibility::Visible);
+	//		HealthWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	//	}
+	//}
 
 	//MEMO: test를 위해서 임시로 비활성화했음
-	if (PlayerDisplayWidgetClass)
-	{
-		PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
-		if (PlayerDisplayWidget)
-		{
-			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), PlayerDisplayWidget->GetUIType());
-			RegisterUIWidget(PlayerDisplayWidget);
-			PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
+	//if (PlayerDisplayWidgetClass)
+	//{
+	//	PlayerDisplayWidget = CreateWidget<UPlayerDisplayWidget>(GetWorld(), PlayerDisplayWidgetClass);
+	//	if (PlayerDisplayWidget)
+	//	{
+	//		//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), PlayerDisplayWidget->GetUIType());
+	//		RegisterUIWidget(PlayerDisplayWidget);
+	//		PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
+	//	}
+	//}
 
-	if (InteractionWidgetClass)
-	{
-		InteractionWidget = CreateWidget<UInteractionWidget>(GetWorld(), InteractionWidgetClass);
-		if (InteractionWidget)
-		{
-			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
-			RegisterUIWidget(InteractionWidget);
-			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
+	//if (InteractionWidgetClass)
+	//{
+	//	InteractionWidget = CreateWidget<UInteractionWidget>(GetWorld(), InteractionWidgetClass);
+	//	if (InteractionWidget)
+	//	{
+	//		//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), InteractionWidget->GetUIType());
+	//		RegisterUIWidget(InteractionWidget);
+	//		InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+	//	}
+	//}
 
-	if (ThrowableWeaponInventoryWidgetClass)
-	{
-		ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(GetWorld(), ThrowableWeaponInventoryWidgetClass);
-		if (ThrowableWeaponInventoryWidget)
-		{
-			//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), ThrowableWeaponInventoryWidget->GetUIType());
-			RegisterUIWidget(ThrowableWeaponInventoryWidget);
-			ThrowableWeaponInventoryWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
+	//if (ThrowableWeaponInventoryWidgetClass)
+	//{
+	//	ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(GetWorld(), ThrowableWeaponInventoryWidgetClass);
+	//	if (ThrowableWeaponInventoryWidget)
+	//	{
+	//		//UE_LOG(LogTemp, Error, TEXT("UIWidgetType: %d"), ThrowableWeaponInventoryWidget->GetUIType());
+	//		RegisterUIWidget(ThrowableWeaponInventoryWidget);
+	//		ThrowableWeaponInventoryWidget->SetVisibility(ESlateVisibility::Hidden);
+	//	}
+	//}
 }
 
-TTuple<FVector2D, bool> UUIManagerComponent::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
-{
-	FVector2D ScreenLocation = FVector2D::ZeroVector;
-	bool bResult = UGameplayStatics::ProjectWorldToScreen(PlayerController, SearchLocation, ScreenLocation);
+//TTuple<FVector2D, bool> UUIManagerComponent::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
+//{
+//	FVector2D ScreenLocation = FVector2D::ZeroVector;
+//	bool bResult = UGameplayStatics::ProjectWorldToScreen(PlayerController, SearchLocation, ScreenLocation);
+//
+//	return MakeTuple(ScreenLocation, bResult);
+//}
 
-	return MakeTuple(ScreenLocation, bResult);
-}
+//bool UUIManagerComponent::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
+//{
+//	FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
+//
+//	bool bIsInWidth = true;
+//	bool bIsInHeight = true;
+//
+//	// Check Width
+//	if (ScreenRatio_Width == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Width) > 1.0f || (ScreenRatio_Width == (1.0f - ScreenRatio_Width)))
+//	{
+//		if (ActorScreenPosition.X >= 0.0f && ActorScreenPosition.X <= ViewportSize.X)
+//		{
+//			bIsInWidth = true;
+//		}
+//		else
+//		{
+//			bIsInWidth = false;
+//		}
+//	}
+//	else
+//	{
+//		float LargeScreenRatio_Width;
+//		float SmallScreenRatio_Width;
+//
+//		if (ScreenRatio_Width < (1.0f - ScreenRatio_Width))
+//		{
+//			LargeScreenRatio_Width = 1.0f - ScreenRatio_Width;
+//			SmallScreenRatio_Width = ScreenRatio_Width;
+//		}
+//		else
+//		{
+//			LargeScreenRatio_Width = ScreenRatio_Width;
+//			SmallScreenRatio_Width = 1.0f - ScreenRatio_Width;
+//		}
+//
+//		if (ActorScreenPosition.X >= ViewportSize.X * SmallScreenRatio_Width && ActorScreenPosition.X <= ViewportSize.X * LargeScreenRatio_Width)
+//		{
+//			bIsInWidth = true;
+//		}
+//		else
+//		{
+//			bIsInWidth = false;
+//		}
+//	}
+//
+//	// Check Height
+//	if (ScreenRatio_Height == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Height) > 1.0f || (ScreenRatio_Height == (1.0f - ScreenRatio_Height)))
+//	{
+//		if (ActorScreenPosition.Y >= 0.0f && ActorScreenPosition.Y <= ViewportSize.Y)
+//		{
+//			bIsInHeight = true;
+//		}
+//		else
+//		{
+//			bIsInHeight = false;
+//		}
+//	}
+//	else
+//	{
+//		float LargeScreenRatio_Height;
+//		float SmallScreenRatio_Height;
+//
+//		if (ScreenRatio_Height < (1.0f - ScreenRatio_Height))
+//		{
+//			LargeScreenRatio_Height = 1.0f - ScreenRatio_Height;
+//			SmallScreenRatio_Height = ScreenRatio_Height;
+//		}
+//		else
+//		{
+//			LargeScreenRatio_Height = ScreenRatio_Height;
+//			SmallScreenRatio_Height = 1.0f - ScreenRatio_Height;
+//		}
+//
+//		if (ActorScreenPosition.Y >= ViewportSize.Y * SmallScreenRatio_Height && ActorScreenPosition.Y <= ViewportSize.Y * LargeScreenRatio_Height)
+//		{
+//			bIsInHeight = true;
+//		}
+//		else
+//		{
+//			bIsInHeight = false;
+//		}
+//	}
+//
+//	// Return
+//	if (bIsInWidth && bIsInHeight)
+//	{
+//		return true;
+//	}
+//	else
+//	{
+//		return false;
+//	}
+//}
 
-bool UUIManagerComponent::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
-{
-	FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
+//void UUIManagerComponent::RequestDropInventorySlot(FName InventoryName, int32 SlotIndex)
+//{
+//	if (CharacterPlayer)
+//	{
+//		CharacterPlayer->OnInventorySlotDropRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+//	}
+//}
+//
+//void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)
+//{
+//	UE_LOG(LogTemp, Error, TEXT("void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)"));
+//	if (CharacterPlayer)
+//	{
+//		CharacterPlayer->OnInventorySlotUseRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+//	}
+//}
+//
+//void UUIManagerComponent::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
+//{
+//	if (CharacterPlayer)
+//	{
+//		CharacterPlayer->OnInventorySwapRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
+//	}
+//}
 
-	bool bIsInWidth = true;
-	bool bIsInHeight = true;
+//void UUIManagerComponent::OpenInventory()
+//{
+//	if (!PlayerDisplayWidget) return;
+//	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Visible);
+//	PlayerDisplayWidget->OpenInventory();
+//	bIsInventoryOpened = true;
+//}
+//
+//void UUIManagerComponent::CloseInventory()
+//{
+//	if (!PlayerDisplayWidget) return;
+//	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
+//	PlayerDisplayWidget->CloseInventory();
+//	bIsInventoryOpened = false;
+//}
+//
+//void UUIManagerComponent::OnTabToggled()
+//{
+//	bIsInventoryOpened ? CloseInventory() : OpenInventory();
+//}
 
-	// Check Width
-	if (ScreenRatio_Width == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Width) > 1.0f || (ScreenRatio_Width == (1.0f - ScreenRatio_Width)))
-	{
-		if (ActorScreenPosition.X >= 0.0f && ActorScreenPosition.X <= ViewportSize.X)
-		{
-			bIsInWidth = true;
-		}
-		else
-		{
-			bIsInWidth = false;
-		}
-	}
-	else
-	{
-		float LargeScreenRatio_Width;
-		float SmallScreenRatio_Width;
+//void UUIManagerComponent::OpenThrowableWeaponInventory()
+//{
+//	if (!ThrowableWeaponInventoryWidget) return;
+//	ThrowableWeaponInventoryWidget->OpenUI();
+//}
+//
+//void UUIManagerComponent::CloseThrowableWeaponInventory()
+//{
+//	if (!ThrowableWeaponInventoryWidget) return;
+//	ThrowableWeaponInventoryWidget->CloseUI();
+//}
 
-		if (ScreenRatio_Width < (1.0f - ScreenRatio_Width))
-		{
-			LargeScreenRatio_Width = 1.0f - ScreenRatio_Width;
-			SmallScreenRatio_Width = ScreenRatio_Width;
-		}
-		else
-		{
-			LargeScreenRatio_Width = ScreenRatio_Width;
-			SmallScreenRatio_Width = 1.0f - ScreenRatio_Width;
-		}
+//void UUIManagerComponent::InitStaminaBar(float maxstamina)
+//{
+//	if (StaminaWidget)
+//	{
+//		StaminaWidget->InitStaminaBar(maxstamina);
+//		//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::InitStaminaBar(float maxstamina)!!!"));
+//	}
+//}
+//void UUIManagerComponent::SetStaminaBarPercent(float const Value)
+//{
+//	if (StaminaWidget) StaminaWidget->SetStaminaBarPercent(Value);
+//}
 
-		if (ActorScreenPosition.X >= ViewportSize.X * SmallScreenRatio_Width && ActorScreenPosition.X <= ViewportSize.X * LargeScreenRatio_Width)
-		{
-			bIsInWidth = true;
-		}
-		else
-		{
-			bIsInWidth = false;
-		}
-	}
+//void UUIManagerComponent::PlayPopUpInteractionWidgetAnim()
+//{
+//	if (InteractionWidget) InteractionWidget->PlayPopUpAnim();
+//
+//	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::PlayPopUpInteractionWidgetAnim"));
+//}
 
-	// Check Height
-	if (ScreenRatio_Height == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Height) > 1.0f || (ScreenRatio_Height == (1.0f - ScreenRatio_Height)))
-	{
-		if (ActorScreenPosition.Y >= 0.0f && ActorScreenPosition.Y <= ViewportSize.Y)
-		{
-			bIsInHeight = true;
-		}
-		else
-		{
-			bIsInHeight = false;
-		}
-	}
-	else
-	{
-		float LargeScreenRatio_Height;
-		float SmallScreenRatio_Height;
-
-		if (ScreenRatio_Height < (1.0f - ScreenRatio_Height))
-		{
-			LargeScreenRatio_Height = 1.0f - ScreenRatio_Height;
-			SmallScreenRatio_Height = ScreenRatio_Height;
-		}
-		else
-		{
-			LargeScreenRatio_Height = ScreenRatio_Height;
-			SmallScreenRatio_Height = 1.0f - ScreenRatio_Height;
-		}
-
-		if (ActorScreenPosition.Y >= ViewportSize.Y * SmallScreenRatio_Height && ActorScreenPosition.Y <= ViewportSize.Y * LargeScreenRatio_Height)
-		{
-			bIsInHeight = true;
-		}
-		else
-		{
-			bIsInHeight = false;
-		}
-	}
-
-	// Return
-	if (bIsInWidth && bIsInHeight)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-void UUIManagerComponent::RequestDropInventorySlot(FName InventoryName, int32 SlotIndex)
-{
-	if (CharacterPlayer)
-	{
-		CharacterPlayer->OnInventorySlotDropRequestedDelegate.Broadcast(InventoryName, SlotIndex);
-	}
-}
-
-void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)
-{
-	UE_LOG(LogTemp, Error, TEXT("void UUIManagerComponent::RequestUseInventorySlot(FName InventoryName, int32 SlotIndex)"));
-	if (CharacterPlayer)
-	{
-		CharacterPlayer->OnInventorySlotUseRequestedDelegate.Broadcast(InventoryName, SlotIndex);
-	}
-}
-
-void UUIManagerComponent::RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
-{
-	if (CharacterPlayer)
-	{
-		CharacterPlayer->OnInventorySwapRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
-	}
-}
-
-void UUIManagerComponent::OpenInventory()
-{
-	if (!PlayerDisplayWidget) return;
-	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Visible);
-	PlayerDisplayWidget->OpenInventory();
-	bIsInventoryOpened = true;
-}
-
-void UUIManagerComponent::CloseInventory()
-{
-	if (!PlayerDisplayWidget) return;
-	PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
-	PlayerDisplayWidget->CloseInventory();
-	bIsInventoryOpened = false;
-}
-
-void UUIManagerComponent::OnTabToggled()
-{
-	bIsInventoryOpened ? CloseInventory() : OpenInventory();
-}
-
-void UUIManagerComponent::OpenThrowableWeaponInventory()
-{
-	if (!ThrowableWeaponInventoryWidget) return;
-	ThrowableWeaponInventoryWidget->OpenUI();
-}
-
-void UUIManagerComponent::CloseThrowableWeaponInventory()
-{
-	if (!ThrowableWeaponInventoryWidget) return;
-	ThrowableWeaponInventoryWidget->CloseUI();
-}
-
-void UUIManagerComponent::InitStaminaBar(float maxstamina)
-{
-	if (StaminaWidget)
-	{
-		StaminaWidget->InitStaminaBar(maxstamina);
-		//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::InitStaminaBar(float maxstamina)!!!"));
-	}
-}
-void UUIManagerComponent::SetStaminaBarPercent(float const Value)
-{
-	if (StaminaWidget) StaminaWidget->SetStaminaBarPercent(Value);
-}
-
-void UUIManagerComponent::PlayPopUpInteractionWidgetAnim()
-{
-	if (InteractionWidget) InteractionWidget->PlayPopUpAnim();
-
-	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::PlayPopUpInteractionWidgetAnim"));
-}
-
-void UUIManagerComponent::UpdateInteractionUI(bool bFlag, FVector NewLocation)
-{
-	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::UpdateInteractionUI"));
-
-	FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(NewLocation).Get<0>();
-
-	if (bFlag)
-	{
-		if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
-		{
-			InteractionWidget->SetPositionInViewport(TargetScreenPosition);
-
-			if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
-			{
-				InteractionWidget->SetVisibility(ESlateVisibility::Visible);
-			}
-		}
-		//else
-		//{
-		//	if (InteractionWidget->Visibility == ESlateVisibility::Visible)
-		//	{
-		//		InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
-		//	}
-		//}
-	}
-	else
-	{
-		if (InteractionWidget->Visibility == ESlateVisibility::Visible)
-		{
-			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-}
+//void UUIManagerComponent::UpdateInteractionUI(bool bFlag, FVector NewLocation)
+//{
+//	//UE_LOG(LogTemp, Error, TEXT("UUIManagerComponent::UpdateInteractionUI"));
+//
+//	FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(NewLocation).Get<0>();
+//
+//	if (bFlag)
+//	{
+//		if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
+//		{
+//			InteractionWidget->SetPositionInViewport(TargetScreenPosition);
+//
+//			if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
+//			{
+//				InteractionWidget->SetVisibility(ESlateVisibility::Visible);
+//			}
+//		}
+//		//else
+//		//{
+//		//	if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+//		//	{
+//		//		InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+//		//	}
+//		//}
+//	}
+//	else
+//	{
+//		if (InteractionWidget->Visibility == ESlateVisibility::Visible)
+//		{
+//			InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+//		}
+//	}
+//}
 
 
 
@@ -385,117 +386,117 @@ void UUIManagerComponent::UpdateInteractionUI(bool bFlag, FVector NewLocation)
 //	return nullptr;
 //}
 
-void UUIManagerComponent::InitializeWidgets()
-{
-	//APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-	//if (!PC)
-	//{
-	//	UE_LOG(LogTemp, Error, TEXT("PlayerController not valid in InitializeWidgets."));
-	//	return;
-	//}
+//void UUIManagerComponent::InitializeWidgets()
+//{
+//	//APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+//	//if (!PC)
+//	//{
+//	//	UE_LOG(LogTemp, Error, TEXT("PlayerController not valid in InitializeWidgets."));
+//	//	return;
+//	//}
+//
+//	//for (const auto& Elem : UIWidgetClasses)
+//	//{
+//	//	EUIType UIType = Elem.Key;
+//	//	TSubclassOf<UBaseUIWidget> WidgetClass = Elem.Value;
+//
+//	//	if (!WidgetClass) continue;
+//
+//	//	UBaseUIWidget* NewWidget = CreateWidget<UBaseUIWidget>(GetWorld(), WidgetClass);
+//	//	if (!NewWidget) continue;
+//	//	if (!IsValid(NewWidget)) //  생성 실패 여부 확인
+//	//	{
+//	//		UE_LOG(LogTemp, Error, TEXT("InitializeWidgets: NewWidget 생성 실패! UIType: %s"), *UEnum::GetValueAsString(UIType));
+//	//		continue;
+//	//	}
+//
+//
+//	//	UIWidgets.Add(UIType, NewWidget);
+//
+//	//	// 위젯 타입별로 매니저 연결
+//	//	switch (UIType)
+//	//	{
+//	//		// case EUIType::Inventory:
+//	//		// 	{
+//	//		// 		if (UInventoryWidget* IW = Cast<UInventoryWidget>(NewWidget))
+//	//		// 		{
+//	//		// 			IW->SetInventoryManager(InventoryManager); // InventoryWidget에 InventoryManager를 할당
+//	//		// 			InventoryManager->SetInventoryWidget(IW);  // InventoryManager에 InventoryWidget을 할당
+//	//		// 		}
+//	//		// 		break;
+//	//		// 	}
+//
+//	//	case EUIType::KillLog:
+//	//	{
+//	//		if (UKillLogWidget* KLW = Cast<UKillLogWidget>(NewWidget))
+//	//		{
+//	//			KillLogManager->SetKillLogWidget(KLW);
+//	//			KLW->SetKillLogManager(KillLogManager);
+//	//			KLW->AddToViewport();
+//
+//	//			//UE_LOG(LogTemp, Warning, TEXT("✔ KillLogWidget Viewport에 추가됨"));
+//	//		}
+//	//		break;
+//	//	}
+//
+//	//	case EUIType::PlayerHUD:
+//	//	{
+//	//		if (UPlayerHUD* PW = Cast<UPlayerHUD>(NewWidget))
+//	//		{
+//	//			PlayerHUDManager->SetPlayerHUDWidget(PW);
+//	//			PW->SetPlayerHUDManager(PlayerHUDManager);
+//	//			PW->AddToViewport(-1);
+//
+//	//			//UE_LOG(LogTemp, Warning, TEXT("✔ KillLogWidget Viewport에 추가됨"));
+//	//		}
+//	//		break;
+//	//	}
+//
+//	//	case EUIType::Skill:
+//	//	{
+//	//		if (URocketLauncherSkillWidget* RLW = Cast<URocketLauncherSkillWidget>(NewWidget))
+//	//		{
+//	//			SkillManager->SetRocketLauncherSkillWidget(RLW);
+//	//			RLW->SetSKillManager(SkillManager);
+//	//			RLW->InitUIDataTable(DTUISetting);
+//	//			//RLW->AddToViewport(); //스킬 사용 시점에 AddToViewport해야함;
+//
+//	//			//UE_LOG(LogTemp, Warning, TEXT("✔ RocketLauncherWidget Viewport에 추가됨"));
+//	//		}
+//	//		break;
+//	//	}
+//
+//	//	default:
+//	//		break;
+//	//	}
+//	//}
+//}
 
-	//for (const auto& Elem : UIWidgetClasses)
-	//{
-	//	EUIType UIType = Elem.Key;
-	//	TSubclassOf<UBaseUIWidget> WidgetClass = Elem.Value;
-
-	//	if (!WidgetClass) continue;
-
-	//	UBaseUIWidget* NewWidget = CreateWidget<UBaseUIWidget>(GetWorld(), WidgetClass);
-	//	if (!NewWidget) continue;
-	//	if (!IsValid(NewWidget)) //  생성 실패 여부 확인
-	//	{
-	//		UE_LOG(LogTemp, Error, TEXT("InitializeWidgets: NewWidget 생성 실패! UIType: %s"), *UEnum::GetValueAsString(UIType));
-	//		continue;
-	//	}
 
 
-	//	UIWidgets.Add(UIType, NewWidget);
+//void UUIManagerComponent::OnShowTabMenuStarted(const FInputActionValue& Value)
+//{
+//
+//}
+//
+//void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
+//{
+//
+//}
 
-	//	// 위젯 타입별로 매니저 연결
-	//	switch (UIType)
-	//	{
-	//		// case EUIType::Inventory:
-	//		// 	{
-	//		// 		if (UInventoryWidget* IW = Cast<UInventoryWidget>(NewWidget))
-	//		// 		{
-	//		// 			IW->SetInventoryManager(InventoryManager); // InventoryWidget에 InventoryManager를 할당
-	//		// 			InventoryManager->SetInventoryWidget(IW);  // InventoryManager에 InventoryWidget을 할당
-	//		// 		}
-	//		// 		break;
-	//		// 	}
+//void UUIManagerComponent::InitUILayersMap()
+//{
+//	UILayers.Add(EUIType::Stamina, 0);
+//	UILayers.Add(EUIType::Health, 0);
+//	UILayers.Add(EUIType::Interaction, 1);
+//	UILayers.Add(EUIType::WeaponAim, 2);
+//	UILayers.Add(EUIType::Inventory, 3);
+//	UILayers.Add(EUIType::ThrowableWeaponInventory, 4);
+//}
 
-	//	case EUIType::KillLog:
-	//	{
-	//		if (UKillLogWidget* KLW = Cast<UKillLogWidget>(NewWidget))
-	//		{
-	//			KillLogManager->SetKillLogWidget(KLW);
-	//			KLW->SetKillLogManager(KillLogManager);
-	//			KLW->AddToViewport();
-
-	//			//UE_LOG(LogTemp, Warning, TEXT("✔ KillLogWidget Viewport에 추가됨"));
-	//		}
-	//		break;
-	//	}
-
-	//	case EUIType::PlayerHUD:
-	//	{
-	//		if (UPlayerHUD* PW = Cast<UPlayerHUD>(NewWidget))
-	//		{
-	//			PlayerHUDManager->SetPlayerHUDWidget(PW);
-	//			PW->SetPlayerHUDManager(PlayerHUDManager);
-	//			PW->AddToViewport(-1);
-
-	//			//UE_LOG(LogTemp, Warning, TEXT("✔ KillLogWidget Viewport에 추가됨"));
-	//		}
-	//		break;
-	//	}
-
-	//	case EUIType::Skill:
-	//	{
-	//		if (URocketLauncherSkillWidget* RLW = Cast<URocketLauncherSkillWidget>(NewWidget))
-	//		{
-	//			SkillManager->SetRocketLauncherSkillWidget(RLW);
-	//			RLW->SetSKillManager(SkillManager);
-	//			RLW->InitUIDataTable(DTUISetting);
-	//			//RLW->AddToViewport(); //스킬 사용 시점에 AddToViewport해야함;
-
-	//			//UE_LOG(LogTemp, Warning, TEXT("✔ RocketLauncherWidget Viewport에 추가됨"));
-	//		}
-	//		break;
-	//	}
-
-	//	default:
-	//		break;
-	//	}
-	//}
-}
-
-
-
-void UUIManagerComponent::OnShowTabMenuStarted(const FInputActionValue& Value)
-{
-
-}
-
-void UUIManagerComponent::OnShowTabMenuCompleted(const FInputActionValue& Value)
-{
-
-}
-
-void UUIManagerComponent::InitUILayersMap()
-{
-	UILayers.Add(EUIType::Stamina, 0);
-	UILayers.Add(EUIType::Health, 0);
-	UILayers.Add(EUIType::Interaction, 1);
-	UILayers.Add(EUIType::WeaponAim, 2);
-	UILayers.Add(EUIType::Inventory, 3);
-	UILayers.Add(EUIType::ThrowableWeaponInventory, 4);
-}
-
-void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)
-{
-	UIWidgets.Add(NewUIWidget->GetUIType(), NewUIWidget);
-	NewUIWidget->AddToViewport(*UILayers.Find(NewUIWidget->GetUIType()));
-	NewUIWidget->SetOwnerUIManager(this);
-}
+//void UUIManagerComponent::RegisterUIWidget(UBaseUIWidget* NewUIWidget)
+//{
+//	UIWidgets.Add(NewUIWidget->GetUIType(), NewUIWidget);
+//	NewUIWidget->AddToViewport(*UILayers.Find(NewUIWidget->GetUIType()));
+//	NewUIWidget->SetOwnerUIManager(this);
+//}

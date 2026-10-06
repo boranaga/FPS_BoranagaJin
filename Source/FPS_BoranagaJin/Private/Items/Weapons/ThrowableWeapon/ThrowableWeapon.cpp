@@ -64,8 +64,7 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
 		//InitializeCamera(Character);
 		LoadData();
-	}
-	InitUI();
+	}   
 
 	CharacterController = Cast<APlayerController>(Character->GetController());
 	if (CharacterController)
@@ -76,6 +75,8 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 			Subsystem->AddMappingContext(InputMappingContext, 1);
 		}
 	}
+
+	InitUI();
 
 	InitProjectiles(FireData.ProjectileClass, 5);
 }
@@ -115,6 +116,11 @@ void AThrowableWeapon::InitCam(ACharacterPlayer* TargetCharacter)
 
 void AThrowableWeapon::InitUI()
 {
+	if (!CharacterController)
+	{
+		CharacterController = Cast<APlayerController>(Character->GetController());
+	}
+	if (!CharacterController) { return; }
 	UPlayerUISubsystem* UISubsystem = CharacterController->GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(UISubsystem)) { return; }
 	if (AimUIWidgetClass)

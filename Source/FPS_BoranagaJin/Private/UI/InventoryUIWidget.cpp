@@ -41,7 +41,7 @@ void UInventoryUIWidget::CreateInventorySlots(int32 InventorySlotCount)
 
 		if (NewInventorySlot)
 		{
-			NewInventorySlot->SetOwnerUIManager(OwnerUIManager);
+			//NewInventorySlot->SetOwnerUIManager(OwnerUIManager);
 
 			NewInventorySlot->SetIndex(i);
 			NewInventorySlot->SetOwnerInventoryWidget(this);
@@ -92,21 +92,17 @@ void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inve
 
 void UInventoryUIWidget::RequestSwapInventorySlots(int32 FromIndex, int32 ToIndex)
 {
-	if (!OwnerUIManager) return;
-	OwnerUIManager->RequestSwapInventorySlots(InventoryName, FromIndex, ToIndex);
+	OnSwapInventorySlotsRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
 }
 
 void UInventoryUIWidget::RequestDropInventorySlot(int32 SlotIndex)
 {
-	if (!OwnerUIManager) return;
-	OwnerUIManager->RequestDropInventorySlot(InventoryName, SlotIndex);
+	OnDropInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
 }
 
 void UInventoryUIWidget::RequestUseInventorySlot(int32 SlotIndex)
 {
-	UE_LOG(LogTemp, Error, TEXT("void UInventoryUIWidget::RequestUseInventorySlot(int32 SlotIndex)"));
-	if (!OwnerUIManager) return;
-	OwnerUIManager->RequestUseInventorySlot(InventoryName, SlotIndex);
+	OnUseInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
 }
 
 bool UInventoryUIWidget::IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const

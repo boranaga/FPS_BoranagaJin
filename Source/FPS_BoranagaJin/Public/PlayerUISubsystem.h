@@ -15,6 +15,10 @@ class USaveFileSlotMenuWidget;
 class UPauseMenuWidget;
 class UGameOverWidget;
 class UHealthWidget;
+class UStaminaWidget;
+class UPlayerDisplayWidget; //Inventory Widget
+class UThrowableWeaponInventoryWidget;
+class UInteractionWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
 class UGameAudioSubsystem;
@@ -61,8 +65,8 @@ private:
     {
         switch (Type)
         {
-        case EUIType::Stamina: return 0;
-        case EUIType::Health: return 0;
+        case EUIType::Stamina: return 1;
+        case EUIType::Health: return 1;
         case EUIType::Interaction: return 1;
         case EUIType::WeaponAim: return 2;
         case EUIType::AmmoCounter: return 2;
@@ -86,12 +90,18 @@ private:
     void SetUIOnlyInput(UBaseUIWidget* FocusWidget);
     void SetGameOnlyInput();
 public:
+    void Init_BeginPlay();
     void InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass);
     void InitMapSelectUI(TSubclassOf<UMapSelectMenuWidget> WidgetClass);
     void InitSaveFileSlotUI(TSubclassOf<USaveFileSlotMenuWidget> WidgetClass);
     void InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass);
     void InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass);
     void InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass);
+    void InitStaminaUI(TSubclassOf<UStaminaWidget> WidgetClass);
+    
+    void InitInteractionWidget(TSubclassOf<UInteractionWidget> WidgetClass);
+    void InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> WidgetClass);
+    void InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass);
     //void InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass); //TODO: ¼³Á¤
 
     // <PauseMenu>
@@ -127,6 +137,41 @@ private:
 private:
     void HandleBackToMainMenuRequested();
     //void HandleGameEnded(EGameEndReason EndReason);
+
+
+    // <HealthBar>
+
+
+    // <StaminaBar>
+public:
+    void UpdateStaminaBar(float maxstamina, float currstamina);
+
+    // <Inventory>
+public:
+    void OpenInventory();
+    void CloseInventory();
+    void RequestSwapInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
+    void RequestDropInventorySlot(FName InventoryName, int32 SlotIndex);
+    void RequestUseInventorySlot(FName InventoryName, int32 SlotIndex);
+
+    // <ThrowableWeaponInventory>
+private:
+    void HandleThrowableWeaponEquipRequested(int32 SlotIndex);
+public:
+    void OpenThrowableWeaponInventory();
+    void CloseThrowableWeaponInventory();
+
+    // <Interaction>
+public:
+    void PlayPopUpInteractionWidgetAnim();
+    void UpdateInteractionUI(bool bFlag = false, FVector NewLocation = FVector::ZeroVector);
+
+
+protected:
+    TTuple<FVector2D, bool> GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const;
+    bool IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width = 0.0f, float ScreenRatio_Height = 0.0f) const;
+
+
 private:
     UPROPERTY()
     TMap<EUIType, FUIWidgetArray> UIWidgets;

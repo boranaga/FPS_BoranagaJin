@@ -28,27 +28,34 @@ class UInteractionComponent;
 class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
+struct FInventorySlot;
 
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnUIWidgetCreated, UBaseUIWidget*, NewUIWidgetPtr);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractionUIPopUp);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool, bFlag, FVector, NewLocation);
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnStaminaUpdated, float MaxVal, float CurrVal);
+//DECLARE_MULTICAST_DELEGATE_TwoParams(FOnHealthChanged, float currenthealth, float maxhealth);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryCreated, int32, InventoryCount);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, const TArray<FInventorySlot>&, Inventory);
+
+DECLARE_MULTICAST_DELEGATE(FOnInteractionUIPopUp);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool bFlag, FVector NewLocation);
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnInventoryCreated, int32 SlotNum);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnInventorySwapRequested, FName, InventoryName, int32, FromIndex, int32, ToIndex);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotDropRequested, FName InventoryName, int32 SlotIndex);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotUseRequested, FName InventoryName, int32 SlotIndex);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryCreated, int32, WeaponInventoryCount);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInventorySlot>&, WeaponInventory);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryCreated, int32 SlotNum);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryCreated, int32, ThrowableWeaponInventoryCount);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, const TArray<FInventorySlot>&, ThrowableWeaponInventory);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryCreated, int32 SlotNum);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponEquipRequested, int32 SlotIdx);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
@@ -106,8 +113,10 @@ public:
 
 public:
 	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;
-	FOnStaminaInit OnStaminaInit;
+	//FOnStaminaInit OnStaminaInit;
 	FOnStaminaUpdated OnStaminaUpdated;
+	//FOnHealthChanged OnHealthChanged;
+
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
 	FOnInteractionUIPopUp OnInteractionUIPopUpDelegate;
 	FOnInteractionUIUpdated OnInteractionUIUpdatedDelegate;
@@ -123,6 +132,7 @@ public:
 
 	FOnThrowableWeaponInventoryCreated OnThrowableWeaponInventoryCreatedDelegate;
 	FOnThrowableWeaponInventoryUpdated OnThrowableWeaponInventoryUpdatedDelegate;
+	FOnThrowableWeaponEquipRequested OnThrowableWeaponEquipRequestedDelegate;
 
 	//virtual void GravityLaunchPlayer(const FVector& Direction, float ForceAmount) override;
 
@@ -258,7 +268,8 @@ protected:
 
 	//---------------
 public:
-	void InitUIManager();
+	//void InitUIManager();
+	void InitPlayerUISubsystem();
 
 
 #pragma region InteractionComponent

@@ -55,12 +55,17 @@ void UThrowableWeaponInventoryWidget::CreateInventorySlots(int32 InventorySlotCo
 	if (!WrapBoxInventory) return;
 
 	WrapBoxInventory->ClearChildren();
+	InventorySlotWidgets.Empty();
 
 	for (int32 i = 0; i < InventorySlotCount; i++)
 	{
 		UInventorySlotWidget* NewInventorySlot = CreateWidget<UInventorySlotWidget>(GetWorld(), InventorySlotWidgetClass);
+		if (!NewInventorySlot) { continue; }
 		if (NewInventorySlot)
 		{
+			NewInventorySlot->SetIndex(i);
+
+			NewInventorySlot->ConfigureAsThrowableWeaponSlot(this);
 			InventorySlotWidgets.Add(NewInventorySlot);
 			NewInventorySlot->SetVisibility(ESlateVisibility::Visible);
 			WrapBoxInventory->AddChildToWrapBox(NewInventorySlot);
@@ -84,4 +89,14 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 			}
 		}
 	}
+}
+
+void UThrowableWeaponInventoryWidget::RequestEquipSlot(int32 SlotIndex)
+{
+	if (SlotIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	OnThrowableWeaponEquipRequested.Broadcast(SlotIndex);
 }
