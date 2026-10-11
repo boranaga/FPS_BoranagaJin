@@ -78,7 +78,7 @@ void AItem::Equip(ACharacterPlayer* TargetCharacter)
 
 void AItem::Unequip(ACharacterPlayer* TargetCharacter)
 {
-
+	UE_LOG(LogTemp, Error, TEXT("void AItem::Unequip(ACharacterPlayer* TargetCharacter)"));
 }
 
 void AItem::LoadItemData()

@@ -28,7 +28,14 @@ AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //Player
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
+
+
+	//CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(
+		ECC_WorldStatic,
+		ECR_Block
+	);
+
 
 	CollisionComp->bReturnMaterialOnMove = true;
 	CollisionComp->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
@@ -261,6 +268,29 @@ void AThrowableWeaponProjectile::LaunchProjectile(FVector StartPos, FRotator Dir
 {
 	SetActorLocationAndRotation(StartPos, Direction);
 	ProjectileMovement->Activate();
+}
+
+void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed)
+{
+	if (!IsValid(ProjectileMovement))
+	{
+		return;
+	}
+
+	const FVector NormalizedDirection =
+		Direction.GetSafeNormal();
+
+	SetActorLocationAndRotation(
+		StartPosition,
+		NormalizedDirection.Rotation()
+	);
+
+	ProjectileMovement->StopMovementImmediately();
+
+	ProjectileMovement->Velocity =
+		NormalizedDirection * LaunchSpeed;
+
+	ProjectileMovement->Activate(true);
 }
 
 void AThrowableWeaponProjectile::StartLifeTimer(float Seconds)
@@ -977,11 +1007,39 @@ void AThrowableWeaponProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
 void AThrowableWeaponProjectile::OnActivateFromPool()
 {
 	bIsActiveInPool = true;
+
+	//--------------------
+
+	SetActorHiddenInGame(false);
+	SetActorTickEnabled(true);
 }
 
 void AThrowableWeaponProjectile::OnDeactivateToPool()
 {
 	bIsActiveInPool = false;
+
+	//-----------------------------
+
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->StopMovementImmediately();
+		ProjectileMovement->Deactivate();
+
+		ProjectileMovement->Velocity =
+			FVector::ZeroVector;
+	}
+
+	StopLifeTimer();
+
+	SetActorHiddenInGame(true);
+	SetActorTickEnabled(false);
+
+	if (CollisionComp)
+	{
+		CollisionComp->SetCollisionEnabled(
+			ECollisionEnabled::NoCollision
+		);
+	}
 }
 
 bool AThrowableWeaponProjectile::IsActiveInPool() const

@@ -1796,9 +1796,9 @@ void AWeapon::OnUnequipEnded(ACharacterPlayer* TargetCharacter)
 	ResetInputActionBinding();
 	DetachWeaponFromPlayer();
 	ChangeState(UnequippedState);
-	if (UInventorySystemComponent* WeaponSystem = TargetCharacter->GetInventorySystemComponent())
+	if (UInventorySystemComponent* InventorySystem = TargetCharacter->GetInventorySystemComponent())
 	{
-		WeaponSystem->SwitchToNextItem();
+		InventorySystem->SwitchToNextItem();
 	}
 }
 

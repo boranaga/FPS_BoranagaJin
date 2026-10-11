@@ -217,5 +217,7 @@ TWidget* UPlayerUISubsystem::CreateAndRegisterWidget(TSubclassOf<TWidget> Widget
 
     RegisterUIWidget(NewWidget);
 
+    UE_LOG(LogTemp, Error, TEXT("TWidget* UPlayerUISubsystem::CreateAndRegisterWidget(TSubclassOf<TWidget> WidgetClass)"));
+
     return NewWidget;
 }

@@ -3,7 +3,6 @@
 
 #include "UI/InventoryUIWidget.h"
 #include "UI/InventorySlotWidget.h"
-#include "UI/UIManagerComponent.h"
 #include "Items/InventorySlot.h"
 
 #include "Components/WrapBox.h"

@@ -69,8 +69,6 @@ void UThrowableWeaponInventoryWidget::CreateInventorySlots(int32 InventorySlotCo
 			InventorySlotWidgets.Add(NewInventorySlot);
 			NewInventorySlot->SetVisibility(ESlateVisibility::Visible);
 			WrapBoxInventory->AddChildToWrapBox(NewInventorySlot);
-
-			//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::CreateInventorySlots(int32 InventorySlotCount)"));
 		}
 	}
 }
@@ -84,8 +82,6 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
 				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
-
-				//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
 			}
 		}
 	}

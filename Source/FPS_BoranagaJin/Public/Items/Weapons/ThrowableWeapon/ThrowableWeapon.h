@@ -5,6 +5,7 @@
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponName.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponStateType.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponFireParams.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponFireMode.h"
 #include "Items/Weapons/WeaponAction.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "ThrowableWeapon.generated.h"
@@ -59,12 +60,11 @@ public:
 	EThrowableWeaponStateType GetCurrentState() const { return CurrentState; }
 	bool IsIdle() const { return CurrentState == EThrowableWeaponStateType::Idle; }
 	bool IsAiming() const { return CurrentState == EThrowableWeaponStateType::Aiming; }
-	bool IsThrown() const { return CurrentState == EThrowableWeaponStateType::Switching; }
+	bool IsFiring() const { return CurrentState == EThrowableWeaponStateType::Firing; }
 
 	// Aim and throw
 	void StartAim();
 	void StopAim();
-	void Throw(const FVector& ThrowDirection);
 
 	// Input
 	virtual void SetInputActionBinding();
@@ -118,8 +118,35 @@ protected:
 	virtual void ActivateThrowable();
 	virtual void ResetThrowable();
 
+	// Throw
+public:
+	void Throw(const FVector& BaseThrowDirection);
+	void ToggleFireMode();
+	void SetFireMode(EThrowableWeaponFireMode NewFireMode);
+    EThrowableWeaponFireMode GetFireMode() const { return CurrentFireMode; }
+	bool IsThrowInProgress() const { return bThrowInProgress; }
+protected:
+	void ExecuteThrow();
+	void FinishThrowSequence();
+	void PlayThrowAnimation();
+	void CancelPendingThrow();
+	UAnimMontage* GetThrowMontage() const;
+	float CalculateThrowAnimationPlayRate(UAnimMontage* Montage) const;
+
+	FVector CalculateThrowDirection(const FVector& BaseDirection, EThrowableWeaponFireMode FireMode) const;
+	float GetThrowStrength(EThrowableWeaponFireMode FireMode) const;
+
+protected:
 	// Fire handling
 	void FireSingleProjectile(FThrowableWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
+	void FireSingleProjectile(
+		FThrowableWeaponFireParams* InFireData,
+		const FVector& ThrowDirection,
+		float ThrowSpeed,
+		int32 NumPenetrable = 0,
+		float AdditionalDamage = 0.f
+	);
+
 	void FireSingleHitScan(FThrowableWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
 	void HandleSingleFire(int32 NumPenetrable = 0);
 	void HandleBurstFire(int32 NumPenetrable = 0);
@@ -194,6 +221,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* RightHoldAction = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* LeftChargeAction = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* RightChargeAction = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* SwitchFireModeAction = nullptr;
 	TArray<FInputBindingHandle*> InputActionBindingHandles;
 
 	// Socket transforms
@@ -210,8 +239,9 @@ protected:
 	UStaticMeshComponent* MuzzlePoint;
 
 	// Animation
-	UPROPERTY() UAnimInstance* CharacterAnimInstance = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Fire_Character = nullptr;
+	UPROPERTY() TObjectPtr<UAnimInstance> CharacterAnimInstance = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Throw_Up_Character = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Throw_Down_Character = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Reload_Character = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Equip_Character = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character") UAnimMontage* AM_Unequip_Character = nullptr;
@@ -251,6 +281,32 @@ protected:
 
 	// Penetration
 	int32 MaxPenetrableObjectsNum = 4;
+
+	// Throw
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|FireMode") 
+	EThrowableWeaponFireMode CurrentFireMode = EThrowableWeaponFireMode::Upward;
+
+	EThrowableWeaponFireMode PendingFireMode = EThrowableWeaponFireMode::None;
+
+	// 실제 물체가 손에서 떨어지는 시간
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw") float ThrowReleaseDelay = 0.4f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw") float ThrowAnimationDuration = 0.8f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw|Upward") float UpwardThrowStrength = 1600.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw|Upward") float UpwardPitchOffset = 15.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw|Downward") float DownwardThrowStrength = 900.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Throw|Downward") float DownwardPitchOffset = -20.f;
+
+	FTimerHandle ThrowReleaseTimerHandle;
+	FTimerHandle ThrowSequenceTimerHandle;
+
+	FVector PendingThrowDirection = FVector::ForwardVector;
+	bool bThrowInProgress = false;
+
 
 	// UI
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Aim") TSubclassOf<UWeaponAimUIWidget> AimUIWidgetClass;

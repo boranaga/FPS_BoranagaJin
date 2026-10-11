@@ -125,6 +125,11 @@ public:
 	void LoadProjectileData();
 	void SetWeapon(AThrowableWeapon* NewWeapon);
 	void LaunchProjectile(FVector StartPos, FRotator Direction);
+	void LaunchProjectile(
+		const FVector& StartPosition,
+		const FVector& Direction,
+		float LaunchSpeed
+	);
 
 private:
 	UPROPERTY(VisibleAnywhere)

@@ -32,8 +32,6 @@ struct FInventorySlot;
 
 
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnUIWidgetCreated, UBaseUIWidget*, NewUIWidgetPtr);
-
 //DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaInit, float, MaxStamina);
 //DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStaminaUpdated, float, NewStaminaVal);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnStaminaUpdated, float MaxVal, float CurrVal);
@@ -46,7 +44,7 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInteractionUIUpdated, bool bFlag, FVecto
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnInventoryCreated, int32 SlotNum);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnInventorySwapRequested, FName, InventoryName, int32, FromIndex, int32, ToIndex);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnInventorySwapRequested, FName InventoryName, int32 FromIndex, int32 ToIndex);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotDropRequested, FName InventoryName, int32 SlotIndex);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotUseRequested, FName InventoryName, int32 SlotIndex);
 
@@ -56,6 +54,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInv
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryCreated, int32 SlotNum);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponEquipRequested, int32 SlotIdx);
+
+DECLARE_MULTICAST_DELEGATE(FOnThrowableWeaponReleaseNotify);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
@@ -105,6 +105,8 @@ public:
 	float GetCurrentHealth() const;
 	float GetMaxHealth() const;
 
+	void NotifyThrowableWeaponRelease();
+
 #pragma region SaveablePlayerInterface
 public:
 	virtual void WritePlayerSaveData(FPlayerSaveData& OutSaveData) const override;
@@ -112,10 +114,7 @@ public:
 #pragma endregion
 
 public:
-	FOnUIWidgetCreated OnUIWidgetCreatedDelegate;
-	//FOnStaminaInit OnStaminaInit;
 	FOnStaminaUpdated OnStaminaUpdated;
-	//FOnHealthChanged OnHealthChanged;
 
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
 	FOnInteractionUIPopUp OnInteractionUIPopUpDelegate;
@@ -133,6 +132,8 @@ public:
 	FOnThrowableWeaponInventoryCreated OnThrowableWeaponInventoryCreatedDelegate;
 	FOnThrowableWeaponInventoryUpdated OnThrowableWeaponInventoryUpdatedDelegate;
 	FOnThrowableWeaponEquipRequested OnThrowableWeaponEquipRequestedDelegate;
+
+	FOnThrowableWeaponReleaseNotify OnThrowableWeaponReleaseNotify;
 
 	//virtual void GravityLaunchPlayer(const FVector& Direction, float ForceAmount) override;
 

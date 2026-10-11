@@ -3,8 +3,6 @@
 #include "GameFramework/PlayerController.h"
 #include "FPSPlayerController.generated.h"
 
-class UUIManagerComponent;
-
 class UPauseMenuWidget;
 class UGameOverWidget;
 class UHealthWidget;
@@ -23,19 +21,12 @@ class FPS_BORANAGAJIN_API AFPSPlayerController : public APlayerController
 public:
 	AFPSPlayerController();
 protected:
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
-	//UUIManagerComponent* UIManagerComponent;
-
 	UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
 	TArray<UInputMappingContext*> DefaultMappingContexts;
 
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* aPawn) override;
 	virtual void SetupInputComponent() override;
-
-//public:
-	//UUIManagerComponent* GetUIManager() const { return UIManagerComponent; }
-
 public:
 	//void InitUIManager(); //MEMO: Legacy
 	void InitPlayerUISubsystem();

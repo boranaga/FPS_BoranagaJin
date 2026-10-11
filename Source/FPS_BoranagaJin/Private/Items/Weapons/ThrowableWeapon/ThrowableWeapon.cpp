@@ -123,10 +123,13 @@ void AThrowableWeapon::InitUI()
 	if (!CharacterController) { return; }
 	UPlayerUISubsystem* UISubsystem = CharacterController->GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(UISubsystem)) { return; }
+
 	if (AimUIWidgetClass)
 	{
 		AimUIWidget = UISubsystem->CreateAndRegisterWidget(AimUIWidgetClass);
+		AimUIWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
+
 	if (AmmoCounterWidgetClass)
 	{
 		AmmoCounterWidget = UISubsystem->CreateAndRegisterWidget(AmmoCounterWidgetClass);
@@ -135,6 +138,7 @@ void AThrowableWeapon::InitUI()
 			//TODO: ThrowableWeapon 전용 AmmoCounter Widget 만들기
 			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
+			AmmoCounterWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -380,12 +384,6 @@ bool AThrowableWeapon::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 		AttachToComponent(Character->GetArmMesh(), AttachmentRules, WeaponSocketName);
 	}
 
-	//---------------------------------------------
-	// Set Up Widget UI Class
-	ActivateAimUIWidget(true);
-	ActivateAmmoCounterWidget(true);
-	//ActivateTargetingSkillWidget(true);
-
 	return true;
 }
 
@@ -401,6 +399,8 @@ void AThrowableWeapon::DetachItemFromPlayer()
 
 void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)
 {
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)"));
+
 	if (CurrentState == EThrowableWeaponStateType::Reloading)
 	{
 		CancelReload();
@@ -415,6 +415,12 @@ void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)
 	SetState(EThrowableWeaponStateType::Switching);
 
 	AttachItemToPlayer(TargetCharacter);
+
+	//---------------------------------------------
+	// Set Up Widget UI Class
+	ActivateAimUIWidget(true);
+	ActivateAmmoCounterWidget(true);
+
 	//GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter, bEquip]() {EndWeaponSwitch(TargetCharacter, bEquip); }, WeaponSwitchingRate, false);
 	TWeakObjectPtr WeakThis = this;
 	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis, TargetCharacter]()
@@ -431,6 +437,13 @@ void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)
 
 void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 {
+	if (bThrowInProgress)
+	{
+		CancelPendingThrow();
+	}
+	
+	//---------------------------------
+
 	if (CurrentState == EThrowableWeaponStateType::Reloading)
 	{
 		CancelReload();
@@ -453,10 +466,14 @@ void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 
 void AThrowableWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter)
 {
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter) 1"));
+
 	if (!TargetCharacter) { return; }
 
 	SetInputActionBinding();
 	SetState(EThrowableWeaponStateType::Idle);
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter) 2"));
 }
 
 void AThrowableWeapon::OnUnequipEnded(ACharacterPlayer* TargetCharacter)
@@ -488,24 +505,9 @@ void AThrowableWeapon::DetachWeaponFromPlayer()
 void AThrowableWeapon::SetState(EThrowableWeaponStateType NewState)
 {
 	if (CurrentState == NewState) { return; }
+	ExitState(CurrentState);
 	CurrentState = NewState;
-	switch (CurrentState)
-	{
-	case EThrowableWeaponStateType::Idle:
-		break;
-	case EThrowableWeaponStateType::Aiming:
-		break;
-	case EThrowableWeaponStateType::Firing:
-		break;
-	case EThrowableWeaponStateType::Switching:
-		break;
-	case EThrowableWeaponStateType::Reloading:
-		break;
-	case EThrowableWeaponStateType::Unequiped:
-		break;
-	default:
-		break;
-	}
+	EnterState(CurrentState);
 }
 
 void AThrowableWeapon::StartAim()
@@ -518,9 +520,326 @@ void AThrowableWeapon::StopAim()
 	//TODO: Def
 }
 
-void AThrowableWeapon::Throw(const FVector& ThrowDirection)
+void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 {
-	//TODO: Def
+	if (bThrowInProgress)
+	{
+		return;
+	}
+
+	if (BaseThrowDirection.IsNearlyZero())
+	{
+		SetState(EThrowableWeaponStateType::Idle);
+		return;
+	}
+
+	UWorld* World = GetWorld();
+
+	if (!IsValid(World))
+	{
+		SetState(EThrowableWeaponStateType::Idle);
+		return;
+	}
+
+	bThrowInProgress = true;
+
+	// Throw 시작 당시 모드를 확정
+	PendingFireMode = CurrentFireMode;
+
+	// Throw 시작 당시 카메라 방향을 기준으로
+	// 실제 발사 방향까지 확정
+	PendingThrowDirection =
+		CalculateThrowDirection(
+			BaseThrowDirection,
+			PendingFireMode
+		);
+
+	// Throw animation
+	PlayThrowAnimation();
+
+	const float ActualReleaseDelay =
+		FMath::Clamp(
+			ThrowReleaseDelay,
+			0.f,
+			ThrowAnimationDuration
+		);
+
+	if (ActualReleaseDelay <= KINDA_SMALL_NUMBER)
+	{
+		ExecuteThrow();
+	}
+	else
+	{
+		World->GetTimerManager().SetTimer(
+			ThrowReleaseTimerHandle,
+			this,
+			&AThrowableWeapon::ExecuteThrow,
+			ActualReleaseDelay,
+			false
+		);
+	}
+
+	if (ThrowAnimationDuration <= KINDA_SMALL_NUMBER)
+	{
+		FinishThrowSequence();
+	}
+	else
+	{
+		World->GetTimerManager().SetTimer(
+			ThrowSequenceTimerHandle,
+			this,
+			&AThrowableWeapon::FinishThrowSequence,
+			ThrowAnimationDuration,
+			false
+		);
+	}
+}
+
+void AThrowableWeapon::ToggleFireMode()
+{
+	if (bThrowInProgress)
+	{
+		return;
+	}
+
+	if (CurrentState == EThrowableWeaponStateType::Switching ||
+		CurrentState == EThrowableWeaponStateType::Reloading ||
+		CurrentState == EThrowableWeaponStateType::Unequiped)
+	{
+		return;
+	}
+
+	switch (CurrentFireMode)
+	{
+	case EThrowableWeaponFireMode::Upward:
+		SetFireMode(EThrowableWeaponFireMode::Downward);
+		break;
+
+	case EThrowableWeaponFireMode::Downward:
+		SetFireMode(EThrowableWeaponFireMode::Upward);
+		break;
+
+	default:
+		SetFireMode(EThrowableWeaponFireMode::Upward);
+		break;
+	}
+}
+
+void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
+{
+	if (NewFireMode == EThrowableWeaponFireMode::None)
+	{
+		return;
+	}
+
+	if (CurrentFireMode == NewFireMode)
+	{
+		return;
+	}
+
+	CurrentFireMode = NewFireMode;
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Throwable FireMode changed: %s"),
+		*UEnum::GetValueAsString(CurrentFireMode)
+	);
+}
+
+void AThrowableWeapon::ExecuteThrow()
+{
+	if (!bThrowInProgress)
+	{
+		return;
+	}
+
+	if (PendingFireMode == EThrowableWeaponFireMode::None)
+	{
+		return;
+	}
+
+	const float ThrowSpeed = GetThrowStrength(PendingFireMode);
+
+	FireSingleProjectile(&FireData, PendingThrowDirection, ThrowSpeed);
+}
+
+void AThrowableWeapon::FinishThrowSequence()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(
+			ThrowReleaseTimerHandle
+		);
+
+		World->GetTimerManager().ClearTimer(
+			ThrowSequenceTimerHandle
+		);
+	}
+
+	bThrowInProgress = false;
+
+	PendingThrowDirection =
+		FVector::ForwardVector;
+
+	PendingFireMode =
+		EThrowableWeaponFireMode::None;
+
+	if (CurrentState ==
+		EThrowableWeaponStateType::Firing)
+	{
+		SetState(
+			EThrowableWeaponStateType::Idle
+		);
+	}
+}
+
+void AThrowableWeapon::PlayThrowAnimation()
+{
+	if (!IsValid(CharacterAnimInstance))
+	{
+		return;
+	}
+
+	UAnimMontage* ThrowMontage =
+		GetThrowMontage();
+
+	if (!IsValid(ThrowMontage))
+	{
+		return;
+	}
+
+	const float PlayRate =
+		CalculateThrowAnimationPlayRate(
+			ThrowMontage
+		);
+
+	CharacterAnimInstance->Montage_Play(
+		ThrowMontage,
+		PlayRate
+	);
+}
+
+void AThrowableWeapon::CancelPendingThrow()
+{
+	UWorld* World = GetWorld();
+
+	if (IsValid(World))
+	{
+		World->GetTimerManager().ClearTimer(
+			ThrowReleaseTimerHandle
+		);
+
+		World->GetTimerManager().ClearTimer(
+			ThrowSequenceTimerHandle
+		);
+	}
+
+	UAnimMontage* ThrowMontage =
+		GetThrowMontage();
+
+	if (IsValid(CharacterAnimInstance) &&
+		IsValid(ThrowMontage))
+	{
+		CharacterAnimInstance->Montage_Stop(
+			0.1f,
+			ThrowMontage
+		);
+	}
+
+	bThrowInProgress = false;
+
+	PendingThrowDirection =
+		FVector::ForwardVector;
+
+	PendingFireMode =
+		EThrowableWeaponFireMode::None;
+}
+
+UAnimMontage* AThrowableWeapon::GetThrowMontage() const
+{
+	switch (PendingFireMode)
+	{
+	case EThrowableWeaponFireMode::Upward:
+		return AM_Throw_Up_Character;
+
+	case EThrowableWeaponFireMode::Downward:
+		return AM_Throw_Down_Character;
+
+	default:
+		return nullptr;
+	}
+}
+
+float AThrowableWeapon::CalculateThrowAnimationPlayRate(
+	UAnimMontage* Montage) const
+{
+	if (!IsValid(Montage))
+	{
+		return 1.f;
+	}
+
+	if (ThrowAnimationDuration <= KINDA_SMALL_NUMBER)
+	{
+		return 1.f;
+	}
+
+	const float OriginalDuration =
+		Montage->GetPlayLength();
+
+	if (OriginalDuration <= KINDA_SMALL_NUMBER)
+	{
+		return 1.f;
+	}
+
+	return
+		OriginalDuration /
+		ThrowAnimationDuration;
+}
+
+FVector AThrowableWeapon::CalculateThrowDirection(const FVector& BaseDirection, EThrowableWeaponFireMode FireMode) const
+{
+	if (BaseDirection.IsNearlyZero())
+	{
+		return FVector::ForwardVector;
+	}
+
+	FRotator ThrowRotation =
+		BaseDirection.GetSafeNormal().Rotation();
+
+	switch (FireMode)
+	{
+	case EThrowableWeaponFireMode::Upward:
+
+		ThrowRotation.Pitch += UpwardPitchOffset;
+		break;
+
+	case EThrowableWeaponFireMode::Downward:
+
+		ThrowRotation.Pitch += DownwardPitchOffset;
+		break;
+
+	default:
+
+		break;
+	}
+
+	return ThrowRotation.Vector().GetSafeNormal();
+}
+
+float AThrowableWeapon::GetThrowStrength(EThrowableWeaponFireMode FireMode) const
+{
+	switch (FireMode)
+	{
+	case EThrowableWeaponFireMode::Upward:
+		return UpwardThrowStrength;
+
+	case EThrowableWeaponFireMode::Downward:
+		return DownwardThrowStrength;
+
+	default:
+		return UpwardThrowStrength;
+	}
 }
 
 void AThrowableWeapon::SetInputActionBinding()
@@ -592,6 +911,23 @@ void AThrowableWeapon::SetInputActionBinding()
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightChargeAction, ETriggerEvent::Triggered, this, &AThrowableWeapon::StartCharge));
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightChargeAction, ETriggerEvent::Completed, this, &AThrowableWeapon::StopCharge));
 				}
+
+				//-------------------------------
+				//MEMO: Fire Mode Sitch 임시
+
+				if (SwitchFireModeAction)
+				{
+					InputActionBindingHandles.Add(
+						&EnhancedInputComponent->BindAction(
+							SwitchFireModeAction,
+							ETriggerEvent::Started,
+							this,
+							&AThrowableWeapon::ToggleFireMode
+						)
+					);
+				}
+
+
 			}
 		}
 	}
@@ -713,7 +1049,9 @@ void AThrowableWeapon::ActivateAimUIWidget(bool bFlag)
 	{
 		if (AimUIWidget)
 		{
-			AimUIWidget->AddToViewport();
+			UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::ActivateAimUIWidget(bool bFlag): AimUIWidget"));
+
+			AimUIWidget->SetVisibility(ESlateVisibility::Visible);
 			AimUIWidget->ResetAimUISize();
 		}
 	}
@@ -721,7 +1059,7 @@ void AThrowableWeapon::ActivateAimUIWidget(bool bFlag)
 	{
 		if (AimUIWidget)
 		{
-			AimUIWidget->RemoveFromViewport();
+			AimUIWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -733,14 +1071,14 @@ void AThrowableWeapon::ActivateAmmoCounterWidget(bool bFlag)
 	{
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->AddToViewport();
+			AmmoCounterWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
 	else
 	{
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->RemoveFromViewport();
+			AmmoCounterWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -886,13 +1224,107 @@ void AThrowableWeapon::ResetThrowable()
 
 void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireData, int32 NumPenetrable, float AdditionalDamage)
 {
-	if (CurrentState == EThrowableWeaponStateType::Unequiped) return;
-	if (!InFireData) return;
-	if (!Character) return;
-	if (Character->GetController() == nullptr) return;
+	//// <Old>
 
-	const auto* Cam = Character->GetCameraComponent();
-	if (!Cam) return;
+	//if (CurrentState == EThrowableWeaponStateType::Unequiped) return;
+	//if (!InFireData) return;
+	//if (!Character) return;
+	//if (Character->GetController() == nullptr) return;
+
+	//const auto* Cam = Character->GetCameraComponent();
+	//if (!Cam) return;
+
+	//if (InFireData->AmmoCost > 0)
+	//{
+	//	if (!HasAmmo(InFireData->AmmoCost))
+	//	{
+	//		return;
+	//	}
+	//	ConsumeAmmo(InFireData->AmmoCost);
+	//}
+
+	//FVector ProjectileStartLocation = Cam->GetComponentLocation();
+	//FVector ProjectileDirection = Cam->GetForwardVector();
+
+	//if (InFireData->ProjectileClass != nullptr)
+	//{
+	//	const FVector SpawnLocation = ProjectileStartLocation;
+	//	FVector MuzzleLocation;
+	//	if (MuzzlePoint)
+	//	{
+	//		MuzzleLocation = MuzzlePoint->GetComponentLocation();
+	//	}
+	//	else
+	//	{
+	//		return;
+	//	}
+
+	//	const FRotator SpawnRotation = ProjectileDirection.Rotation();
+
+	//	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
+	//	if (PoolSubsystem == nullptr) { return; }
+	//	AThrowableWeaponProjectile* NewProjectile = nullptr;
+	//	NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
+	//	NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
+
+	//	NewProjectile->InitProjectileMovement(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
+
+
+	//	if (bWeaponAssetsReady)
+	//	{
+	//		//TODO: SpawnRotation 정상화
+	//		if (InFireData->MuzzleFireEffect)
+	//		{
+	//			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+	//				GetWorld(),
+	//				InFireData->MuzzleFireEffect,
+	//				MuzzleLocation,
+	//				SpawnRotation,
+	//				FVector(1.0f),
+	//				true, true, ENCPoolMethod::AutoRelease);
+	//		}
+	//	}
+	//}
+
+	//ReportFiringSoundToAI();
+	//if (InFireData->FireSound) //TODO: SoundSystem에 통합시키기
+	//{
+	//	UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
+	//}
+
+	//StartFireAnimation(AM_Throw_Up_Character);
+
+	//// <CamShake>
+	//ApplyCameraShake(InFireData->CamShake);
+	// 
+	//------------------------------------------------------
+
+
+
+
+}
+
+void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireData, const FVector& ThrowDirection, float ThrowSpeed, int32 NumPenetrable, float AdditionalDamage)
+{
+	if (!InFireData)
+	{
+		return;
+	}
+
+	if (!IsValid(Character))
+	{
+		return;
+	}
+
+	if (!InFireData->ProjectileClass)
+	{
+		return;
+	}
+
+	if (!IsValid(MuzzlePoint))
+	{
+		return;
+	}
 
 	if (InFireData->AmmoCost > 0)
 	{
@@ -900,62 +1332,101 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 		{
 			return;
 		}
+
 		ConsumeAmmo(InFireData->AmmoCost);
 	}
 
-	FVector ProjectileStartLocation = Cam->GetComponentLocation();
-	FVector ProjectileDirection = Cam->GetForwardVector();
+	UWorld* World = GetWorld();
 
-	if (InFireData->ProjectileClass != nullptr)
+	if (!IsValid(World))
 	{
-		const FVector SpawnLocation = ProjectileStartLocation;
-		FVector MuzzleLocation;
-		if (MuzzlePoint)
-		{
-			MuzzleLocation = MuzzlePoint->GetComponentLocation();
-		}
-		else
-		{
-			return;
-		}
-
-		const FRotator SpawnRotation = ProjectileDirection.Rotation();
-
-		UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
-		if (PoolSubsystem == nullptr) { return; }
-		AThrowableWeaponProjectile* NewProjectile = nullptr;
-		NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
-		NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
-
-		NewProjectile->InitProjectileMovement(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
-
-
-		if (bWeaponAssetsReady)
-		{
-			//TODO: SpawnRotation 정상화
-			if (InFireData->MuzzleFireEffect)
-			{
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-					GetWorld(),
-					InFireData->MuzzleFireEffect,
-					MuzzleLocation,
-					SpawnRotation,
-					FVector(1.0f),
-					true, true, ENCPoolMethod::AutoRelease);
-			}
-		}
+		return;
 	}
+
+	UObjectPoolSubsystem* PoolSubsystem =
+		World->GetSubsystem<UObjectPoolSubsystem>();
+
+	if (!IsValid(PoolSubsystem))
+	{
+		return;
+	}
+
+	const FVector SpawnLocation =
+		MuzzlePoint->GetComponentLocation();
+
+	const FVector NormalizedDirection =
+		ThrowDirection.GetSafeNormal();
+
+	const FRotator SpawnRotation =
+		NormalizedDirection.Rotation();
+
+	AThrowableWeaponProjectile* NewProjectile =
+		PoolSubsystem->SpawnFromPool(
+			InFireData->ProjectileClass,
+			SpawnLocation,
+			SpawnRotation
+		);
+
+	if (!IsValid(NewProjectile))
+	{
+		return;
+	}
+
+	NewProjectile->InitProjectile(
+		Character,
+		this,
+		AdditionalDamage,
+		NumPenetrable,
+		false
+	);
+
+	NewProjectile->LaunchProjectile(
+		SpawnLocation,
+		NormalizedDirection,
+		ThrowSpeed
+	);
+
+	// ---------------------------------------------------------
+	// Effect
+	// ---------------------------------------------------------
+
+	if (bWeaponAssetsReady &&
+		InFireData->MuzzleFireEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			World,
+			InFireData->MuzzleFireEffect,
+			SpawnLocation,
+			SpawnRotation,
+			FVector::OneVector,
+			true,
+			true,
+			ENCPoolMethod::AutoRelease
+		);
+	}
+
+	// ---------------------------------------------------------
+	// Sound
+	// ---------------------------------------------------------
 
 	ReportFiringSoundToAI();
-	if (InFireData->FireSound) //TODO: SoundSystem에 통합시키기
+
+	if (InFireData->FireSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
+		UGameplayStatics::PlaySoundAtLocation(
+			this,
+			InFireData->FireSound,
+			SpawnLocation
+		);
 	}
 
-	StartFireAnimation(AM_Fire_Character);
+	// ---------------------------------------------------------
+	// Camera
+	// ---------------------------------------------------------
 
-	// <CamShake>
-	ApplyCameraShake(InFireData->CamShake);
+	ApplyCameraShake(
+		InFireData->CamShake
+	);
 }
 
 void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData, int32 NumPenetrable, float AdditionalDamage)
@@ -1025,9 +1496,9 @@ void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData,
 		UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
 	}
 
-	if (AM_Fire_Character)
+	if (AM_Throw_Up_Character)
 	{
-		StartFireAnimation(AM_Fire_Character);
+		StartFireAnimation(AM_Throw_Up_Character);
 	}
 
 	// <CamShake>
@@ -1038,8 +1509,49 @@ void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)
 {
 	if (CurrentState == EThrowableWeaponStateType::Idle)
 	{
+		// <Old>
+		//SetState(EThrowableWeaponStateType::Firing);
+		//StartSingleShot(NumPenetrable);
+
+
+		//UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)"));
+
+
+		//--------------------------
+
+		if (bThrowInProgress)
+		{
+			return;
+		}
+
+		if (CurrentState != EThrowableWeaponStateType::Idle &&
+			CurrentState != EThrowableWeaponStateType::Aiming)
+		{
+			return;
+		}
+
+		if (!IsValid(Character))
+		{
+			return;
+		}
+
+		if (!HasAmmo(FireData.AmmoCost))
+		{
+			return;
+		}
+
+		UCameraComponent* Camera = Character->GetCameraComponent();
+
+		if (!IsValid(Camera))
+		{
+			return;
+		}
+
 		SetState(EThrowableWeaponStateType::Firing);
-		StartSingleShot(NumPenetrable);
+
+		const FVector BaseThrowDirection = Camera->GetForwardVector();
+
+		Throw(BaseThrowDirection);
 	}
 }
 

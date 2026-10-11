@@ -45,9 +45,13 @@ void UInventorySystemComponent::BeginPlay()
 
 	InitInventory();
 
-	PlayerOwner->OnInventorySwapRequestedDelegate.AddDynamic(this, &UInventorySystemComponent::SwapItemInventorySlots);
+	PlayerOwner->OnInventorySwapRequestedDelegate.AddUObject(this, &UInventorySystemComponent::SwapItemInventorySlots);
 	PlayerOwner->OnInventorySlotDropRequestedDelegate.AddUObject(this, &UInventorySystemComponent::DropItemInventorySlot);
 	PlayerOwner->OnInventorySlotUseRequestedDelegate.AddUObject(this, &UInventorySystemComponent::UseItemInventorySlot);
+
+	PlayerOwner->OnThrowableWeaponEquipRequestedDelegate.AddUObject(this, &UInventorySystemComponent::EquipThrowableWeapon);
+
+	//PlayerOwner->OnThrowableWeaponReleaseNotify.AddUObject(this, &UInventorySystemComponent::HandleThrowableWeaponReleaseNotify);
 }
 
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -548,6 +552,7 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 		if (!CurrWeapon)
 		{
 			CurrWeapon = NewWeapon;
+			CurrItem = CurrWeapon;
 			if (CurrFlashLightItem && bIsUsingFlashLightItem)
 			{
 				return true;
@@ -814,7 +819,11 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		// TODO: GetItem(0)이 아니라 더 깔끔한 방식이 필요함
 		AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[SlotIndex].GetItem(0));
 		Weapon->UnequipWeapon_Legacy(PlayerOwner);
-		if (Weapon == CurrWeapon) { CurrWeapon = nullptr; }
+		if (Weapon == CurrWeapon) 
+		{ 
+			CurrWeapon = nullptr; 
+			CurrItem = nullptr;
+		}
 
 		WeaponInventory[SlotIndex].GetItem(0)->DeactivateItemAndGetItemPickUp();
 
@@ -1320,6 +1329,7 @@ void UInventorySystemComponent::SwitchToNextItem()
 	if (NextItem->IsWeapon())
 	{
 		CurrWeapon = Cast<AWeapon>(NextItem);
+		CurrItem = CurrWeapon;
 	}
 	else
 	{
@@ -1422,6 +1432,30 @@ void UInventorySystemComponent::ChangeThrowableWeapon(int32 WeaponIndex)
 		}
 	}
 }
+void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
+{
+	UE_LOG(LogTemp, Error, TEXT("void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)"));
+
+	if (!ThrowableWeaponInventory.IsValidIndex(WeaponIdx)) return;
+
+	if (CurrFlashLightItem)
+	{
+		bIsUsingFlashLightItem = false;
+	}
+
+	if (ThrowableWeaponInventory[WeaponIdx].IsEmpty()) return;
+
+	NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem(0);
+
+	if (CurrItem)
+	{
+		CurrItem->Unequip(PlayerOwner);
+	}
+	else
+	{
+		NextItem->Equip(PlayerOwner);
+	}
+}
 #pragma endregion
 
 #pragma region Control
@@ -1487,7 +1521,7 @@ void UInventorySystemComponent::ToggleFlashLight()
 		{
 			NextItem = CurrWeapon;
 			CurrFlashLightItem->Unequip(PlayerOwner);
-			bIsUsingFlashLightItem = false;
+			bIsUsingFlashLightItem = false; //TODO: Item->Unequip 하면 자동으로 bIsUsingFlashLightItem = false가 되어야함
 		}
 		else
 		{

@@ -11,19 +11,4 @@ class FPS_BORANAGAJIN_API AGrenade : public AThrowableWeapon
 
 public:
 	AGrenade();
-
-protected:
-	virtual void ActivateThrowable() override;
-
-	void Explode();
-
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grenade")
-	float ExplosionDamage = 100.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grenade")
-	float ExplosionRadius = 400.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grenade")
-	float DamageFalloff = 1.f;
 };

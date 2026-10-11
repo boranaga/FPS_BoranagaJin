@@ -13,7 +13,6 @@
 #include "GameModes/DefaultGameMode.h"
 #include "Instance/DefaultGameInstance.h"
 #include "Data/PlayerSoundData.h"
-#include "UI/UIManagerComponent.h"
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -281,6 +280,11 @@ float ACharacterPlayer::GetCurrentHealth() const
 float ACharacterPlayer::GetMaxHealth() const
 {
 	return HealthComponent ? HealthComponent->GetMaxHealth() : 0.f;
+}
+
+void ACharacterPlayer::NotifyThrowableWeaponRelease()
+{
+	OnThrowableWeaponReleaseNotify.Broadcast();
 }
 
 void ACharacterPlayer::WritePlayerSaveData(FPlayerSaveData& OutSaveData) const

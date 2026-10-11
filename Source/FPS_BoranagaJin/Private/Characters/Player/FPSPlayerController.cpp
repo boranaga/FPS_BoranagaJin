@@ -5,7 +5,6 @@
 
 #include "Characters/Player/CharacterPlayer.h"
 
-#include "UI/UIManagerComponent.h"
 #include "UI/PauseMenuWidget.h"
 #include "UI/GameOverWidget.h"
 #include "UI/HealthWidget.h"
@@ -27,9 +26,6 @@ AFPSPlayerController::AFPSPlayerController()
 {
 	// set the player camera manager class
 	PlayerCameraManagerClass = AFPS_BoranagaJinCameraManager::StaticClass();
-
-	// TODO: SubSystem으로 통합해야함
-	//UIManagerComponent = CreateDefaultSubobject<UUIManagerComponent>(TEXT("UIManagerComponent"));
 }
 
 void AFPSPlayerController::BeginPlay()
@@ -114,25 +110,6 @@ void AFPSPlayerController::SetupInputComponent()
 
 }
 
-//void AFPSPlayerController::InitUIManager()
-//{
-//
-//	//if (UIManagerComponent) UIManagerComponent->InitUIManagerComponent();
-//
-//	//------------------------------
-//	////TODO: <임시>
-//
-//	//ULocalPlayer* LocalPlayer = GetLocalPlayer();
-//	//if (!IsValid(LocalPlayer)) { return; }
-//	//UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
-//	//if (!IsValid(PlayerUISubsystem)) { return; }
-//
-//	//PlayerUISubsystem->InitThrowableWeaponInventoryUI(ThrowableWeaponInventoryWidgetClass);
-//
-//	//CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
-//    //CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddDynamic(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
-//}
-
 void AFPSPlayerController::InitPlayerUISubsystem()
 {
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
@@ -167,14 +144,6 @@ void AFPSPlayerController::HandlePauseInput()
 
 void AFPSPlayerController::OpenInventory()
 {
-	//if (!PlayerDisplayWidget) return;
-	//PlayerDisplayWidget->SetVisibility(ESlateVisibility::Visible);
-	//PlayerDisplayWidget->OpenInventory();
-	//bIsInventoryOpened = true;
-
-
-	//--------------------
-
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	if (!IsValid(LocalPlayer)) { return; }
 	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
@@ -186,13 +155,6 @@ void AFPSPlayerController::OpenInventory()
 
 void AFPSPlayerController::CloseInventory()
 {
-	//if (!PlayerDisplayWidget) return;
-	//PlayerDisplayWidget->SetVisibility(ESlateVisibility::Hidden);
-	//PlayerDisplayWidget->CloseInventory();
-	//bIsInventoryOpened = false;
-
-	//---------------------------
-
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	if (!IsValid(LocalPlayer)) { return; }
 	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
