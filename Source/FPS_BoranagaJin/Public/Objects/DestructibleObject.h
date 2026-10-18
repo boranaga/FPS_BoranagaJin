@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Objects/DestructionMeshType.h"
 #include "Interface/DamageInterface.h"
 #include "Interface/SaveableActorInterface.h"
 #include "DestructibleObject.generated.h"
@@ -12,6 +13,7 @@ class UStaticMeshComponent;
 class UNiagaraComponent;
 class UNiagaraSystem;
 class USoundBase;
+class UGeometryCollectionComponent;
 
 UCLASS()
 class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageableInterface, public ISaveableActorInterface
@@ -165,5 +167,31 @@ protected:
 	protected:
 		UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 		UFireAreaComponent* FireAreaComponent;
+
+//---------------------------------------
+protected:
+	void BreakStaticMesh(const FVector& HitLocation, const FVector& HitDirection);
+	void BreakGeometryCollection(const FVector& HitLocation, const FVector& HitDirection);
+
+	//void ResetGeometryCollection();
+	//void ApplyDestructionVisualState(bool bApplyPhysics);
+
+	//UFUNCTION(BlueprintCallable, Category = "Destruction")
+	//virtual void RestoreDestructibleObject();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
+	TObjectPtr<UGeometryCollectionComponent> FracturedMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
+	EDestructionMeshType DestructionMeshType = EDestructionMeshType::StaticMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos", meta = (EditCondition = "DestructionMeshType == EDestructionMeshType::GeometryCollection", EditConditionHides, ClampMin = "0.0"))
+	float FractureDamageRadius = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos", meta = (EditCondition = "DestructionMeshType == EDestructionMeshType::GeometryCollection", EditConditionHides, ClampMin = "0.0"))
+	float FractureStrain = 500000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos", meta = (EditCondition = "DestructionMeshType == EDestructionMeshType::GeometryCollection", EditConditionHides, ClampMin = "0.0"))
+	float FractureImpulseStrength = 1500.f;
 
 };
