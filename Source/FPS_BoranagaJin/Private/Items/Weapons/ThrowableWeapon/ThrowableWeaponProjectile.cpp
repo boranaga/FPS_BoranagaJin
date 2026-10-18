@@ -23,10 +23,9 @@ AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 	CollisionComp->SetCollisionProfileName("PlayerProjectile");
 	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel3);
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); //Projectile
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //ClimbWall
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore); //Weapon
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //Player
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore); //Weapon
 	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
 
@@ -137,6 +136,9 @@ void AThrowableWeaponProjectile::InitProjectile(AActor* OwnerOfProjectile, AThro
 	SetActorHiddenInGame(false);
 	//SetActorEnableCollision(true);
 	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	//CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
+
 	SetActorTickEnabled(true);
 
 	if (IsValid(OwnerWeapon)) { ThrowableWeapon = OwnerWeapon; }
@@ -287,10 +289,14 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 
 	ProjectileMovement->StopMovementImmediately();
 
-	ProjectileMovement->Velocity =
-		NormalizedDirection * LaunchSpeed;
+	ProjectileMovement->Velocity = NormalizedDirection * LaunchSpeed;
 
 	ProjectileMovement->Activate(true);
+
+
+	UE_LOG(LogTemp, Error, TEXT("Projectile InitialSpeed: %f"), ProjectileMovement->InitialSpeed);
+	UE_LOG(LogTemp, Error, TEXT("Projectile MaxSpeed: %f"), ProjectileMovement->MaxSpeed);
+	UE_LOG(LogTemp, Error, TEXT("Projectile Velocity: %f"), LaunchSpeed);
 }
 
 void AThrowableWeaponProjectile::StartLifeTimer(float Seconds)
@@ -379,6 +385,9 @@ bool AThrowableWeaponProjectile::SearchOverlappedActor(FVector CenterLocation, f
 
 void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)"));
+
 	if (NumPenetrableObjects > 0)
 	{
 		SpawnImpactEffect(Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
@@ -977,7 +986,7 @@ void AThrowableWeaponProjectile::CheckAndDeactivateIfStuck()
 
 		if (StuckCount > MaxStuckCount)
 		{
-			//UE_LOG(LogTemp, Error, TEXT("Projectile is Stuck!!!"));
+			UE_LOG(LogTemp, Error, TEXT("Projectile is Stuck!!!"));
 			DeactivateProjectile();
 		}
 		else
@@ -1006,33 +1015,144 @@ void AThrowableWeaponProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
 
 void AThrowableWeaponProjectile::OnActivateFromPool()
 {
-	bIsActiveInPool = true;
+	//bIsActiveInPool = true;
 
-	//--------------------
+	////--------------------
+
+	//SetActorHiddenInGame(false);
+	//SetActorTickEnabled(true);
+
+	//-----------------
+
+	bIsActiveInPool = true;
 
 	SetActorHiddenInGame(false);
 	SetActorTickEnabled(true);
-}
 
-void AThrowableWeaponProjectile::OnDeactivateToPool()
-{
-	bIsActiveInPool = false;
+	// ------------------------------------------------
+	// Collision 복구
+	// ------------------------------------------------
 
-	//-----------------------------
-
-	if (ProjectileMovement)
+	if (CollisionComp)
 	{
-		ProjectileMovement->StopMovementImmediately();
+		CollisionComp->SetCollisionEnabled(
+			ECollisionEnabled::QueryOnly
+		);
+	}
+
+	// ------------------------------------------------
+	// ProjectileMovement 복구
+	// ------------------------------------------------
+
+	if (ProjectileMovement && CollisionComp)
+	{
 		ProjectileMovement->Deactivate();
+
+		ProjectileMovement->StopMovementImmediately();
+
+		// StopSimulating()에 의해 nullptr이 되었을 수 있음
+		ProjectileMovement->SetUpdatedComponent(CollisionComp);
+
+		ProjectileMovement->bSimulationEnabled = true;
 
 		ProjectileMovement->Velocity =
 			FVector::ZeroVector;
 	}
 
+	// ------------------------------------------------
+	// 이전 발사의 Runtime 상태 초기화
+	// ------------------------------------------------
+
+	bIsActivated = false;
+
+	CurrentRicochetCount = 0;
+
+	NumPenetratedObjects = 0;
+
+	StuckCount = 0;
+
+	PrevProjectileLoc = GetActorLocation();
+
+	DistanceMoved = 0.f;
+
+	bIsHitScan = false;
+
+	bActivatedMeshMovementForHitScan = false;
+
+	HitScanEndPoints.Reset();
+
+	CurrEndPointIdx = 0;
+
+	MovementDirection = FVector::ZeroVector;
+}
+
+void AThrowableWeaponProjectile::OnDeactivateToPool()
+{
+	//bIsActiveInPool = false;
+
+	////-----------------------------
+
+	//if (ProjectileMovement)
+	//{
+	//	ProjectileMovement->StopMovementImmediately();
+	//	ProjectileMovement->Deactivate();
+
+	//	ProjectileMovement->Velocity =
+	//		FVector::ZeroVector;
+	//}
+
+	//StopLifeTimer();
+
+	//SetActorHiddenInGame(true);
+	//SetActorTickEnabled(false);
+
+	//if (CollisionComp)
+	//{
+	//	CollisionComp->SetCollisionEnabled(
+	//		ECollisionEnabled::NoCollision
+	//	);
+	//}
+
+
+	//--------------------
+
+	bIsActiveInPool = false;
+	bIsActivated = false;
+
+	// ------------------------------------------------
+	// Movement
+	// ------------------------------------------------
+
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->StopMovementImmediately();
+
+		ProjectileMovement->Velocity =
+			FVector::ZeroVector;
+
+		ProjectileMovement->Deactivate();
+	}
+
+	// ------------------------------------------------
+	// Timer
+	// ------------------------------------------------
+
 	StopLifeTimer();
 
-	SetActorHiddenInGame(true);
-	SetActorTickEnabled(false);
+	// ------------------------------------------------
+	// Trail
+	// ------------------------------------------------
+
+	if (TrailEffectComponent)
+	{
+		TrailEffectComponent->Deactivate();
+		TrailEffectComponent->DestroyComponent();
+		TrailEffectComponent = nullptr;
+	}
+
+	// ------------------------------------------------
+	// Collision
+	// ------------------------------------------------
 
 	if (CollisionComp)
 	{
@@ -1040,6 +1160,35 @@ void AThrowableWeaponProjectile::OnDeactivateToPool()
 			ECollisionEnabled::NoCollision
 		);
 	}
+
+	// ------------------------------------------------
+	// Runtime state
+	// ------------------------------------------------
+
+	CurrentRicochetCount = 0;
+
+	NumPenetratedObjects = 0;
+
+	StuckCount = 0;
+
+	PrevProjectileLoc = FVector::ZeroVector;
+
+	DistanceMoved = 0.f;
+
+	HitScanEndPoints.Reset();
+
+	CurrEndPointIdx = 0;
+
+	MovementDirection = FVector::ZeroVector;
+
+	AdditionalDamage = 0.f;
+
+	// ------------------------------------------------
+	// Actor
+	// ------------------------------------------------
+
+	SetActorHiddenInGame(true);
+	SetActorTickEnabled(false);
 }
 
 bool AThrowableWeaponProjectile::IsActiveInPool() const

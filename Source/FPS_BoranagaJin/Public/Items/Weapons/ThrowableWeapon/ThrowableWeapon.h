@@ -124,7 +124,7 @@ public:
 	void ToggleFireMode();
 	void SetFireMode(EThrowableWeaponFireMode NewFireMode);
     EThrowableWeaponFireMode GetFireMode() const { return CurrentFireMode; }
-	bool IsThrowInProgress() const { return bThrowInProgress; }
+	//bool IsThrowInProgress() const { return bThrowInProgress; }
 protected:
 	void ExecuteThrow();
 	void FinishThrowSequence();
@@ -139,13 +139,7 @@ protected:
 protected:
 	// Fire handling
 	void FireSingleProjectile(FThrowableWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
-	void FireSingleProjectile(
-		FThrowableWeaponFireParams* InFireData,
-		const FVector& ThrowDirection,
-		float ThrowSpeed,
-		int32 NumPenetrable = 0,
-		float AdditionalDamage = 0.f
-	);
+	void FireSingleProjectile(FThrowableWeaponFireParams* InFireData, const FVector& ThrowDirection, float ThrowSpeed, int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
 
 	void FireSingleHitScan(FThrowableWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
 	void HandleSingleFire(int32 NumPenetrable = 0);
@@ -155,6 +149,8 @@ protected:
 	void StartBurstFire(int32 NumPenetrable = 0, float AdditionalDamage = 0.f);
 	void StopBurstFire();
 	void EndBurstShot();
+
+	void PrepareToFire();
 
 	// Charge handling
 	void StartCharge();
@@ -206,6 +202,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable") EThrowableWeaponName ThrowableWeaponName = EThrowableWeaponName::ThrowableWeaponName_Base;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action") EWeaponAction LeftMouseAction;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action") EWeaponAction RightMouseAction;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action") EWeaponAction R_SwitchFireModeAction;
 
 	// Controller
 	UPROPERTY()
@@ -221,7 +218,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* RightHoldAction = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* LeftChargeAction = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* RightChargeAction = nullptr;
-
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* LeftSwitchFireModeAction = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* RightSwitchFireModeAction = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true")) UInputAction* SwitchFireModeAction = nullptr;
 	TArray<FInputBindingHandle*> InputActionBindingHandles;
 
@@ -305,7 +303,7 @@ protected:
 	FTimerHandle ThrowSequenceTimerHandle;
 
 	FVector PendingThrowDirection = FVector::ForwardVector;
-	bool bThrowInProgress = false;
+	//bool bThrowInProgress = false;
 
 
 	// UI

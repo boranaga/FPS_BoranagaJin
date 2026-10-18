@@ -418,7 +418,7 @@ void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)
 
 	//---------------------------------------------
 	// Set Up Widget UI Class
-	ActivateAimUIWidget(true);
+	ActivateAimUIWidget(false);
 	ActivateAmmoCounterWidget(true);
 
 	//GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter, bEquip]() {EndWeaponSwitch(TargetCharacter, bEquip); }, WeaponSwitchingRate, false);
@@ -437,10 +437,10 @@ void AThrowableWeapon::Equip(ACharacterPlayer* TargetCharacter)
 
 void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 {
-	if (bThrowInProgress)
-	{
-		CancelPendingThrow();
-	}
+	//if (bThrowInProgress)
+	//{
+	//	CancelPendingThrow();
+	//}
 	
 	//---------------------------------
 
@@ -450,6 +450,8 @@ void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 	}
 	else if (CurrentState == EThrowableWeaponStateType::Firing)
 	{
+		CancelPendingThrow();
+
 		BurstShotFired = 0;
 		GetWorld()->GetTimerManager().ClearTimer(SingleShotTimer);
 		GetWorld()->GetTimerManager().ClearTimer(BurstShotTimer);
@@ -522,10 +524,11 @@ void AThrowableWeapon::StopAim()
 
 void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 {
-	if (bThrowInProgress)
-	{
-		return;
-	}
+	//if (CurrentState == EThrowableWeaponStateType::Firing)
+	//{
+	//	return;
+	//}
+
 
 	if (BaseThrowDirection.IsNearlyZero())
 	{
@@ -541,28 +544,19 @@ void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 		return;
 	}
 
-	bThrowInProgress = true;
+	//bThrowInProgress = true;
 
 	// Throw 시작 당시 모드를 확정
 	PendingFireMode = CurrentFireMode;
 
 	// Throw 시작 당시 카메라 방향을 기준으로
 	// 실제 발사 방향까지 확정
-	PendingThrowDirection =
-		CalculateThrowDirection(
-			BaseThrowDirection,
-			PendingFireMode
-		);
+	PendingThrowDirection = CalculateThrowDirection(BaseThrowDirection, PendingFireMode);
 
 	// Throw animation
 	PlayThrowAnimation();
 
-	const float ActualReleaseDelay =
-		FMath::Clamp(
-			ThrowReleaseDelay,
-			0.f,
-			ThrowAnimationDuration
-		);
+	const float ActualReleaseDelay = FMath::Clamp(ThrowReleaseDelay, 0.f, ThrowAnimationDuration);
 
 	if (ActualReleaseDelay <= KINDA_SMALL_NUMBER)
 	{
@@ -593,11 +587,13 @@ void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 			false
 		);
 	}
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)"));
 }
 
 void AThrowableWeapon::ToggleFireMode()
 {
-	if (bThrowInProgress)
+	if (CurrentState == EThrowableWeaponStateType::Firing)
 	{
 		return;
 	}
@@ -613,10 +609,14 @@ void AThrowableWeapon::ToggleFireMode()
 	{
 	case EThrowableWeaponFireMode::Upward:
 		SetFireMode(EThrowableWeaponFireMode::Downward);
+
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::ToggleFireMode() -> Downward"));
 		break;
 
 	case EThrowableWeaponFireMode::Downward:
 		SetFireMode(EThrowableWeaponFireMode::Upward);
+
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::ToggleFireMode() -> Upward"));
 		break;
 
 	default:
@@ -649,10 +649,10 @@ void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
 
 void AThrowableWeapon::ExecuteThrow()
 {
-	if (!bThrowInProgress)
-	{
-		return;
-	}
+	//if (!bThrowInProgress)
+	//{
+	//	return;
+	//}
 
 	if (PendingFireMode == EThrowableWeaponFireMode::None)
 	{
@@ -677,20 +677,14 @@ void AThrowableWeapon::FinishThrowSequence()
 		);
 	}
 
-	bThrowInProgress = false;
+	//bThrowInProgress = false;
 
-	PendingThrowDirection =
-		FVector::ForwardVector;
+	PendingThrowDirection = FVector::ForwardVector;
+	PendingFireMode = EThrowableWeaponFireMode::None;
 
-	PendingFireMode =
-		EThrowableWeaponFireMode::None;
-
-	if (CurrentState ==
-		EThrowableWeaponStateType::Firing)
+	if (CurrentState == EThrowableWeaponStateType::Firing)
 	{
-		SetState(
-			EThrowableWeaponStateType::Idle
-		);
+		SetState(EThrowableWeaponStateType::Idle);
 	}
 }
 
@@ -747,7 +741,7 @@ void AThrowableWeapon::CancelPendingThrow()
 		);
 	}
 
-	bThrowInProgress = false;
+	//bThrowInProgress = false;
 
 	PendingThrowDirection =
 		FVector::ForwardVector;
@@ -880,6 +874,14 @@ void AThrowableWeapon::SetInputActionBinding()
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(LeftChargeAction, ETriggerEvent::Triggered, this, &AThrowableWeapon::StartCharge));
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(LeftChargeAction, ETriggerEvent::Completed, this, &AThrowableWeapon::StopCharge));
 				}
+				else if (LeftMouseAction == EWeaponAction::WeaponAction_Hold)
+				{
+					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(LeftHoldAction, ETriggerEvent::Started, this, &AThrowableWeapon::PrepareToFire));
+				}
+				else if (LeftMouseAction == EWeaponAction::WeaponAction_SwitchFireMode)
+				{
+					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(LeftSwitchFireModeAction, ETriggerEvent::Started, this, &AThrowableWeapon::ToggleFireMode));
+				}
 
 				// <RightMouseAction>
 				if (RightMouseAction == EWeaponAction::WeaponAction_SingleShot)
@@ -911,23 +913,20 @@ void AThrowableWeapon::SetInputActionBinding()
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightChargeAction, ETriggerEvent::Triggered, this, &AThrowableWeapon::StartCharge));
 					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightChargeAction, ETriggerEvent::Completed, this, &AThrowableWeapon::StopCharge));
 				}
-
-				//-------------------------------
-				//MEMO: Fire Mode Sitch 임시
-
-				if (SwitchFireModeAction)
+				else if (RightMouseAction == EWeaponAction::WeaponAction_Hold)
 				{
-					InputActionBindingHandles.Add(
-						&EnhancedInputComponent->BindAction(
-							SwitchFireModeAction,
-							ETriggerEvent::Started,
-							this,
-							&AThrowableWeapon::ToggleFireMode
-						)
-					);
+					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightHoldAction, ETriggerEvent::Started, this, &AThrowableWeapon::PrepareToFire));
+				}
+				else if (RightMouseAction == EWeaponAction::WeaponAction_SwitchFireMode)
+				{
+					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(RightSwitchFireModeAction, ETriggerEvent::Started, this, &AThrowableWeapon::ToggleFireMode));
 				}
 
-
+				// <R_SwitchFireModeAction>
+				if (R_SwitchFireModeAction == EWeaponAction::WeaponAction_SwitchFireMode)
+				{
+					InputActionBindingHandles.Add(&EnhancedInputComponent->BindAction(SwitchFireModeAction, ETriggerEvent::Started, this, &AThrowableWeapon::ToggleFireMode));
+				}
 			}
 		}
 	}
@@ -1108,9 +1107,17 @@ void AThrowableWeapon::EnterState(EThrowableWeaponStateType NewState)
 	switch (NewState)
 	{
 	case EThrowableWeaponStateType::Idle:
+		if (AimUIWidget)
+		{
+			AimUIWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
 		AutoReload();
 		break;
 	case EThrowableWeaponStateType::Aiming:
+		if (AimUIWidget)
+		{
+			AimUIWidget->SetVisibility(ESlateVisibility::Visible);
+		}
 		break;
 	case EThrowableWeaponStateType::Firing:
 		break;
@@ -1296,8 +1303,81 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 
 	//// <CamShake>
 	//ApplyCameraShake(InFireData->CamShake);
-	// 
+	 
 	//------------------------------------------------------
+
+	// <New>
+
+	if (CurrentState == EThrowableWeaponStateType::Unequiped) return;
+	if (!InFireData) return;
+	if (!Character) return;
+	if (Character->GetController() == nullptr) return;
+
+	const auto* Cam = Character->GetCameraComponent();
+	if (!Cam) return;
+
+	if (InFireData->AmmoCost > 0)
+	{
+		if (!HasAmmo(InFireData->AmmoCost))
+		{
+			return;
+		}
+		ConsumeAmmo(InFireData->AmmoCost);
+	}
+
+	FVector ProjectileStartLocation = Cam->GetComponentLocation();
+	FVector ProjectileDirection = Cam->GetForwardVector();
+
+	if (InFireData->ProjectileClass != nullptr)
+	{
+		const FVector SpawnLocation = ProjectileStartLocation;
+		FVector MuzzleLocation;
+		if (MuzzlePoint)
+		{
+			MuzzleLocation = MuzzlePoint->GetComponentLocation();
+		}
+		else
+		{
+			return;
+		}
+
+		const FRotator SpawnRotation = ProjectileDirection.Rotation();
+
+		UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
+		if (PoolSubsystem == nullptr) { return; }
+		AThrowableWeaponProjectile* NewProjectile = nullptr;
+		NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
+		NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
+
+		NewProjectile->InitProjectileMovement(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
+
+
+		if (bWeaponAssetsReady)
+		{
+			//TODO: SpawnRotation 정상화
+			if (InFireData->MuzzleFireEffect)
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+					GetWorld(),
+					InFireData->MuzzleFireEffect,
+					MuzzleLocation,
+					SpawnRotation,
+					FVector(1.0f),
+					true, true, ENCPoolMethod::AutoRelease);
+			}
+		}
+	}
+
+	ReportFiringSoundToAI();
+	if (InFireData->FireSound) //TODO: SoundSystem에 통합시키기
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
+	}
+
+	StartFireAnimation(AM_Throw_Up_Character);
+
+	// <CamShake>
+	ApplyCameraShake(InFireData->CamShake);
 
 
 
@@ -1337,28 +1417,16 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	}
 
 	UWorld* World = GetWorld();
+	if (!IsValid(World)) { return; }
 
-	if (!IsValid(World))
-	{
-		return;
-	}
+	UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
+	if (!IsValid(PoolSubsystem)) { return; }
 
-	UObjectPoolSubsystem* PoolSubsystem =
-		World->GetSubsystem<UObjectPoolSubsystem>();
+	const FVector SpawnLocation = MuzzlePoint->GetComponentLocation();
 
-	if (!IsValid(PoolSubsystem))
-	{
-		return;
-	}
+	const FVector NormalizedDirection = ThrowDirection.GetSafeNormal();
 
-	const FVector SpawnLocation =
-		MuzzlePoint->GetComponentLocation();
-
-	const FVector NormalizedDirection =
-		ThrowDirection.GetSafeNormal();
-
-	const FRotator SpawnRotation =
-		NormalizedDirection.Rotation();
+	const FRotator SpawnRotation = NormalizedDirection.Rotation();
 
 	AThrowableWeaponProjectile* NewProjectile =
 		PoolSubsystem->SpawnFromPool(
@@ -1367,24 +1435,14 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 			SpawnRotation
 		);
 
-	if (!IsValid(NewProjectile))
-	{
-		return;
-	}
+	if (!IsValid(NewProjectile)) { return; }
 
-	NewProjectile->InitProjectile(
-		Character,
-		this,
-		AdditionalDamage,
-		NumPenetrable,
-		false
-	);
+	NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
+	NewProjectile->LoadProjectileData(); // TEMP
 
-	NewProjectile->LaunchProjectile(
-		SpawnLocation,
-		NormalizedDirection,
-		ThrowSpeed
-	);
+	NewProjectile->LaunchProjectile(SpawnLocation, NormalizedDirection, ThrowSpeed);
+
+	//NewProjectile->InitProjectileMovement(SpawnLocation, NormalizedDirection, SpawnLocation);
 
 	// ---------------------------------------------------------
 	// Effect
@@ -1424,9 +1482,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	// Camera
 	// ---------------------------------------------------------
 
-	ApplyCameraShake(
-		InFireData->CamShake
-	);
+	ApplyCameraShake(InFireData->CamShake);
 }
 
 void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData, int32 NumPenetrable, float AdditionalDamage)
@@ -1507,33 +1563,29 @@ void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData,
 
 void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)
 {
-	if (CurrentState == EThrowableWeaponStateType::Idle)
+	if (CurrentState == EThrowableWeaponStateType::Aiming)
 	{
 		// <Old>
 		//SetState(EThrowableWeaponStateType::Firing);
 		//StartSingleShot(NumPenetrable);
 
 
-		//UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)"));
-
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)"));
 
 		//--------------------------
 
-		if (bThrowInProgress)
-		{
-			return;
-		}
+		//if (CurrentState == EThrowableWeaponStateType::Firing)
+		//{
+		//	return;
+		//}
 
-		if (CurrentState != EThrowableWeaponStateType::Idle &&
-			CurrentState != EThrowableWeaponStateType::Aiming)
-		{
-			return;
-		}
+		//if (CurrentState != EThrowableWeaponStateType::Idle &&
+		//	CurrentState != EThrowableWeaponStateType::Aiming)
+		//{
+		//	return;
+		//}
 
-		if (!IsValid(Character))
-		{
-			return;
-		}
+		if (!IsValid(Character)) { return; }
 
 		if (!HasAmmo(FireData.AmmoCost))
 		{
@@ -1541,11 +1593,7 @@ void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)
 		}
 
 		UCameraComponent* Camera = Character->GetCameraComponent();
-
-		if (!IsValid(Camera))
-		{
-			return;
-		}
+		if (!IsValid(Camera)) { return; }
 
 		SetState(EThrowableWeaponStateType::Firing);
 
@@ -1609,6 +1657,22 @@ void AThrowableWeapon::StopBurstFire()
 void AThrowableWeapon::EndBurstShot()
 {
 	SetState(EThrowableWeaponStateType::Idle);
+}
+
+void AThrowableWeapon::PrepareToFire()
+{
+	if (CurrentState == EThrowableWeaponStateType::Idle)
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::PrepareToFire() -> Aim"));
+
+		SetState(EThrowableWeaponStateType::Aiming);
+	}
+	else if (CurrentState == EThrowableWeaponStateType::Aiming)
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::PrepareToFire() -> Idle"));
+
+		SetState(EThrowableWeaponStateType::Idle);
+	}
 }
 
 void AThrowableWeapon::StartCharge()

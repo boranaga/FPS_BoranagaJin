@@ -73,6 +73,7 @@ public:
 
 	UCapsuleComponent* GetCapsuleComponent();
 	UCameraComponent* GetCameraComponent() const { return Camera; };
+	UPlayerCameraComponent* GetPlayerCameraComponent() const { return CameraMovementComponent; }
 	FVector GetDefaultCameraRelativeLocation() const { return DefaultCameraRelativeLocation; };
 
 	UInventorySystemComponent* GetInventorySystemComponent() const { return InventorySystem; }
