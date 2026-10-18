@@ -109,10 +109,7 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 	return true;
 }
 
-void UObjectPoolSubsystem::PrewarmPool(
-	TSubclassOf<AActor> ActorClass,
-	int32 Count
-)
+void UObjectPoolSubsystem::PrewarmPool(TSubclassOf<AActor> ActorClass, int32 Count)
 {
 	if (!ActorClass || Count <= 0)
 	{

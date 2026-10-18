@@ -285,8 +285,7 @@ private:
 	float RecoveryHealthPerSecond = 8.f;
 
 	// 최대 체력의 65%까지만 회복 가능
-	UPROPERTY(EditAnywhere, Category = "Enemy|Recovery",
-		meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, Category = "Enemy|Recovery", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RecoveryHealthCapPercent = 0.65f;
 
 	float RecoveryHealthCap = 0.f;

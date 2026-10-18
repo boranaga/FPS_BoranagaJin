@@ -1,0 +1,9 @@
+#define SURFACE_DEFAULT SurfaceType1
+#define SURFACE_METAL SurfaceType2
+#define SURFACE_GLASS SurfaceType3
+#define SURFACE_ENEMY SurfaceType4
+#define SURFACE_ENERGY SurfaceType5
+#define SURFACE_HEAD SurfaceType6
+#define SURFACE_BODY SurfaceType7
+#define SURFACE_LEFT_ARM SurfaceType8
+#define SURFACE_RIGHT_ARM SurfaceType9

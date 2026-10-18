@@ -17,6 +17,7 @@ enum class EWeaponAction : uint8
 	WeaponAction_Zoom UMETA(DisplayName = "Zoom"),
 	WeaponAction_SkillToggle UMETA(DisplayName = "SkillToggle"),
 	WeaponAction_SkillFire UMETA(DisplayName = "SkillFire"),
+	WeaponAction_SwitchFireMode UMETA(DisplayName = "SwitchFireMode"),
 	WeaponAction_None UMETA(DisplayName = "None")
 };
 

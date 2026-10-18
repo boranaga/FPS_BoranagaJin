@@ -4,6 +4,11 @@
 #include "BaseUIWidget.h"
 #include "InventoryUIWidget.generated.h"
 
+
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnSwapInventorySlotsRequested, FName TargetInventoryName, int32 FromIndex, int32 ToIndex);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnDropInventorySlotRequested, FName TargetInventoryName, int32 SlotIndex);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnUseInventorySlotRequested, FName TargetInventoryName, int32 SlotIndex);
+
 class UInventorySlotWidget;
 
 class UWrapBox;
@@ -19,7 +24,10 @@ public:
 protected:
 	FGeometry CachedGeometry;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-
+public:
+	FOnSwapInventorySlotsRequested OnSwapInventorySlotsRequestedDelegate;
+	FOnDropInventorySlotRequested OnDropInventorySlotRequestedDelegate;
+	FOnUseInventorySlotRequested OnUseInventorySlotRequestedDelegate;
 public:
 	UPROPERTY(meta = (BindWidget))
 	UWrapBox* WrapBoxInventory;

@@ -27,6 +27,8 @@ private:
 	UFUNCTION()
 	void HandleLoadButtonClicked();
 private:
+	FString GetFormattedPlayTime(double AccumulatedPlayTime) const;
+private:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Button_Load;
 
@@ -35,6 +37,9 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Text_SavedAt;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_PlayTime;
 
 	FSaveSlotInfo SlotInfo;
 };

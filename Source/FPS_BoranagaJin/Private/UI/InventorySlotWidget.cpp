@@ -1,8 +1,6 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "UI/InventorySlotWidget.h"
 #include "UI/InventoryUIWidget.h"
+#include "UI/ThrowableWeaponInventoryWidget.h"
 #include "UI/ItemToolWidget.h"
 #include "UI/UIType.h"
 #include "UI/InventoryDragDropOperation.h"
@@ -20,360 +18,355 @@
 
 void UInventorySlotWidget::NativePreConstruct()
 {
-    Super::NativePreConstruct();
+	Super::NativePreConstruct();
 
+	if (OverlayInventorySlot)
+	{
+		OverlayInventorySlot->SetVisibility(ESlateVisibility::Visible);
+	}
 
-    OverlayInventorySlot->SetVisibility(ESlateVisibility::Visible);
-    //SetItemData();
+	LoadItemDataTable();
 
-    LoadItemDataTable();
-    // UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativePreConstruct()"));
-
-    //----------------
-    if (ItemToolWidgetClass)
-    {
-        ItemToolWidget = CreateWidget<UItemToolWidget>(GetWorld(), ItemToolWidgetClass);
-        if (ItemToolWidget)
-        {
-            ItemToolWidget->AddToViewport(static_cast<int32>(EUIZOrder::ItemTool));
-            ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
-
-
-            ItemToolWidget->OnToolWidgetEnter.AddUObject(this, &UInventorySlotWidget::OnMouseEnterToToolWidget);
-            ItemToolWidget->OnToolWidgetLeave.AddUObject(this, &UInventorySlotWidget::OnMouseLeaveFromToolWidget);
-            
-            ItemToolWidget->OnUseItemRequested.AddUObject(this, &UInventorySlotWidget::OnUseItemRequested);
-            ItemToolWidget->OnDropItemRequested.AddUObject(this, &UInventorySlotWidget::OnDropItemRequested);
-
-            //ItemToolWidget->AddToViewport(static_cast<int32>(EUIZOrder::ItemTool));
-            //UCanvasPanelSlot* CanvasSlot = ItemToolCanvas->AddChildToCanvas(ItemToolWidget);
-            //if (CanvasSlot)
-            //{
-            //    //CanvasSlot->SetAutoSize(true);
-
-            //    //// 슬롯 기준 오른쪽 아래 위치
-            //    //CanvasSlot->SetAnchors(FAnchors(0.f, 0.f));
-            //    //CanvasSlot->SetAlignment(FVector2D(0.f, 0.f));
-            //    //CanvasSlot->SetPosition(ItemToolOffset);
-
-            //    //CanvasSlot->SetZOrder(static_cast<int32>(EUIZOrder::ItemTool));
-            //}
-            //ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
-        }
-
-        //--------------
-
-        //if (ItemToolWidget)
-        //{
-        //    UCanvasPanelSlot* CanvasSlot = ItemToolCanvas->AddChildToCanvas(ItemToolWidget);
-
-        //    if (CanvasSlot)
-        //    {
-        //        CanvasSlot->SetAutoSize(true);
-
-        //        // 슬롯 기준 오른쪽 아래 위치
-        //        CanvasSlot->SetAnchors(FAnchors(0.f, 0.f));
-        //        CanvasSlot->SetAlignment(FVector2D(0.f, 0.f));
-        //        CanvasSlot->SetPosition(ItemToolOffset);
-
-        //        // 필요하면 더 앞에 보이도록
-        //        //CanvasSlot->SetZOrder(10);
-        //    }
-
-        //    ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
-        //}
-    }
-
+	// ItemToolWidget은 여기서 생성하지 않는다.
+	// 일반 Inventory Slot이 실제로 Hover 되었을 때 필요한 경우에만 생성한다.
 }
 
 void UInventorySlotWidget::NativeConstruct()
 {
-    Super::NativeConstruct();
+	Super::NativeConstruct();
+
+	// Blueprint 등에서 설정되어 있을 수 있는 원래 Tint를 저장한다.
+	DefaultSlotColor = GetColorAndOpacity();
 }
 
 void UInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
-    Super::NativeTick(MyGeometry, InDeltaTime);
+	Super::NativeTick(MyGeometry, InDeltaTime);
+}
+
+void UInventorySlotWidget::ConfigureAsThrowableWeaponSlot(UThrowableWeaponInventoryWidget* InOwner)
+{
+	bIsThrowableWeaponSlot = true;
+	OwnerThrowableWeaponInventoryWidget = InOwner;
+
+	// 혹시 이미 만들어진 ItemToolWidget이 있다면 제거한다.
+	if (IsValid(ItemToolWidget))
+	{
+		ItemToolWidget->RemoveFromParent();
+		ItemToolWidget = nullptr;
+	}
 }
 
 FReply UInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
-
-    //if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-    //{
-    //    UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
-
-    //    return UWidgetBlueprintLibrary::DetectDragIfPressed(
-    //        InMouseEvent,
-    //        this,
-    //        EKeys::LeftMouseButton
-    //    ).NativeReply;
-    //}
-
-    return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 FReply UInventorySlotWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		// -----------------------------------------------------
+		// Throwable Weapon Inventory
+		// -----------------------------------------------------
+		if (bIsThrowableWeaponSlot)
+		{
+			PlayUISound(ESoundID::UI_Click);
 
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-    {
-        //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnMouseButtonDown)"));
+			if (IsValid(OwnerThrowableWeaponInventoryWidget))
+			{
+				OwnerThrowableWeaponInventoryWidget->RequestEquipSlot(Index);
+			}
 
-        return UWidgetBlueprintLibrary::DetectDragIfPressed(
-            InMouseEvent,
-            this,
-            EKeys::LeftMouseButton
-        ).NativeReply;
-    }
+			return FReply::Handled();
+		}
 
-    PlayUISound(ESoundID::UI_Click);
+		// -----------------------------------------------------
+		// 기존 Inventory Slot
+		// 기존 Drag & Drop 기능 유지
+		// -----------------------------------------------------
+		return UWidgetBlueprintLibrary::DetectDragIfPressed(
+			InMouseEvent,
+			this,
+			EKeys::LeftMouseButton
+		).NativeReply;
+	}
 
-    return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+	PlayUISound(ESoundID::UI_Click);
+
+	return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void UInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
-    Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
+	// Throwable Weapon Slot은 클릭 선택 전용이므로 Drag하지 않는다.
+	if (bIsThrowableWeaponSlot) { return; }
 
-    UInventoryDragDropOperation* DragOperation = NewObject<UInventoryDragDropOperation>();
+	Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
 
-    if (!DragOperation)
-    {
-        return;
-    }
+	UInventoryDragDropOperation* DragOperation = NewObject<UInventoryDragDropOperation>();
 
-    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDragDetected)"));
+	if (!DragOperation) { return; }
 
-    DragOperation->DraggedSlotWidget = this;
-    DragOperation->FromIndex = Index;
+	DragOperation->DraggedSlotWidget = this;
+	DragOperation->FromIndex = Index;
 
-    // 드래그 중 보이는 위젯
-    DragOperation->DefaultDragVisual = this;
-    DragOperation->Pivot = EDragPivot::MouseDown;
+	DragOperation->DefaultDragVisual = this;
+	DragOperation->Pivot = EDragPivot::MouseDown;
 
-    OutOperation = DragOperation;
+	OutOperation = DragOperation;
 }
 
 void UInventorySlotWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-    Super::NativeOnDragCancelled(InDragDropEvent, InOperation);
+	if (bIsThrowableWeaponSlot) { return; }
 
-    UInventoryDragDropOperation* DragOperation =
-        Cast<UInventoryDragDropOperation>(InOperation);
+	Super::NativeOnDragCancelled(InDragDropEvent, InOperation);
 
-    if (!DragOperation) { return; }
-    if (!OwnerInventoryWidget) { return; }
+	UInventoryDragDropOperation* DragOperation = Cast<UInventoryDragDropOperation>(InOperation);
 
-    const FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
-    const bool bInsideInventory = OwnerInventoryWidget->IsScreenPositionInsideInventory(ScreenPosition);
-    if (!bInsideInventory)
-    {
-        OwnerInventoryWidget->RequestDropInventorySlot(DragOperation->FromIndex);
-    }
+	if (!DragOperation) { return; }
+	if (!OwnerInventoryWidget) { return; }
+
+	const FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
+	const bool bInsideInventory = OwnerInventoryWidget->IsScreenPositionInsideInventory(ScreenPosition);
+	if (!bInsideInventory)
+	{
+		OwnerInventoryWidget->RequestDropInventorySlot(DragOperation->FromIndex);
+	}
 }
 
 bool UInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-    UInventoryDragDropOperation* DragOperation = Cast<UInventoryDragDropOperation>(InOperation);
+	if (bIsThrowableWeaponSlot) { return false; }
 
-    if (!DragOperation)
-    {
-        return false;
-    }
+	UInventoryDragDropOperation* DragOperation = Cast<UInventoryDragDropOperation>(InOperation);
 
-    if (!OwnerInventoryWidget)
-    {
-        return false;
-    }
+	if (!DragOperation) { return false; }
 
-    //UE_LOG(LogTemp, Error, TEXT("UInventorySlotWidget::NativeOnDrop"));
+	if (!OwnerInventoryWidget) { return false; }
 
-    const int32 FromIndex = DragOperation->FromIndex;
-    const int32 ToIndex = Index;
+	const int32 FromIndex = DragOperation->FromIndex;
+	const int32 ToIndex = Index;
 
-    OwnerInventoryWidget->RequestSwapInventorySlots(FromIndex, ToIndex);
+	OwnerInventoryWidget->RequestSwapInventorySlots(FromIndex, ToIndex);
 
-    return true;
+	return true;
 }
 
 void UInventorySlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
+	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
 
-    bMouseHoveredOnSlotWidget = true;
+	bMouseHoveredOnSlotWidget = true;
 
-    if (ItemToolWidget)
-    {
-        SetItemToolPosition(InGeometry);
-        DisplayItemTool();
-    }
+	// -----------------------------------------------------
+	// Throwable Weapon Slot
+	// -----------------------------------------------------
+	if (bIsThrowableWeaponSlot)
+	{
+		SetColorAndOpacity(ThrowableWeaponHoveredColor);
 
-    PlayUISound(ESoundID::UI_Hover);
+		PlayUISound(ESoundID::UI_Hover);
+
+		return;
+	}
+
+	// -----------------------------------------------------
+	// 기존 Inventory Slot
+	// -----------------------------------------------------
+	InitializeItemToolWidget();
+
+	if (ItemToolWidget)
+	{
+		SetItemToolPosition(InGeometry);
+		DisplayItemTool();
+	}
+
+	PlayUISound(ESoundID::UI_Hover);
 }
 
 void UInventorySlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 {
-    Super::NativeOnMouseLeave(InMouseEvent);
+	Super::NativeOnMouseLeave(InMouseEvent);
 
-    bMouseHoveredOnSlotWidget = false;
+	bMouseHoveredOnSlotWidget = false;
 
-    //if (!ItemToolWidget) { return; }
-    //if (!ItemToolWidget->IsHoveredToolWidget())
-    //{
-    //    HideItemTool();
-    //}
+	// -----------------------------------------------------
+	// Throwable Weapon Slot
+	// -----------------------------------------------------
+	if (bIsThrowableWeaponSlot)
+	{
+		SetColorAndOpacity(DefaultSlotColor);
+		return;
+	}
 
-    GetWorld()->GetTimerManager().SetTimer(
-        HideToolWidgetTimerHandle,
-        this,
-        &UInventorySlotWidget::CheckHideToolWidget,
-        0.05f,
-        false);
+	// -----------------------------------------------------
+	// 기존 Inventory Slot
+	// -----------------------------------------------------
+	GetWorld()->GetTimerManager().SetTimer(
+		HideToolWidgetTimerHandle,
+		this,
+		&UInventorySlotWidget::CheckHideToolWidget,
+		0.05f,
+		false
+	);
+}
 
+void UInventorySlotWidget::InitializeItemToolWidget()
+{
+	if (bIsThrowableWeaponSlot) { return; }
+	if (IsValid(ItemToolWidget)) { return; }
+	if (!ItemToolWidgetClass) { return; }
+
+	ItemToolWidget = CreateWidget<UItemToolWidget>(GetWorld(), ItemToolWidgetClass);
+	if (!ItemToolWidget) { return; }
+	ItemToolWidget->AddToViewport(static_cast<int32>(EUIZOrder::ItemTool));
+	ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
+
+	ItemToolWidget->OnToolWidgetEnter.AddUObject(this, &UInventorySlotWidget::OnMouseEnterToToolWidget);
+	ItemToolWidget->OnToolWidgetLeave.AddUObject(this, &UInventorySlotWidget::OnMouseLeaveFromToolWidget);
+	ItemToolWidget->OnUseItemRequested.AddUObject(this, &UInventorySlotWidget::OnUseItemRequested);
+	ItemToolWidget->OnDropItemRequested.AddUObject(this, &UInventorySlotWidget::OnDropItemRequested);
 }
 
 void UInventorySlotWidget::LoadItemDataTable()
 {
-    if (ItemDataTable.IsNull()) return;
-    LoadedItemTable = ItemDataTable.LoadSynchronous();
+	if (ItemDataTable.IsNull()) return;
+	LoadedItemTable = ItemDataTable.LoadSynchronous();
 }
 
 void UInventorySlotWidget::ClearItemSlotData()
 {
-    ItemQuantity = 0;
-    ItemName = EItemName::ItemName_None;
+	ItemQuantity = 0;
+	ItemName = EItemName::ItemName_None;
 
-    if (TextItemQuantity)
-    {
-        TextItemQuantity->SetText(FText::GetEmpty());
-    }
+	if (TextItemQuantity)
+	{
+		TextItemQuantity->SetText(FText::GetEmpty());
+	}
 
-    if (ItemIcon)
-    {
-        ItemIcon->SetBrushFromTexture(nullptr);
-    }
+	if (ItemIcon)
+	{
+		ItemIcon->SetBrushFromTexture(nullptr);
+	}
 
-    if (OverlayInventorySlot)
-    {
-        OverlayInventorySlot->SetVisibility(ESlateVisibility::Collapsed);
-    }
+	if (OverlayInventorySlot)
+	{
+		OverlayInventorySlot->SetVisibility(ESlateVisibility::Collapsed);
+	}
 }
 
 void UInventorySlotWidget::SetItemSlotData(FName ItemDataRowName, int32 InItemQuantity)
 {
-    if (!LoadedItemTable) return;
-    FItemData* ItemData = LoadedItemTable->FindRow<FItemData>(ItemDataRowName, TEXT("LoadItemData"));
-    if (!ItemData)
-    {
-        //OverlayInventorySlot->SetVisibility(ESlateVisibility::Collapsed);
-        return;
-    }
+	if (!LoadedItemTable) { return; }
+	FItemData* ItemData = LoadedItemTable->FindRow<FItemData>(ItemDataRowName, TEXT("LoadItemData"));
+	if (!ItemData) { return; }
 
-    ItemIcon->SetBrushFromTexture(ItemData->ItemImage);
-    ItemQuantity = InItemQuantity;
-    TextItemQuantity->SetText(FText::FromString(FString::Printf(TEXT("%d"), ItemQuantity)));
-    OverlayInventorySlot->SetVisibility(ESlateVisibility::Visible);
+	if (ItemIcon)
+	{
+		ItemIcon->SetBrushFromTexture(ItemData->ItemImage);
+	}
+
+	ItemQuantity = InItemQuantity;
+
+	if (TextItemQuantity)
+	{
+		TextItemQuantity->SetText(FText::FromString(FString::Printf(TEXT("%d"), ItemQuantity)));
+	}
+
+	if (OverlayInventorySlot)
+	{
+		OverlayInventorySlot->SetVisibility(ESlateVisibility::Visible);
+	}
 }
 
 void UInventorySlotWidget::SetItemData()
 {
-    //if (ItemDataTable.IsNull() || ItemRowName.IsNone()) return;
-    //LoadedItemTable = ItemDataTable.LoadSynchronous();
-    //if (!LoadedItemTable) return;
-
-    //FItemData* ItemData = LoadedItemTable->FindRow<FItemData>(ItemRowName, TEXT("LoadItemData"));
-    //if (!ItemData)
-    //{       
-    //    OverlayInventorySlot->SetVisibility(ESlateVisibility::Collapsed);
-    //    return;
-    //}
-
-    //ItemIcon->SetBrushFromTexture(ItemData->ItemImage);
-    //TextItemQuantity->SetText(FText::FromString(FString::Printf(TEXT("%d"), ItemQuantity)));
-    //OverlayInventorySlot->SetVisibility(ESlateVisibility::Visible);
 }
 
 void UInventorySlotWidget::SetItemToolPosition(const FGeometry& InGeometry)
 {
-    if (!ItemToolWidget)
-    {
-        return;
-    }
+	if (!ItemToolWidget) { return; }
 
-    const FVector2D SlotSize = InGeometry.GetLocalSize();
+	const FVector2D SlotSize = InGeometry.GetLocalSize();
+	const FVector2D SlotRightBottomAbsolute = InGeometry.LocalToAbsolute(SlotSize);
 
-    // 슬롯의 오른쪽 아래 지점
-    const FVector2D SlotRightBottomAbsolute =
-        InGeometry.LocalToAbsolute(SlotSize);
+	FVector2D PixelPosition;
+	FVector2D ViewportPosition;
 
-    FVector2D PixelPosition;
-    FVector2D ViewportPosition;
+	USlateBlueprintLibrary::AbsoluteToViewport(
+		GetWorld(),
+		SlotRightBottomAbsolute,
+		PixelPosition,
+		ViewportPosition
+	);
 
-    USlateBlueprintLibrary::AbsoluteToViewport(
-        GetWorld(),
-        SlotRightBottomAbsolute,
-        PixelPosition,
-        ViewportPosition
-    );
-
-    // 슬롯 오른쪽 아래 + 고정 오프셋
-    const FVector2D ToolPosition = ViewportPosition + ItemToolOffset;
-
-    ItemToolWidget->SetPositionInViewport(ToolPosition, false);
+	const FVector2D ToolPosition = ViewportPosition + ItemToolOffset;
+	ItemToolWidget->SetPositionInViewport(ToolPosition, false);
 }
 
 void UInventorySlotWidget::DisplayItemTool()
 {
-    if (ItemToolWidget)
-    {
-        //ItemToolWidget->SetItemToolPosition();
-        ItemToolWidget->SetVisibility(ESlateVisibility::Visible);
-    }
+	if (bIsThrowableWeaponSlot)
+	{
+		return;
+	}
+
+	if (ItemToolWidget)
+	{
+		ItemToolWidget->SetVisibility(
+			ESlateVisibility::Visible
+		);
+	}
 }
 
 void UInventorySlotWidget::HideItemTool()
 {
-    if (ItemToolWidget)
-    {
-        ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
-    }
+	if (ItemToolWidget)
+	{
+		ItemToolWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
 }
 
 void UInventorySlotWidget::CheckHideToolWidget()
 {
-    if (!bMouseHoveredOnSlotWidget &&
-        !ItemToolWidget->IsHoveredToolWidget())
-    {
-        HideItemTool();
-    }
+	// ItemTool이 없는 슬롯에서도 안전하게 동작하도록 한다.
+	if (!ItemToolWidget) { return; }
+	if (!bMouseHoveredOnSlotWidget && !ItemToolWidget->IsHoveredToolWidget())
+	{
+		HideItemTool();
+	}
 }
 
 void UInventorySlotWidget::OnMouseEnterToToolWidget()
 {
-
 }
 
 void UInventorySlotWidget::OnMouseLeaveFromToolWidget()
 {
-    if (!bMouseHoveredOnSlotWidget)
-    {
-        HideItemTool();
-    }
+	if (!bMouseHoveredOnSlotWidget)
+	{
+		HideItemTool();
+	}
 }
 
 void UInventorySlotWidget::OnUseItemRequested()
 {
-    UE_LOG(LogTemp, Error, TEXT("void UInventorySlotWidget::OnUseItemRequested()"));
-    if (!OwnerInventoryWidget) { return; }
-    OwnerInventoryWidget->RequestUseInventorySlot(Index);
+	if (!OwnerInventoryWidget)
+	{
+		return;
+	}
+
+	OwnerInventoryWidget->RequestUseInventorySlot(Index);
 }
 
 void UInventorySlotWidget::OnDropItemRequested()
 {
-    UE_LOG(LogTemp, Error, TEXT("void UInventorySlotWidget::OnDropItemRequested()"));
-    if (!OwnerInventoryWidget) { return; }
-    OwnerInventoryWidget->RequestDropInventorySlot(Index);
+	if (!OwnerInventoryWidget)
+	{
+		return;
+	}
+
+	OwnerInventoryWidget->RequestDropInventorySlot(Index);
 }

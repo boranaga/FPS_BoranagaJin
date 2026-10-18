@@ -48,6 +48,13 @@ void UStaminaWidget::SetStaminaBarPercent(float const Value)
     StaminaBar->SetPercent(CurrStamina/MaxStamina);
 }
 
+void UStaminaWidget::UpdateStaminaBar(float maxstamina, float currstamina)
+{
+    MaxStamina = maxstamina;
+    CurrStamina = currstamina;
+    StaminaBar->SetPercent(CurrStamina / MaxStamina);
+}
+
 void UStaminaWidget::HideInGame(bool bHidden)
 {
     if (bHidden)
