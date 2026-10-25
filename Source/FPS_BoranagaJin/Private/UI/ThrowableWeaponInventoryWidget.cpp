@@ -55,17 +55,20 @@ void UThrowableWeaponInventoryWidget::CreateInventorySlots(int32 InventorySlotCo
 	if (!WrapBoxInventory) return;
 
 	WrapBoxInventory->ClearChildren();
+	InventorySlotWidgets.Empty();
 
 	for (int32 i = 0; i < InventorySlotCount; i++)
 	{
 		UInventorySlotWidget* NewInventorySlot = CreateWidget<UInventorySlotWidget>(GetWorld(), InventorySlotWidgetClass);
+		if (!NewInventorySlot) { continue; }
 		if (NewInventorySlot)
 		{
+			NewInventorySlot->SetIndex(i);
+
+			NewInventorySlot->ConfigureAsThrowableWeaponSlot(this);
 			InventorySlotWidgets.Add(NewInventorySlot);
 			NewInventorySlot->SetVisibility(ESlateVisibility::Visible);
 			WrapBoxInventory->AddChildToWrapBox(NewInventorySlot);
-
-			//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::CreateInventorySlots(int32 InventorySlotCount)"));
 		}
 	}
 }
@@ -79,9 +82,17 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
 				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
-
-				//UE_LOG(LogTemp, Error, TEXT("UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)"));
 			}
 		}
 	}
+}
+
+void UThrowableWeaponInventoryWidget::RequestEquipSlot(int32 SlotIndex)
+{
+	if (SlotIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	OnThrowableWeaponEquipRequested.Broadcast(SlotIndex);
 }

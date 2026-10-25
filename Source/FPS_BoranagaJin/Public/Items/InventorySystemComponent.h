@@ -9,6 +9,7 @@
 #include "Items/InventorySlot.h"
 #include "Items/Weapons/WeaponName.h"
 #include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponStateType.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "SaveSystem/InventorySaveData.h"
 #include "InventorySystemComponent.generated.h"
@@ -201,16 +202,15 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	AWeapon* CurrWeapon = nullptr;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
+	AItem* CurrItem = nullptr; //현재 캐릭터 손에 장착하고 있는 아이템을 의미함
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
 	AItem* NextItem = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrWeaponIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
 	int32 GetCurrentWeaponIndex() const { return CurrWeaponIdx; }
-
-
-	FName GetCurrentWeaponID() const; //TODO: 구현 필요한가? ItemName으로 대체 가능할듯
 
 	int32 GetWeaponNum() { return WeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
@@ -232,7 +232,7 @@ protected:
 public:
 	AThrowableWeapon* GetCurrentThrowableWeapon() { return CurrThrowableWeapon; }
 	int32 GetThrowableWeaponNum() { return ThrowableWeaponInventory.Num(); }
-	EWeaponStateType GetCurrThrowableWeaponStateType() const;
+	EThrowableWeaponStateType GetCurrThrowableWeaponStateType() const;
 
 	void SwitchToPreviousThrowableWeapon();
 	void SwitchToNextThrowableWeapon();
@@ -240,6 +240,9 @@ public:
 
 	virtual void SwitchToOtherThrowableWeapon() override;
 	void ChangeThrowableWeapon(int32 WeaponIndex);
+
+	void EquipThrowableWeapon(int32 WeaponIdx);
+
 #pragma endregion
 #pragma region Control
 protected:

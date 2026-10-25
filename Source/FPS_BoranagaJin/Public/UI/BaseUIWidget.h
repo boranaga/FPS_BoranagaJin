@@ -18,10 +18,10 @@ public:
 protected:
 	EUIType UIType = EUIType::Base;
 public:
-	void SetOwnerUIManager(UUIManagerComponent* InUIManager) { OwnerUIManager = InUIManager; }
-	UUIManagerComponent* GetOwnerUIManager() const { return OwnerUIManager; }
+	//void SetOwnerUIManager(UUIManagerComponent* InUIManager) { OwnerUIManager = InUIManager; }
+	//UUIManagerComponent* GetOwnerUIManager() const { return OwnerUIManager; }
 protected:
-	UUIManagerComponent* OwnerUIManager = nullptr;
+	//UUIManagerComponent* OwnerUIManager = nullptr;
 protected:
 	void PlayUISound(ESoundID SoundID) const;
 };

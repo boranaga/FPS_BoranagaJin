@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -78,11 +76,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	UStaticMeshComponent* MuzzlePoint;
 
-	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputMappingContext* FireMappingContext;
 
-	/** Fire Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LeftSingleShotAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
@@ -380,7 +376,7 @@ public:
 	void UnequipWeapon_Legacy(ACharacterPlayer* TargetCharacter);
 
 	void OnUnequipEnded(ACharacterPlayer* TargetCharacter);
-	void OnDrawWeaponEnded(ACharacterPlayer* TargetCharacter);
+	void OnEquipEnded(ACharacterPlayer* TargetCharacter);
 
 	virtual void SetInputActionBinding();
 	void ResetInputActionBinding();

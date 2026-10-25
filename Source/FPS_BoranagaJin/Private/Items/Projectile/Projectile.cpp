@@ -7,6 +7,7 @@
 #include "Characters/Enemies/EnemyBase.h"
 #include "Interface/DamageInterface.h"
 #include "Characters/DamageParams.h"
+#include "SoundSystem/SurfaceTypeName.h"
 
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Character.h"
@@ -14,23 +15,21 @@
 #include "Components/DecalComponent.h"
 
 #include "Perception/AISense_Hearing.h"
-
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 
 #include "Kismet/GameplayStatics.h"
 
-#define SURFACE_DEFAULT SurfaceType1
-#define SURFACE_METAL SurfaceType2
-#define SURFACE_GLASS SurfaceType3
-#define SURFACE_ENEMY SurfaceType4
-#define SURFACE_ENERGY SurfaceType5
-#define SURFACE_HEAD SurfaceType6
-#define SURFACE_BODY SurfaceType7
-#define SURFACE_LEFT_ARM SurfaceType8
-#define SURFACE_RIGHT_ARM SurfaceType9
+//#define SURFACE_DEFAULT SurfaceType1
+//#define SURFACE_METAL SurfaceType2
+//#define SURFACE_GLASS SurfaceType3
+//#define SURFACE_ENEMY SurfaceType4
+//#define SURFACE_ENERGY SurfaceType5
+//#define SURFACE_HEAD SurfaceType6
+//#define SURFACE_BODY SurfaceType7
+//#define SURFACE_LEFT_ARM SurfaceType8
+//#define SURFACE_RIGHT_ARM SurfaceType9
 
-// Sets default values
 AProjectile::AProjectile()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -275,7 +274,6 @@ void AProjectile::InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon
 
 void AProjectile::InitPhysicsProjectile()
 {
-
 	if (!CollisionComp->OnComponentHit.IsAlreadyBound(this, &AProjectile::OnHit))
 	{
 		CollisionComp->OnComponentHit.AddDynamic(this, &AProjectile::OnHit);
@@ -1350,7 +1348,6 @@ void AProjectile::ReportNoiseToAI()
 		TEXT("ProjectileHit")
 	);
 }
-
 
 //// Called when the game starts or when spawned
 //void AProjectile::BeginPlay()

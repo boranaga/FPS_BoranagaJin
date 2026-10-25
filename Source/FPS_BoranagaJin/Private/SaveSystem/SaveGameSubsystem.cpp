@@ -6,6 +6,7 @@
 #include "Interface/SaveableActorInterface.h"
 #include "Interface/SaveablePlayerInterface.h"
 #include "SaveSystem/SaveGameArchive.h"
+#include "SaveSystem/GameResultLogSaveGame.h"
 #include "ObjectPoolSubsystem.h"
 
 #include "Characters/Player/CharacterPlayer.h"
@@ -17,6 +18,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
+#include "HAL/PlatformTime.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSaveGameSubsystem, Log, All);
 
@@ -36,6 +38,7 @@ void USaveGameSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	CompletedTutorialIDs.Reset();
 
 	LoadSlotIndex();
+	LoadGameResultLog();
 
 	UE_LOG(LogSaveGameSubsystem, Log, TEXT("SaveGameSubsystem initialized."));
 }
@@ -261,11 +264,17 @@ bool USaveGameSubsystem::LoadGameFromSlot(const FString& SlotName)
 		return false;
 	}
 
+	StopPlayTimeTracking();
+
 	CurrSaveSlotName = SlotName;
 
 	LoadedSaveGame = LoadedFPSGame;
 	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
 	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
+
+	SavedAccumulatedPlayTimeSeconds = LoadedSaveGame->AccumulatedPlayTimeSeconds;
+	//PlaySessionStartSeconds = 0.0;
+	//bPlayTimeTracking = false;
 
 	bPendingApplyLoadedGame = true;
 
@@ -344,6 +353,8 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 	bPendingApplyLoadedGame = false;
 
 	UE_LOG(LogSaveGameSubsystem, Error, TEXT("Loaded game was successfully applied."));
+
+	StartPlayTimeTracking();
 
 	OnSaveGameApplied.Broadcast();
 	return true;
@@ -431,11 +442,7 @@ bool USaveGameSubsystem::DeleteSave(const FString& SlotName)
 	}
 
 	const bool bDeleted = UGameplayStatics::DeleteGameInSlot(SlotName, SaveUserIndex);
-
-	if (!bDeleted)
-	{
-		return false;
-	}
+	if (!bDeleted) { return false; }
 
 	if (IsValid(SlotIndex))
 	{
@@ -486,6 +493,8 @@ bool USaveGameSubsystem::StartNewGame()
 {
 	if (bIsSaving) { return false; }
 
+	StopPlayTimeTracking();
+
 	LoadedSaveGame = nullptr;
 	SaveGameBeingWritten = nullptr;
 
@@ -493,6 +502,8 @@ bool USaveGameSubsystem::StartNewGame()
 
 	CurrentCheckpointData.Reset();
 	CompletedTutorialIDs.Reset();
+
+	ResetPlayTimeTracking();
 
 	CurrSaveSlotName = GenerateSaveSlotName();
 
@@ -552,6 +563,87 @@ USaveGameSubsystem::GetCompletedTutorialIDs() const
 	return CompletedTutorialIDs;
 }
 
+void USaveGameSubsystem::StartPlayTimeTracking()
+{
+	if (bPlayTimeTracking)
+	{
+		return;
+	}
+
+	if (CurrSaveSlotName.IsEmpty())
+	{
+		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Cannot start play time tracking: No active save slot."));
+		return;
+	}
+
+	PlaySessionStartSeconds = FPlatformTime::Seconds();
+	bPlayTimeTracking = true;
+
+	UE_LOG(
+		LogSaveGameSubsystem,
+		Log,
+		TEXT("Play time tracking started. Slot=%s, Accumulated=%.2f"),
+		*CurrSaveSlotName,
+		SavedAccumulatedPlayTimeSeconds
+	);
+}
+
+void USaveGameSubsystem::StopPlayTimeTracking()
+{
+	if (!bPlayTimeTracking) { return; }
+
+	const double CurrentSeconds = FPlatformTime::Seconds();
+	const double SessionElapsedSeconds = FMath::Max(0.0, CurrentSeconds - PlaySessionStartSeconds);
+
+	SavedAccumulatedPlayTimeSeconds += SessionElapsedSeconds;
+
+	PlaySessionStartSeconds = 0.0;
+	bPlayTimeTracking = false;
+
+	UE_LOG(
+		LogSaveGameSubsystem,
+		Log,
+		TEXT("Play time tracking stopped. Total=%.2f"),
+		SavedAccumulatedPlayTimeSeconds
+	);
+}
+
+void USaveGameSubsystem::ResetPlayTimeTracking()
+{
+	SavedAccumulatedPlayTimeSeconds = 0.0;
+	PlaySessionStartSeconds = 0.0;
+	bPlayTimeTracking = false;
+}
+
+double USaveGameSubsystem::GetAccumulatedPlayTimeSeconds() const
+{
+	if (!bPlayTimeTracking)
+	{
+		return SavedAccumulatedPlayTimeSeconds;
+	}
+
+	const double CurrentSeconds = FPlatformTime::Seconds();
+	const double SessionElapsedSeconds = FMath::Max(0.0, CurrentSeconds - PlaySessionStartSeconds);
+
+	return SavedAccumulatedPlayTimeSeconds + SessionElapsedSeconds;
+}
+
+FString USaveGameSubsystem::GetFormattedPlayTime() const
+{
+	const int64 TotalSeconds = FMath::Max<int64>(0, static_cast<int64>(GetAccumulatedPlayTimeSeconds()));
+
+	const int64 Hours = TotalSeconds / 3600;
+	const int64 Minutes = (TotalSeconds % 3600) / 60;
+	const int64 Seconds = TotalSeconds % 60;
+
+	return FString::Printf(
+		TEXT("%02lld:%02lld:%02lld"),
+		Hours,
+		Minutes,
+		Seconds
+	);
+}
+
 UFPSGameSave* USaveGameSubsystem::CreateSaveGameObject() const
 {
 	USaveGame* SaveObject = UGameplayStatics::CreateSaveGameObject(UFPSGameSave::StaticClass());
@@ -599,6 +691,7 @@ void USaveGameSubsystem::UpdateCurrentSlotInfo(const UFPSGameSave& SaveObject)
 	{
 		ExistingSlot->SavedLevelName = SaveObject.SavedLevelName;
 		ExistingSlot->SavedAt = SaveObject.SavedAt;
+		ExistingSlot->AccumulatedPlayTimeSeconds = SaveObject.AccumulatedPlayTimeSeconds;
 	}
 	else
 	{
@@ -606,6 +699,7 @@ void USaveGameSubsystem::UpdateCurrentSlotInfo(const UFPSGameSave& SaveObject)
 		NewInfo.SlotName = CurrSaveSlotName;
 		NewInfo.SavedLevelName = SaveObject.SavedLevelName;
 		NewInfo.SavedAt = SaveObject.SavedAt;
+		NewInfo.AccumulatedPlayTimeSeconds = SaveObject.AccumulatedPlayTimeSeconds;
 
 		SlotIndex->Slots.Add(MoveTemp(NewInfo));
 	}
@@ -641,6 +735,7 @@ void USaveGameSubsystem::CaptureCurrentGameState(UFPSGameSave& SaveObject)
 	SaveObject.CheckpointData = CurrentCheckpointData;
 	SaveObject.CompletedTutorialIDs = CompletedTutorialIDs;
 	SaveObject.SavedAt = FDateTime::Now();
+	SaveObject.AccumulatedPlayTimeSeconds = GetAccumulatedPlayTimeSeconds();
 
 	CapturePlayerData(SaveObject);
 	//CaptureWorldActorData(SaveObject);
@@ -993,5 +1088,188 @@ bool USaveGameSubsystem::ValidateLoadedSave(const UFPSGameSave* SaveObject) cons
 	{
 		return false;
 	}
+	return true;
+}
+
+void USaveGameSubsystem::LoadGameResultLog()
+{
+	if (UGameplayStatics::DoesSaveGameExist(GameResultLogSlotName, SaveUserIndex))
+	{
+		USaveGame* LoadedObject = UGameplayStatics::LoadGameFromSlot(GameResultLogSlotName, SaveUserIndex);
+		GameResultLog = Cast<UGameResultLogSaveGame>(LoadedObject);
+	}
+
+	if (!IsValid(GameResultLog))
+	{
+		GameResultLog = Cast<UGameResultLogSaveGame>(UGameplayStatics::CreateSaveGameObject(UGameResultLogSaveGame::StaticClass()));
+	}
+
+	if (!IsValid(GameResultLog))
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Failed to create GameResultLog."));
+		return;
+	}
+
+	GameResultLog->GameResults.Sort(
+		[](const FGameResultSaveData& A, const FGameResultSaveData& B)
+		{
+			return A.CompletedAt > B.CompletedAt;
+		}
+	);
+}
+
+bool USaveGameSubsystem::SaveGameResultLog()
+{
+	if (!IsValid(GameResultLog)) { return false; }
+	const bool bSuccess = UGameplayStatics::SaveGameToSlot(GameResultLog, GameResultLogSlotName, SaveUserIndex);
+	if (!bSuccess)
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Failed to save game result log."));
+		return false;
+	}
+	return true;
+}
+
+FGameResultSaveData USaveGameSubsystem::BuildCurrentGameResult(EGameEndReason EndReason) const
+{
+	FGameResultSaveData ResultData;
+
+	ResultData.ResultID = FGuid::NewGuid();
+	ResultData.OriginalSlotName = CurrSaveSlotName;
+	ResultData.EndReason = EndReason;
+	ResultData.FinalLevelName = GetCurrentLevelName();
+	ResultData.TotalPlayTimeSeconds = GetAccumulatedPlayTimeSeconds();
+	ResultData.CompletedAt = FDateTime::Now();
+
+	return ResultData;
+}
+
+bool USaveGameSubsystem::ShouldArchiveAndDeleteSlot(EGameEndReason EndReason) const
+{
+	switch (EndReason)
+	{
+	case EGameEndReason::BossDefeated:
+	case EGameEndReason::Escaped:
+	case EGameEndReason::PlayerDead:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool USaveGameSubsystem::ArchiveCurrentGameResult(EGameEndReason EndReason)
+{
+	if (!ShouldArchiveAndDeleteSlot(EndReason)) { return false; }
+	if (CurrSaveSlotName.IsEmpty())
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Archive failed: Current save slot is empty."));
+		return false;
+	}
+	if (!IsValid(GameResultLog))
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Archive failed: GameResultLog is invalid."));
+		return false;
+	}
+	StopPlayTimeTracking();
+	const FString CompletedSlotName = CurrSaveSlotName;
+	FGameResultSaveData ResultData = BuildCurrentGameResult(EndReason);
+
+	if (!ResultData.IsValid())
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Archive failed: Invalid GameResultSaveData."));
+		return false;
+	}
+
+	GameResultLog->GameResults.Add(ResultData);
+	GameResultLog->GameResults.Sort(
+		[](const FGameResultSaveData& A, const FGameResultSaveData& B)
+		{
+			return A.CompletedAt > B.CompletedAt;
+		}
+	);
+
+	if (!SaveGameResultLog())
+	{
+		GameResultLog->GameResults.RemoveAll(
+			[ResultID = ResultData.ResultID](const FGameResultSaveData& Data)
+			{
+				return Data.ResultID == ResultID;
+			}
+		);
+
+		UE_LOG(
+			LogSaveGameSubsystem,
+			Error,
+			TEXT("Game result could not be saved. Current game slot will NOT be deleted.")
+		);
+		return false;
+	}
+
+	if (!DeleteSave(CompletedSlotName))
+	{
+		UE_LOG(
+			LogSaveGameSubsystem,
+			Error,
+			TEXT("Game result was saved, but completed slot could not be deleted. Slot=%s"),
+			*CompletedSlotName
+		);
+
+		return false;
+	}
+
+	UE_LOG(
+		LogSaveGameSubsystem,
+		Log,
+		TEXT("Game archived successfully. Slot=%s, ResultID=%s, PlayTime=%.2f"),
+		*CompletedSlotName,
+		*ResultData.ResultID.ToString(),
+		ResultData.TotalPlayTimeSeconds
+	);
+
+	return true;
+}
+
+const TArray<FGameResultSaveData>& USaveGameSubsystem::GetGameResultLogs() const
+{
+	static const TArray<FGameResultSaveData> EmptyResults;
+
+	if (!IsValid(GameResultLog))
+	{
+		return EmptyResults;
+	}
+
+	return GameResultLog->GameResults;
+}
+
+bool USaveGameSubsystem::DeleteGameResult(const FGuid& ResultID)
+{
+	if (!IsValid(GameResultLog)) { return false; }
+
+	const int32 RemovedCount = GameResultLog->GameResults.RemoveAll(
+		[&ResultID](const FGameResultSaveData& Data)
+		{
+			return Data.ResultID == ResultID;
+		}
+	);
+
+	if (RemovedCount <= 0) { return false; }
+
+	return SaveGameResultLog();
+}
+
+bool USaveGameSubsystem::ClearGameResultLogs()
+{
+	if (!IsValid(GameResultLog)) { return false; }
+
+	const TArray<FGameResultSaveData> Backup = GameResultLog->GameResults;
+
+	GameResultLog->GameResults.Reset();
+
+	if (!SaveGameResultLog())
+	{
+		GameResultLog->GameResults = Backup;
+		return false;
+	}
+
 	return true;
 }

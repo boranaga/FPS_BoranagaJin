@@ -97,7 +97,7 @@ void ADefaultGameMode::NotifyPlayerDied()
 {
 	if (UGameFlowSubsystem* GameFlow = GetGameInstance()->GetSubsystem<UGameFlowSubsystem>())
 	{
-		GameFlow->HandlePlayerDeath();
+		//GameFlow->HandlePlayerDeath();
 	}
 }
 

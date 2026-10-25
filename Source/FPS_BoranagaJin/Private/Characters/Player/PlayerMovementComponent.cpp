@@ -48,8 +48,9 @@ void UPlayerMovementComponent::BeginPlay()
 	CurrentMovementState = EMovementState::EMS_Airborne;
 	OnAirborneDelegate.Broadcast();
 
-	CharacterPlayer->InitUIManager();
-	CharacterPlayer->OnStaminaInit.Broadcast(MaxStamina);
+	//CharacterPlayer->InitUIManager();
+	//CharacterPlayer->OnStaminaInit.Broadcast(MaxStamina);
+	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
 }
 
 void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -1975,14 +1976,14 @@ void UPlayerMovementComponent::UpdateStamina(float DeltaTime, float UpdateRate)
 {
 	CurrStamina += UpdateRate * DeltaTime;
 	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
-	CharacterPlayer->OnStaminaUpdated.Broadcast(CurrStamina);
+	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
 }
 
 void UPlayerMovementComponent::ConsumeStamina(float stamina)
 {
 	CurrStamina += stamina;
 	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
-	CharacterPlayer->OnStaminaUpdated.Broadcast(CurrStamina);
+	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
 }
 
 void UPlayerMovementComponent::AddControllerRoll(float DeltaTime, const FVector& WallRunDirection, EWallRunSide WallRunSide)

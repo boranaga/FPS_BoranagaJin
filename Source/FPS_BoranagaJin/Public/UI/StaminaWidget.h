@@ -33,6 +33,7 @@ protected:
 public:
 	void InitStaminaBar(float maxstamina = 100.f);
 	void SetStaminaBarPercent(float const Value);
+	void UpdateStaminaBar(float maxstamina, float currstamina);
 	void HideInGame(bool bHidden);
 	void PlayFadeAnimation();
 #pragma endregion

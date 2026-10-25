@@ -16,7 +16,7 @@ enum class EWeaponName : uint8
 	//WeaponName_RailGun UMETA(DisplayName = "RailGun"),
 	//WeaponName_EnergyRifle UMETA(DisplayName = "EnergyRifle")
 };
-ENUM_RANGE_BY_FIRST_AND_LAST(EWeaponName, EWeaponName::WeaponName_Rifle, EWeaponName::WeaponName_ShotGun);
+ENUM_RANGE_BY_FIRST_AND_LAST(EWeaponName, EWeaponName::WeaponName_Rifle, EWeaponName::WeaponName_RocketLauncher);
 
 UCLASS()
 class FPS_BORANAGAJIN_API AWeaponName : public AActor

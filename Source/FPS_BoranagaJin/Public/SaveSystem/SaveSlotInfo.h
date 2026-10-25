@@ -17,6 +17,9 @@ struct FSaveSlotInfo
 	UPROPERTY(BlueprintReadOnly)
 	FDateTime SavedAt;
 
+	UPROPERTY(BlueprintReadOnly)
+	double AccumulatedPlayTimeSeconds = 0.0;
+
 	bool IsValid() const
 	{
 		return !SlotName.IsEmpty();

@@ -42,6 +42,8 @@ protected:
 	UPROPERTY(EditAnyWhere, BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UButton> Button_Continue;
 	UPROPERTY(EditAnyWhere, BlueprintReadWrite, meta = (BindWidget))
+	TObjectPtr<UButton> Button_GameLog;
+	UPROPERTY(EditAnyWhere, BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UButton> Button_Option;
 	UPROPERTY(EditAnyWhere, BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UButton> Button_Exit;

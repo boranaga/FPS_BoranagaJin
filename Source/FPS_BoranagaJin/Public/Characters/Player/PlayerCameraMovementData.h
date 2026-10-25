@@ -125,3 +125,48 @@ struct FPS_BORANAGAJIN_API FPlayerCameraMovementRow : public FTableRowBase
 	UPROPERTY(EditDefaultsOnly, Category = "Camera Shake|One Shot")
 	TSubclassOf<UCameraShakeBase> HitCameraShake;
 };
+
+USTRUCT(BlueprintType)
+struct FPS_BORANAGAJIN_API FPlayerCameraZoomRequest
+{
+	GENERATED_BODY()
+	// 최종적으로 원하는 절대 FOV.
+	// 예: 기본 FOV가 90이고 ADS 시 65를 원하면 65.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom", meta = (ClampMin = "5.0", ClampMax = "170.0"))
+	float TargetFOV = 65.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom", meta = (ClampMin = "0.0"))
+	float BlendInSpeed = 12.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom", meta = (ClampMin = "0.0"))
+	float BlendOutSpeed = 10.f;
+
+	// 동시에 여러 Zoom Request가 들어온 경우 높은 Priority 사용
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom")
+	int32 Priority = 0;
+};
+
+
+USTRUCT(BlueprintType)
+struct FPS_BORANAGAJIN_API FPlayerCameraMovementRequest
+{
+	GENERATED_BODY()
+
+	// 기존 Movement Camera 위치에 추가되는 값
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Movement")
+	FVector LocationOffset = FVector::ZeroVector;
+
+	// 실제 ControlRotation을 변경하지 않는 시각적 Camera Rotation
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Movement")
+	FRotator RotationOffset = FRotator::ZeroRotator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Movement", meta = (ClampMin = "0.0"))
+	float BlendInSpeed = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Movement", meta = (ClampMin = "0.0"))
+	float BlendOutSpeed = 10.f;
+
+	// 동일 Request의 강도 조절용
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Movement", meta = (ClampMin = "0.0"))
+	float Weight = 1.f;
+};

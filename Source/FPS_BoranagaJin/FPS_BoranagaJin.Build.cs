@@ -26,7 +26,9 @@ public class FPS_BoranagaJin : ModuleRules
             "AnimGraphRuntime", //Added for Animation
             "MotionWarping", // Added for Enemy motion warping
             "PhysicsCore", //Added for Animation
-			"DeveloperSettings" //Added for SoundSystem
+			"DeveloperSettings", //Added for SoundSystem
+		    "GeometryCollectionEngine",
+            "Chaos"
         });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
