@@ -11,6 +11,7 @@
 #include "Components/AudioComponent.h"
 
 #include "GeometryCollection/GeometryCollectionComponent.h"
+#include "Field/FieldSystemObjects.h"
 
 
 ADestructibleObject::ADestructibleObject()
@@ -70,65 +71,30 @@ void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 
 void ADestructibleObject::OnAfterLoad()
 {
-	//// <Old>
-
-	//if (bDestroyed)
-	//{
-	//	if (IntactMesh)
-	//	{
-	//		IntactMesh->SetVisibility(false);
-	//		IntactMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	//		IntactMesh->SetSimulatePhysics(false);
-	//	}
-
-	//	if (BrokenMesh)
-	//	{
-	//		BrokenMesh->SetWorldTransform(IntactMesh->GetComponentTransform());
-
-	//		BrokenMesh->SetVisibility(true);
-	//		BrokenMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	//		BrokenMesh->SetSimulatePhysics(true);
-	//	}
-
-
-	//	//TODO: 저장 전에 이미 HidBrokenMesh 된 경우에 대한 처리 필요함
-	//	if (bDestroyActorAfterBreak)
-	//	{
-	//		SetLifeSpan(BrokenMeshLifeTime);
-	//	}
-	//	else if (bHideBrokenMeshAfterDelay)
-	//	{
-	//		GetWorldTimerManager().SetTimer(
-	//			HideBrokenMeshTimerHandle,
-	//			this,
-	//			&ADestructibleObject::HideBrokenMesh,
-	//			BrokenMeshLifeTime,
-	//			false
-	//		);
-	//	}
-	//}
-	//else
-	//{
-	//	SetActorHiddenInGame(false);
-	//	SetActorEnableCollision(true);
-	//}
-
-	//---------------------------
-	// <New>
-
+	StopZeroGravityFracture();
 	GetWorldTimerManager().ClearTimer(HideBrokenMeshTimerHandle);
 
 	if (!bDestroyed)
 	{
+		SetActorHiddenInGame(false);
+		SetActorEnableCollision(true);
 		if (IntactMesh)
 		{
 			IntactMesh->SetVisibility(true);
-			IntactMesh->SetCollisionEnabled(
-				ECollisionEnabled::QueryAndPhysics
-			);
+			IntactMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		}
-
-		HideBrokenMesh();
+		if (BrokenMesh)
+		{
+			BrokenMesh->SetVisibility(false);
+			BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			BrokenMesh->SetSimulatePhysics(false);
+		}
+		if (FracturedMesh)
+		{
+			FracturedMesh->SetVisibility(false);
+			FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			FracturedMesh->SetSimulatePhysics(false);
+		}
 		return;
 	}
 
@@ -136,32 +102,29 @@ void ADestructibleObject::OnAfterLoad()
 	{
 		IntactMesh->SetVisibility(false);
 		IntactMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		IntactMesh->SetSimulatePhysics(false);
 	}
 
-	if (DestructionMeshType == EDestructionMeshType::StaticMesh)
+	if (!bBrokenMeshHidden && bIsDestructible)
 	{
-		// 기존 Static Mesh 방식으로 파괴 상태를 복원합니다.
-		BreakStaticMesh(GetActorLocation(), FVector::ZeroVector);
-	}
-	else if (DestructionMeshType == EDestructionMeshType::GeometryCollection)
-	{
-		// 저장 시점의 파편 위치는 복원하지 않고
-		// 파괴 상태를 새롭게 재현합니다.
-		BreakGeometryCollection(
-			GetActorLocation(),
-			FVector::UpVector
-		);
+		if (DestructionMeshType == EDestructionMeshType::StaticMesh)
+		{
+			BreakStaticMesh(GetActorLocation(), FVector::ZeroVector);
+		}
+		else if (DestructionMeshType == EDestructionMeshType::GeometryCollection)
+		{
+			BreakGeometryCollection(GetActorLocation(), FVector::UpVector, false);
+		}
 	}
 
-	if (bHideBrokenMeshAfterDelay && BrokenMeshLifeTime > 0.f)
+	if (bDestroyActorAfterBreak)
 	{
-		GetWorldTimerManager().SetTimer(
-			HideBrokenMeshTimerHandle,
-			this,
-			&ADestructibleObject::HideBrokenMesh,
-			BrokenMeshLifeTime,
-			false
-		);
+		SetLifeSpan(BrokenMeshLifeTime);
+	}
+	else if (!bBrokenMeshHidden && bHideBrokenMeshAfterDelay && BrokenMeshLifeTime > 0.f)
+	{
+		GetWorldTimerManager().SetTimer(HideBrokenMeshTimerHandle, this,
+			&ADestructibleObject::HideBrokenMesh, BrokenMeshLifeTime, false);
 	}
 }
 
@@ -193,7 +156,7 @@ void ADestructibleObject::BeginPlay()
 
 float ADestructibleObject::ReceiveDamage(const FDamageParams& DamageData)
 {
-	if (bDestroyed) return 0.f;
+	if (bDestroyed || !bIsDestructible) return 0.f;
 	if (DamageData.DamageAmount <= 0.f) return 0.f;
 
 	CurrentHealth -= DamageData.DamageAmount;
@@ -295,6 +258,7 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 	StopBurning();
 
 	bDestroyed = true;
+	bBrokenMeshHidden = false;
 	CurrentHealth = 0.f;
 
 	if (BreakEffect)
@@ -361,6 +325,9 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 
 void ADestructibleObject::HideBrokenMesh()
 {
+	GetWorldTimerManager().ClearTimer(FragmentStartTimerHandle);
+	GetWorldTimerManager().ClearTimer(FragmentUpdateTimerHandle);
+	bBrokenMeshHidden = true;
 	if (BrokenMesh)
 	{
 		BrokenMesh->SetVisibility(false);
@@ -516,52 +483,163 @@ void ADestructibleObject::BreakStaticMesh(
 
 void ADestructibleObject::BreakGeometryCollection(
 	const FVector& HitLocation,
-	const FVector& HitDirection)
+	const FVector& HitDirection,
+	bool bPlayFractureAnimation)
 {
-	if (!FracturedMesh || !FracturedMesh->GetRestCollection())
+	if (!IsValid(FracturedMesh) || !FracturedMesh->GetRestCollection())
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("Geometry Collection is not configured: %s"),
-			*GetName()
-		);
+		UE_LOG(LogTemp, Warning, TEXT("Geometry Collection is not configured: %s"), *GetName());
 		return;
 	}
 
 	if (IntactMesh)
 	{
-		FracturedMesh->SetWorldTransform(
-			IntactMesh->GetComponentTransform()
-		);
+		FracturedMesh->SetWorldTransform(IntactMesh->GetComponentTransform());
 	}
 
 	FracturedMesh->SetVisibility(true);
-	FracturedMesh->SetCollisionEnabled(
-		ECollisionEnabled::QueryAndPhysics
-	);
-
+	FracturedMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	FracturedMesh->SetEnableGravity(!bUseZeroGravityFracture);
 	FracturedMesh->SetSimulatePhysics(true);
 
-	// 충돌 지점을 중심으로 클러스터 연결을 파괴합니다.
 	FracturedMesh->ApplyExternalStrain(
-		INDEX_NONE,
-		HitLocation,
-		FractureDamageRadius,
-		0,
-		1.f,
-		FractureStrain
-	);
+		INDEX_NONE, HitLocation, FractureDamageRadius, 0, 1.f, FractureStrain);
 
-	// 파편이 충격 방향으로 움직이도록 힘을 적용합니다.
-	const FVector ImpulseDirection =
-		HitDirection.GetSafeNormal();
-
-	if (!ImpulseDirection.IsNearlyZero())
+	if (!bPlayFractureAnimation)
 	{
-		FracturedMesh->AddImpulseAtLocation(
-			ImpulseDirection * FractureImpulseStrength,
-			HitLocation
-		);
+		// Load restores the broken state, not the old particle transforms.
+		// Gravity remains disabled in zero-gravity mode.
+		return;
+	}
+
+	if (bUseZeroGravityFracture)
+	{
+		StartZeroGravityFracture(HitLocation);
+	}
+	else
+	{
+		const FVector Direction = HitDirection.GetSafeNormal();
+		if (!Direction.IsNearlyZero())
+		{
+			FracturedMesh->AddImpulseAtLocation(
+				Direction * FractureImpulseStrength, HitLocation);
+		}
+	}
+}
+
+void ADestructibleObject::StartZeroGravityFracture(const FVector& Origin)
+{
+	if (!IsValid(FracturedMesh)) return;
+
+	GetWorldTimerManager().ClearTimer(FragmentStartTimerHandle);
+	GetWorldTimerManager().ClearTimer(FragmentUpdateTimerHandle);
+
+	FragmentSpreadOrigin = Origin;
+	FragmentSpreadElapsed = 0.f;
+	FragmentAngularAxis = FMath::VRand();
+	FracturedMesh->SetEnableGravity(false);
+
+	GetWorldTimerManager().SetTimer(
+		FragmentStartTimerHandle, this,
+		&ADestructibleObject::UpdateZeroGravityFracture,
+		FMath::Max(0.01f, FragmentStartDelay), false);
+}
+
+void ADestructibleObject::ApplyFragmentLinearVelocity(const FVector& Origin, float Speed)
+{
+	if (!IsValid(FracturedMesh)) return;
+
+	URadialVector* RadialField = NewObject<URadialVector>(this);
+	RadialField->SetRadialVector(Speed, Origin);
+	FracturedMesh->ApplyPhysicsField(
+		true, EGeometryCollectionPhysicsTypeEnum::Chaos_LinearVelocity,
+		nullptr, RadialField);
+}
+
+void ADestructibleObject::ApplyFragmentAngularVelocity(float Speed)
+{
+	if (!IsValid(FracturedMesh)) return;
+
+	UUniformVector* AngularField = NewObject<UUniformVector>(this);
+	AngularField->SetUniformVector(Speed, FragmentAngularAxis);
+	FracturedMesh->ApplyPhysicsField(
+		true, EGeometryCollectionPhysicsTypeEnum::Chaos_AngularVelocity,
+		nullptr, AngularField);
+}
+
+void ADestructibleObject::UpdateZeroGravityFracture()
+{
+	if (!IsValid(FracturedMesh) || !bDestroyed || bBrokenMeshHidden)
+	{
+		GetWorldTimerManager().ClearTimer(FragmentUpdateTimerHandle);
+		return;
+	}
+
+	const float Duration = FMath::Max(0.01f, FragmentSpreadDuration);
+	const float Alpha = FMath::Clamp(FragmentSpreadElapsed / Duration, 0.f, 1.f);
+	const float Ratio = FMath::Square(1.f - Alpha);
+
+	ApplyFragmentLinearVelocity(FragmentSpreadOrigin, FragmentSpreadSpeed * Ratio);
+	ApplyFragmentAngularVelocity(FragmentAngularSpeed * Ratio);
+
+	if (Alpha >= 1.f)
+	{
+		StopZeroGravityFracture();
+		return;
+	}
+
+	const float Interval = FMath::Max(0.01f, FragmentUpdateInterval);
+	FragmentSpreadElapsed = FMath::Min(Duration, FragmentSpreadElapsed + Interval);
+	GetWorldTimerManager().SetTimer(
+		FragmentUpdateTimerHandle, this,
+		&ADestructibleObject::UpdateZeroGravityFracture, Interval, false);
+}
+
+void ADestructibleObject::StopZeroGravityFracture()
+{
+	GetWorldTimerManager().ClearTimer(FragmentStartTimerHandle);
+	GetWorldTimerManager().ClearTimer(FragmentUpdateTimerHandle);
+
+	if (bFreezeFragmentsAfterSpread && bDestroyed && !bBrokenMeshHidden && IsValid(FracturedMesh))
+	{
+		ApplyFragmentLinearVelocity(FragmentSpreadOrigin, 0.f);
+		ApplyFragmentAngularVelocity(0.f);
+	}
+}
+
+void ADestructibleObject::RestoreDestructibleObject()
+{
+	GetWorldTimerManager().ClearTimer(FragmentStartTimerHandle);
+	GetWorldTimerManager().ClearTimer(FragmentUpdateTimerHandle);
+	GetWorldTimerManager().ClearTimer(HideBrokenMeshTimerHandle);
+	StopBurning();
+	SetLifeSpan(0.f);
+
+	// The Geometry Collection's broken particle transforms are NOT reset by
+	// SetSimulatePhysics(false). Full reuse requires recreating the GC component
+	// (or a version-specific supported dynamic-collection reset path).
+	if (FracturedMesh)
+	{
+		FracturedMesh->SetVisibility(false);
+		FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		FracturedMesh->SetSimulatePhysics(false);
+	}
+	if (BrokenMesh)
+	{
+		BrokenMesh->SetVisibility(false);
+		BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		BrokenMesh->SetSimulatePhysics(false);
+	}
+
+	CurrentHealth = MaxHealth;
+	bDestroyed = false;
+	bBrokenMeshHidden = false;
+	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
+	if (IntactMesh)
+	{
+		IntactMesh->SetVisibility(true);
+		IntactMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		IntactMesh->SetSimulatePhysics(false);
 	}
 }

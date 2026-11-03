@@ -36,6 +36,7 @@ enum class EUIType : uint8
 	Health UMETA(DisplayName = "HealthWidget"),
 	Inventory UMETA(DisplayName = "InventoryWidget"),
 	ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
+	QuickSlot UMETA(DisplayName = "QuickSlotWidget"),
 	Interaction UMETA(DisplayName = "InteractionWidget")
 };
 ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::Base, EUIType::Interaction);

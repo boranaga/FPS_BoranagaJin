@@ -29,6 +29,7 @@ class UPlayerSound_DataAsset;
 class UCustomGameInstance;
 struct FPlayerSoundData;
 struct FInventorySlot;
+struct FQuickSlot;
 
 
 
@@ -54,6 +55,10 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInv
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryCreated, int32 SlotNum);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponEquipRequested, int32 SlotIdx);
+
+DECLARE_MULTICAST_DELEGATE(FOnQuickSlotInventoryChanged);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotUpdated, const TArray<FQuickSlot>& QuickSlots, int32 CurrIdx);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotSelectionChanged, int32, int32);
 
 DECLARE_MULTICAST_DELEGATE(FOnThrowableWeaponReleaseNotify);
 
@@ -133,6 +138,10 @@ public:
 	FOnThrowableWeaponInventoryCreated OnThrowableWeaponInventoryCreatedDelegate;
 	FOnThrowableWeaponInventoryUpdated OnThrowableWeaponInventoryUpdatedDelegate;
 	FOnThrowableWeaponEquipRequested OnThrowableWeaponEquipRequestedDelegate;
+
+	FOnQuickSlotInventoryChanged OnQuickSlotInventoryChanged;
+	FOnQuickSlotUpdated OnQuickSlotUpdatedDelegate;
+	FOnQuickSlotSelectionChanged OnQuickSlotSelectionChanged;
 
 	FOnThrowableWeaponReleaseNotify OnThrowableWeaponReleaseNotify;
 

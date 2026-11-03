@@ -9,6 +9,7 @@ class UHealthWidget;
 class UStaminaWidget;
 class UPlayerDisplayWidget; //Inventory Widget
 class UThrowableWeaponInventoryWidget;
+class UQuickSlotWidget;
 class UInteractionWidget;
 
 class UInputAction;
@@ -66,5 +67,7 @@ private:
 	TSubclassOf<UPlayerDisplayWidget> PlayerDisplayWidgetClass;
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UThrowableWeaponInventoryWidget> ThrowableWeaponInventoryWidgetClass;
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UQuickSlotWidget> QuickSlotWidgetClass;
 };
 

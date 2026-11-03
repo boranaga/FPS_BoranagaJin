@@ -28,6 +28,7 @@ public class FPS_BoranagaJin : ModuleRules
             "PhysicsCore", //Added for Animation
 			"DeveloperSettings", //Added for SoundSystem
 		    "GeometryCollectionEngine",
+            "FieldSystemEngine",
             "Chaos"
         });
 

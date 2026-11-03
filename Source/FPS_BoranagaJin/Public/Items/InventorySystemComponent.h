@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,6 +5,7 @@
 #include "ItemName.h"
 #include "InventoryName.h"
 #include "Items/InventorySlot.h"
+#include "Items/QuickSlot.h"
 #include "Items/Weapons/WeaponName.h"
 #include "Items/WeaponState/WeaponStateType.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponStateType.h"
@@ -19,6 +18,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponPickedUp, EWeaponName, Weap
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSwitched, int32, PrevIndex, int32, NewIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapon*, NewSkillWeapon);
 
+//DECLARE_MULTICAST_DELEGATE(FOnQuickSlotInventoryChanged);
+//DECLARE_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotSelectionChanged, int32, int32);
+
 class ACharacterPlayer;
 class AItem;
 class AFlashlightItem;
@@ -28,6 +30,7 @@ class AItemPickUp;
 class AWeaponPickUp;
 class UInteractionWidget;
 
+struct FInputActionValue;
 struct FInventorySlot;
 struct FInventorySlotSaveData;
 
@@ -96,7 +99,7 @@ protected:
 	UPROPERTY(EditAnywhere)
 	int32 MaxItemSlotsCount = 10;
 	UPROPERTY(EditAnywhere)
-	int32 MaxWeaponSlotsCount = 3;
+	int32 MaxWeaponSlotsCount = 2;
 	UPROPERTY(EditAnywhere)
 	int32 MaxThrowableWeaponSlotsCount = 3;
 	
@@ -106,6 +109,9 @@ protected:
 	TArray<FInventorySlot> WeaponInventory;
 	UPROPERTY()
 	TArray<FInventorySlot> ThrowableWeaponInventory;
+
+	UPROPERTY()
+	TArray<FInventorySlot> ItemQuickSlotInventory;
 
 	FTimerHandle InitInventoryUITimerHandle;
 public:
@@ -208,6 +214,9 @@ protected:
 	AItem* NextItem = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrWeaponIdx = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	int32 CurrItemIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
 	int32 GetCurrentWeaponIndex() const { return CurrWeaponIdx; }
@@ -216,12 +225,14 @@ public:
 	bool IsCurrentSkillWeaponTargeting();
 	EWeaponStateType GetCurrWeaponStateType() const;
 
-	void SwitchToPreviousWeapon();
-	void SwitchToNextWeapon();
-	void SwitchToIndex(int32 idx);
+	//void SwitchToPreviousWeapon();
+	//void SwitchToNextWeapon();
+	//void SwitchToIndex(int32 idx); // Legacy
 
+	//-------------------------------------
 	void SwitchToNextItem();
-	void ChangeWeapon(int32 WeaponIndex);
+
+	//void ChangeWeapon(int32 WeaponIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
 protected:
@@ -238,12 +249,99 @@ public:
 	void SwitchToNextThrowableWeapon();
 	void SwitchToIndexThrowableWeapon(int32 idx);
 
-	virtual void SwitchToOtherThrowableWeapon() override;
+	//virtual void SwitchToOtherThrowableWeapon() override;
 	void ChangeThrowableWeapon(int32 WeaponIndex);
 
 	void EquipThrowableWeapon(int32 WeaponIdx);
 
 #pragma endregion
+
+
+#pragma region QuickSlotInventory
+public:
+	static constexpr int32 QuickSlotCount = 5;
+
+	//FOnQuickSlotInventoryChanged OnQuickSlotInventoryChanged;
+	//FOnQuickSlotSelectionChanged OnQuickSlotSelectionChanged;
+protected:
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|QuickSlot")
+	TArray<FQuickSlot> QuickSlotInventory;
+
+	// Desired/selected quick slot.
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|QuickSlot")
+	int32 CurrentQuickSlotIndex = INDEX_NONE;
+
+	// Source item of the last committed quick-slot equip.
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AItem> EquippedQuickSlotItem;
+
+	UPROPERTY(EditAnywhere, Category = "Inventory|QuickSlot")
+	bool bSkipEmptyQuickSlots = true;
+
+	// Input actions.
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlot1Action;
+
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlot2Action;
+
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlot3Action;
+
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlot4Action;
+
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlot5Action;
+
+	UPROPERTY(EditAnywhere, Category = "Input|QuickSlot")
+	TObjectPtr<UInputAction> QuickSlotScrollAction;
+
+public:
+	const TArray<FQuickSlot>& GetQuickSlotInventory() const
+	{
+		return QuickSlotInventory;
+	}
+
+	int32 GetCurrentQuickSlotIndex() const
+	{
+		return CurrentQuickSlotIndex;
+	}
+
+	AItem* GetCurrentQuickSlotItem() const;
+
+	int32 FindEmptyQuickSlot(EQuickSlotType InQuickSlotType);
+
+	bool RegisterQuickSlot(int32 QuickSlotIndex, EInventoryName SourceInventory, int32 SourceSlotIndex);
+
+	bool ClearQuickSlot(int32 QuickSlotIndex);
+
+	bool SelectQuickSlot(int32 QuickSlotIndex);
+
+	void SwapQuickSlots(int32 FromIndex, int32 ToIndex);
+
+	void SelectNextQuickSlot();
+	void SelectPreviousQuickSlot();
+
+	// Updates references after inventory mutations.
+	void SynchronizeQuickSlots();
+protected:
+	void InitQuickSlotInventory();
+	const TArray<FInventorySlot>* GetQuickSlotSourceInventory(EInventoryName InventoryName) const;
+	bool IsItemInSourceInventory(EInventoryName InventoryName, const AItem* Item, int32& OutSlotIndex) const;
+	bool IsItemInQuickSlots(const AItem* Item, int32& OutSlotIndex) const;
+
+	bool IsQuickSlotCompatible(int32 QuickSlotIndex, EInventoryName SourceInventory, const AItem* Item) const;
+	bool IsQuickSlotSelectable(int32 QuickSlotIndex) const;
+
+	bool RequestQuickSlotEquip(AItem* Item);
+
+	void HandleQuickSlotScroll(const FInputActionValue& Value);
+
+#pragma endregion
+
+
+
 #pragma region Control
 protected:
 	UPROPERTY()

@@ -18,6 +18,7 @@ class UHealthWidget;
 class UStaminaWidget;
 class UPlayerDisplayWidget; //Inventory Widget
 class UThrowableWeaponInventoryWidget;
+class UQuickSlotWidget;
 class UInteractionWidget;
 class AFPSPlayerController;
 class ACharacterPlayer;
@@ -77,6 +78,7 @@ private:
         case EUIType::GameOver: return 9;
         case EUIType::Inventory: return 3;
         case EUIType::ThrowableWeaponInventory: return 3;
+        case EUIType::QuickSlot: return 2;
         case EUIType::Base: return 0;
         default: return 0;
         }
@@ -102,6 +104,8 @@ public:
     void InitInteractionWidget(TSubclassOf<UInteractionWidget> WidgetClass);
     void InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> WidgetClass);
     void InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass);
+    void InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetClass);
+
     //void InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass); //TODO: ¼³Á¤
 
     // <PauseMenu>

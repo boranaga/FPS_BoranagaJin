@@ -26,9 +26,9 @@ void IWeaponInterface::EjectProjectileShell()
 //{
 //}
 
-void IWeaponInterface::SwitchToOtherThrowableWeapon()
-{
-}
+//void IWeaponInterface::SwitchToOtherThrowableWeapon()
+//{
+//}
 
 void IWeaponInterface::AddArmRecoil(FArmRecoilParams* armrecoil, float AdditionalRecoilAmountX, float AdditionalRecoilAmountY, float AdditionalRecoilAmountZ)
 {

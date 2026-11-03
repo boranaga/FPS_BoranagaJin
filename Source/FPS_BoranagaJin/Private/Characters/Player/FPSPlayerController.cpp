@@ -9,6 +9,7 @@
 #include "UI/GameOverWidget.h"
 #include "UI/HealthWidget.h"
 #include "UI/ThrowableWeaponInventoryWidget.h"
+#include "UI/QuickSlotWidget.h"
 
 #include "PlayerUISubsystem.h"
 
@@ -129,6 +130,9 @@ void AFPSPlayerController::InitPlayerUISubsystem()
 	PlayerUISubsystem->InitInventoryUI(PlayerDisplayWidgetClass);
 
 	PlayerUISubsystem->InitThrowableWeaponInventoryUI(ThrowableWeaponInventoryWidgetClass);
+
+	PlayerUISubsystem->InitQuickSlotUI(QuickSlotWidgetClass);
+
 	PlayerUISubsystem->Init_BeginPlay();
 }
 

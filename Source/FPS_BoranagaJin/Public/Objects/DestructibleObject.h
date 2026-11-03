@@ -164,20 +164,26 @@ protected:
 	FTimerHandle BurnDurationTimerHandle;
 
 	// <Fire Component>
-	protected:
-		UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
-		UFireAreaComponent* FireAreaComponent;
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
+	UFireAreaComponent* FireAreaComponent;
 
-//---------------------------------------
+	//---------------------------------------
 protected:
 	void BreakStaticMesh(const FVector& HitLocation, const FVector& HitDirection);
-	void BreakGeometryCollection(const FVector& HitLocation, const FVector& HitDirection);
+	void BreakGeometryCollection(const FVector& HitLocation, const FVector& HitDirection, bool bPlayFractureAnimation = true);
 
-	//void ResetGeometryCollection();
-	//void ApplyDestructionVisualState(bool bApplyPhysics);
+	void StopZeroGravityFracture();
+	void StartZeroGravityFracture(const FVector& Origin);
+	void UpdateZeroGravityFracture();
+	void ApplyFragmentLinearVelocity(const FVector& Origin, float Speed);
+	void ApplyFragmentAngularVelocity(float Speed);
 
-	//UFUNCTION(BlueprintCallable, Category = "Destruction")
-	//virtual void RestoreDestructibleObject();
+public:
+	UFUNCTION(BlueprintCallable, Category = "Destruction")
+	virtual void RestoreDestructibleObject();
+
+protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UGeometryCollectionComponent> FracturedMesh;
@@ -193,5 +199,36 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos", meta = (EditCondition = "DestructionMeshType == EDestructionMeshType::GeometryCollection", EditConditionHides, ClampMin = "0.0"))
 	float FractureImpulseStrength = 1500.f;
+
+	// Zero-gravity fracture: individual pieces receive Chaos velocity fields.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity")
+	bool bUseZeroGravityFracture = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture", ClampMin = "0.0"))
+	float FragmentSpreadSpeed = 600.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture", ClampMin = "0.0"))
+	float FragmentAngularSpeed = 2.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture", ClampMin = "0.01"))
+	float FragmentSpreadDuration = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture", ClampMin = "0.01"))
+	float FragmentUpdateInterval = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture", ClampMin = "0.0"))
+	float FragmentStartDelay = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Chaos|ZeroGravity", meta = (EditCondition = "bUseZeroGravityFracture"))
+	bool bFreezeFragmentsAfterSpread = true;
+
+	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Destruction")
+	bool bBrokenMeshHidden = false;
+
+	FTimerHandle FragmentStartTimerHandle;
+	FTimerHandle FragmentUpdateTimerHandle;
+	FVector FragmentSpreadOrigin = FVector::ZeroVector;
+	FVector FragmentAngularAxis = FVector::UpVector;
+	float FragmentSpreadElapsed = 0.f;
 
 };

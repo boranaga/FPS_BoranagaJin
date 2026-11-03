@@ -31,6 +31,7 @@
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputActionValue.h"
 
 UInventorySystemComponent::UInventorySystemComponent()
 {
@@ -86,16 +87,65 @@ void UInventorySystemComponent::InitializePlayerReference()
 				// Inereact With WeaponPickUp
 				EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &UInventorySystemComponent::PickUpItem);
 
-				// Switch Weapon
-				EnhancedInputComponent->BindAction(SwitchWeaponUpAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToNextWeapon);
-				EnhancedInputComponent->BindAction(SwitchWeaponDownAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToPreviousWeapon);
+				//// Switch Weapon (Legacy)
+				//EnhancedInputComponent->BindAction(SwitchWeaponUpAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToNextWeapon);
+				//EnhancedInputComponent->BindAction(SwitchWeaponDownAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToPreviousWeapon);
 
-				EnhancedInputComponent->BindActionValueLambda(SwitchWeapon1Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 0);
-				EnhancedInputComponent->BindActionValueLambda(SwitchWeapon2Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 1);
-				EnhancedInputComponent->BindActionValueLambda(SwitchWeapon3Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 2);
+				//EnhancedInputComponent->BindActionValueLambda(SwitchWeapon1Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 0);
+				//EnhancedInputComponent->BindActionValueLambda(SwitchWeapon2Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 1);
+				//EnhancedInputComponent->BindActionValueLambda(SwitchWeapon3Action, ETriggerEvent::Started, [this](const FInputActionValue& InputActionValue, int32 idx) {SwitchToIndex(idx); }, 2);
 
 				// Flash Light
 				EnhancedInputComponent->BindAction(FlashLightAction, ETriggerEvent::Started, this, &UInventorySystemComponent::ToggleFlashLight);
+
+				//----------------------------------------------
+
+				EnhancedInputComponent->BindActionValueLambda(
+					QuickSlot1Action, ETriggerEvent::Started,
+					[this](const FInputActionValue& Value)
+					{
+						SelectQuickSlot(0);
+					}
+				);
+
+				EnhancedInputComponent->BindActionValueLambda(
+					QuickSlot2Action, ETriggerEvent::Started,
+					[this](const FInputActionValue& Value)
+					{
+						SelectQuickSlot(1);
+					}
+				);
+
+				EnhancedInputComponent->BindActionValueLambda(
+					QuickSlot3Action, ETriggerEvent::Started,
+					[this](const FInputActionValue& Value)
+					{
+						SelectQuickSlot(2);
+					}
+				);
+
+				EnhancedInputComponent->BindActionValueLambda(
+					QuickSlot4Action, ETriggerEvent::Started,
+					[this](const FInputActionValue& Value)
+					{
+						SelectQuickSlot(3);
+					}
+				);
+
+				EnhancedInputComponent->BindActionValueLambda(
+					QuickSlot5Action, ETriggerEvent::Started,
+					[this](const FInputActionValue& Value)
+					{
+						SelectQuickSlot(4);
+					}
+				);
+
+				EnhancedInputComponent->BindAction(
+					QuickSlotScrollAction,
+					ETriggerEvent::Triggered,
+					this,
+					&UInventorySystemComponent::HandleQuickSlotScroll
+				);
 			}
 		}
 	}
@@ -332,9 +382,14 @@ void UInventorySystemComponent::NotifyInventoryRestored()
 		PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 	}
 
-	if (CurrWeaponIdx != INDEX_NONE)
+	//if (CurrWeaponIdx != INDEX_NONE)
+	//{
+	//	SwitchToIndex(CurrWeaponIdx);
+	//}
+
+	if (CurrentQuickSlotIndex != INDEX_NONE)
 	{
-		SwitchToIndex(CurrWeaponIdx);
+		SelectQuickSlot(CurrentQuickSlotIndex);
 	}
 }
 
@@ -412,6 +467,8 @@ void UInventorySystemComponent::InitInventory()
 		false
 	);
 
+	InitQuickSlotInventory();
+
 	UE_LOG(LogTemp, Warning, TEXT("void UInventorySystemComponent::InitInventory()"));
 }
 
@@ -487,6 +544,14 @@ bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* NewItemPickUp, in
 			if (CurrFlashLightItem == nullptr)
 			{
 				CurrFlashLightItem = Cast<AFlashlightItem>(NewItem);
+			
+				int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::Flashlight);
+				RegisterQuickSlot(QuickSlotIdx, EInventoryName::Item, EmptySlotIndex);
+
+				if (!CurrItem)
+				{
+					SelectQuickSlot(QuickSlotIdx);
+				}
 			}
 		}
 	}
@@ -546,18 +611,24 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 	if (!NewWeapon) { return false; }
 
 	bool bWeaponAdded = WeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
+	
+	int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::PrimaryWeapon);
+	RegisterQuickSlot(QuickSlotIdx, EInventoryName::Weapon, EmptySlotIndex);
 
 	if (bWeaponAdded)
 	{
-		if (!CurrWeapon)
+		if (!CurrItem)
 		{
-			CurrWeapon = NewWeapon;
-			CurrItem = CurrWeapon;
-			if (CurrFlashLightItem && bIsUsingFlashLightItem)
-			{
-				return true;
-			}
-			CurrWeapon->Equip(PlayerOwner);
+			//CurrWeapon = NewWeapon;
+			//CurrItem = CurrWeapon;
+			//if (CurrFlashLightItem && bIsUsingFlashLightItem)
+			//{
+			//	return true;
+			//}
+			//CurrWeapon->Equip(PlayerOwner);
+
+			SelectQuickSlot(QuickSlotIdx);
+
 		}
 		return true;
 	}
@@ -602,7 +673,17 @@ bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewIte
 
 	bool bWeaponAdded = ThrowableWeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
 
-	if (!bWeaponAdded)
+	int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::ThrowableWeapon);
+	RegisterQuickSlot(QuickSlotIdx, EInventoryName::ThrowableWeapon, EmptySlotIndex);
+
+	if (bWeaponAdded)
+	{
+		if (!CurrItem)
+		{
+			SelectQuickSlot(QuickSlotIdx);
+		}
+	}
+	else
 	{
 		NewWeapon->DeactivateItem();
 	}
@@ -629,19 +710,54 @@ bool UInventorySystemComponent::RemoveItem(TArray<FInventorySlot>& TargetInvento
 
 bool UInventorySystemComponent::RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount)
 {
-	if (!IsValidSlotIndex(TargetInventory, SlotIndex) || RemoveCount <= 0)
+	// <Old>
+
+	//if (!IsValidSlotIndex(TargetInventory, SlotIndex) || RemoveCount <= 0)
+	//{
+	//	return false;
+	//}
+
+	//FInventorySlot& Slot = TargetInventory[SlotIndex];
+
+	//if (Slot.IsEmpty())
+	//{
+	//	return false;
+	//}
+
+	//return Slot.RemoveItem(RemoveCount) == nullptr ? false : true;
+
+	//-------------------------------------------------
+
+	// <New>
+
+	if (!TargetInventory.IsValidIndex(SlotIndex) || RemoveCount <= 0)
 	{
 		return false;
 	}
 
 	FInventorySlot& Slot = TargetInventory[SlotIndex];
 
-	if (Slot.IsEmpty())
+	if (Slot.Num() < RemoveCount)
 	{
 		return false;
 	}
 
-	return Slot.RemoveItem(RemoveCount) == nullptr ? false : true;
+	for (int32 i = 0; i < RemoveCount; ++i)
+	{
+		AItem* RemovedItem = Slot.RemoveItem(INDEX_NONE);
+
+		if (!RemovedItem)
+		{
+			return false;
+		}
+
+		// Actual consume/deactivation policy belongs to the caller.
+	}
+
+	SynchronizeQuickSlots();
+
+	return true;
+
 }
 
 bool UInventorySystemComponent::SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex)
@@ -717,25 +833,155 @@ void UInventorySystemComponent::InitInventoryUI()
 
 	PlayerOwner->OnThrowableWeaponInventoryCreatedDelegate.Broadcast(MaxThrowableWeaponSlotsCount);
 	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 }
 
 void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex)
 {
-	if (InventoryName == FName("ItemInventory"))
+	////---------------------------------------------
+	//// <Old>
+
+	//if (InventoryName == FName("ItemInventory"))
+	//{
+	//	if (!SwapSlots(ItemInventory, FromIndex, ToIndex)) { return; }
+	//	if (PlayerOwner)
+	//	{
+	//		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+	//	}
+	//}
+	//else if (InventoryName == FName("WeaponInventory"))
+	//{
+	//	if (!SwapSlots(WeaponInventory, FromIndex, ToIndex)) { return; }
+	//	if (PlayerOwner)
+	//	{
+	//		PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+	//	}
+	//}
+
+	//---------------------------------------------
+	// <New>
+
+	TArray<FInventorySlot>* TargetInventory = nullptr;
+	EInventoryName TargetInventoryName;
+
+	if (InventoryName == FName(TEXT("ItemInventory")))
 	{
-		if (!SwapSlots(ItemInventory, FromIndex, ToIndex)) { return; }
-		if (PlayerOwner)
+		TargetInventory = &ItemInventory;
+		TargetInventoryName = EInventoryName::Item;
+	}
+	else if (InventoryName == FName(TEXT("WeaponInventory")))
+	{
+		TargetInventory = &WeaponInventory;
+		TargetInventoryName = EInventoryName::Weapon;
+	}
+	else if (InventoryName == FName(TEXT("ThrowableWeaponInventory")))
+	{
+		TargetInventory = &ThrowableWeaponInventory;
+		TargetInventoryName = EInventoryName::ThrowableWeapon;
+	}
+	
+	if (!TargetInventory)
+	{
+		return;
+	}
+
+	if (!SwapSlots(*TargetInventory, FromIndex, ToIndex))
+	{
+		return;
+	}
+
+	//----------------------------------------------------
+	int32 ItemIdxInQuickSlot_A = -1;
+	int32 ItemIdxInQuickSlot_B = -1;
+
+	IsItemInQuickSlots((*TargetInventory)[FromIndex].GetItem(), ItemIdxInQuickSlot_A);
+	IsItemInQuickSlots((*TargetInventory)[ToIndex].GetItem(), ItemIdxInQuickSlot_B);
+	
+	if (!QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_A) && QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_B))
+	{
+		ClearQuickSlot(ItemIdxInQuickSlot_B);
+		RegisterQuickSlot(ItemIdxInQuickSlot_B, TargetInventoryName, FromIndex);
+
+		if (CurrentQuickSlotIndex == ItemIdxInQuickSlot_B)
 		{
-			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+			//CurrentQuickSlotIndex == INDEX_NONE;
+			SelectQuickSlot(ItemIdxInQuickSlot_B);
+		}
+
+	}
+	else if (QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_A) && !QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_B))
+	{
+		ClearQuickSlot(ItemIdxInQuickSlot_A);
+		RegisterQuickSlot(ItemIdxInQuickSlot_A, TargetInventoryName, ToIndex);
+
+		if (CurrentQuickSlotIndex == ItemIdxInQuickSlot_A)
+		{
+			//CurrentQuickSlotIndex == INDEX_NONE;
+			SelectQuickSlot(ItemIdxInQuickSlot_A);
 		}
 	}
-	else if (InventoryName == FName("WeaponInventory"))
+	else if (QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_A) && QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_B))
 	{
-		if (!SwapSlots(WeaponInventory, FromIndex, ToIndex)) { return; }
-		if (PlayerOwner)
+		if (CurrentQuickSlotIndex == ItemIdxInQuickSlot_A)
 		{
-			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+			CurrentQuickSlotIndex = ItemIdxInQuickSlot_B;
 		}
+		else if (CurrentQuickSlotIndex == ItemIdxInQuickSlot_B)
+		{
+			CurrentQuickSlotIndex = ItemIdxInQuickSlot_A;
+		}
+
+		QuickSlotInventory.Swap(ItemIdxInQuickSlot_A, ItemIdxInQuickSlot_B);
+
+	}
+
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+	//----------------------------------------------------
+
+	SynchronizeQuickSlots();
+
+	if (IsValid(CurrWeapon))
+	{
+		int32 FoundIndex = INDEX_NONE;
+
+		if (IsItemInSourceInventory(EInventoryName::Weapon, CurrWeapon, FoundIndex))
+		{
+			CurrWeaponIdx = FoundIndex;
+		}
+		else
+		{
+			CurrWeaponIdx = INDEX_NONE;
+		}
+	}
+
+	if (IsValid(CurrThrowableWeapon))
+	{
+		int32 FoundIndex = INDEX_NONE;
+
+		if (IsItemInSourceInventory(EInventoryName::ThrowableWeapon, CurrThrowableWeapon, FoundIndex))
+		{
+			CurrThrowableWeaponIdx = FoundIndex;
+		}
+		else
+		{
+			CurrThrowableWeaponIdx = INDEX_NONE;
+		}
+	}
+
+	if (!IsValid(PlayerOwner)) { return; }
+
+	if (TargetInventory == &ItemInventory)
+	{
+		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+	}
+	else if (TargetInventory == &WeaponInventory)
+	{
+		PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+	}
+	else
+	{
+		PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 	}
 }
 
@@ -752,6 +998,8 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		
 		AItem* ItemToDrop = ItemInventory[SlotIndex].GetItem(0);
 		ItemInventory[SlotIndex].ClearSlot();
+
+		if (!IsValid(ItemToDrop)) { return; }
 
 		if (ItemToDrop->GetItemName() == EItemName::ItemName_FlashLight && ItemToDrop == CurrFlashLightItem)
 		{
@@ -793,12 +1041,14 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		//}
 		//-----------------------------------------------------------
 
+		SynchronizeQuickSlots();
 
 		ItemToDrop->DeactivateItemAndGetItemPickUp();
 
 		if (PlayerOwner)
 		{
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+			PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 		}
 	}
 	else if (InventoryName == FName("WeaponInventory"))
@@ -828,9 +1078,12 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		WeaponInventory[SlotIndex].GetItem(0)->DeactivateItemAndGetItemPickUp();
 
 		WeaponInventory[SlotIndex].ClearSlot();
+
+		SynchronizeQuickSlots();
 		if (PlayerOwner)
 		{
 			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+			PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 			//TODO: 여기서 무기 버릴 때 처리를 해야함
 		}
 	}
@@ -971,7 +1224,9 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 		if (AddWeaponFromPickUp(NewItemPickUp))
 		{
 			NewItemPickUp->DeactivateItemPickUp();
+			SynchronizeQuickSlots();
 			PlayerOwner->OnWeaponInventoryUpdatedDelegate.Broadcast(WeaponInventory);
+			PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 			return true;
 		}
 		else
@@ -984,7 +1239,10 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 		if (AddThrowableWeaponFromPickUp(NewItemPickUp))
 		{
 			NewItemPickUp->DeactivateItemPickUp();
+			SynchronizeQuickSlots();
 			PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+			PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+
 			return true;
 		}
 		else
@@ -997,7 +1255,10 @@ bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
 		if (AddItemFromPickUp(NewItemPickUp))
 		{
 			NewItemPickUp->DeactivateItemPickUp();
+			SynchronizeQuickSlots();
 			PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+			PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+
 			return true;
 		}
 		else
@@ -1251,112 +1512,175 @@ EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 	else return EWeaponStateType::WeaponStateType_None;
 }
 
-void UInventorySystemComponent::SwitchToPreviousWeapon()
-{
-	if (!CurrWeapon) { return; }
-	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-		return;
-	}
+//void UInventorySystemComponent::SwitchToPreviousWeapon()
+//{
+//	if (!CurrWeapon) { return; }
+//	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+//		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+//		return;
+//	}
+//
+//	int32 NextIdx = CurrWeaponIdx;
+//
+//	for (int32 i = 1; i < WeaponInventory.Num(); i++)
+//	{
+//		NextIdx -= 1;
+//		if (NextIdx < 0)
+//		{
+//			NextIdx = WeaponInventory.Num() + NextIdx;
+//		}
+//
+//		if (!WeaponInventory[NextIdx].IsEmpty())
+//		{
+//			CurrWeaponIdx = NextIdx;
+//			ChangeWeapon(CurrWeaponIdx);
+//			break;
+//		}
+//	}
+//}
 
-	int32 NextIdx = CurrWeaponIdx;
+//void UInventorySystemComponent::SwitchToNextWeapon()
+//{
+//	if (!CurrWeapon) { return; }
+//	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+//		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+//		return;
+//	}
+//
+//	int32 NextIdx = CurrWeaponIdx;
+//
+//	for (int32 i = 1; i < WeaponInventory.Num(); i++)
+//	{
+//		NextIdx += 1;
+//		NextIdx = NextIdx % WeaponInventory.Num();
+//
+//		if (!WeaponInventory[NextIdx].IsEmpty())
+//		{
+//			CurrWeaponIdx = NextIdx;
+//			ChangeWeapon(CurrWeaponIdx);
+//			break;
+//		}
+//	}
+//}
 
-	for (int32 i = 1; i < WeaponInventory.Num(); i++)
-	{
-		NextIdx -= 1;
-		if (NextIdx < 0)
-		{
-			NextIdx = WeaponInventory.Num() + NextIdx;
-		}
-
-		if (!WeaponInventory[NextIdx].IsEmpty())
-		{
-			CurrWeaponIdx = NextIdx;
-			ChangeWeapon(CurrWeaponIdx);
-			break;
-		}
-	}
-}
-
-void UInventorySystemComponent::SwitchToNextWeapon()
-{
-	if (!CurrWeapon) { return; }
-	if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-		|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-		return;
-	}
-
-	int32 NextIdx = CurrWeaponIdx;
-
-	for (int32 i = 1; i < WeaponInventory.Num(); i++)
-	{
-		NextIdx += 1;
-		NextIdx = NextIdx % WeaponInventory.Num();
-
-		if (!WeaponInventory[NextIdx].IsEmpty())
-		{
-			CurrWeaponIdx = NextIdx;
-			ChangeWeapon(CurrWeaponIdx);
-			break;
-		}
-	}
-}
-
-void UInventorySystemComponent::SwitchToIndex(int32 idx)
-{
-	if (CurrWeapon)
-	{
-		if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-			|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
-			return;
-		}
-	}
-	if (WeaponInventory.IsValidIndex(idx) && CurrWeaponIdx != idx)
-	{
-		const int32 PrevIndex = CurrWeaponIdx;
-		CurrWeaponIdx = idx;
-		ChangeWeapon(CurrWeaponIdx);
-
-		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
-		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
-	}
-}
-
+//void UInventorySystemComponent::SwitchToIndex(int32 idx)
+//{
+//	if (CurrWeapon)
+//	{
+//		if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
+//			|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+//			return;
+//		}
+//	}
+//	if (WeaponInventory.IsValidIndex(idx) && CurrWeaponIdx != idx)
+//	{
+//		const int32 PrevIndex = CurrWeaponIdx;
+//		CurrWeaponIdx = idx;
+//		ChangeWeapon(CurrWeaponIdx);
+//
+//		//UE_LOG(LogTemp, Warning, TEXT("Broadcasting weapon switch: %d -> %d"), PrevIndex, CurrWeaponIdx);
+//		OnWeaponSwitched.Broadcast(PrevIndex, CurrWeaponIdx);
+//	}
+//}
 
 void UInventorySystemComponent::SwitchToNextItem()
 {
-	if (!NextItem) { return; }
-	if (NextItem->IsWeapon())
+	//if (!NextItem) { return; }
+	//if (NextItem->IsWeapon())
+	//{
+	//	CurrWeapon = Cast<AWeapon>(NextItem);
+	//	CurrItem = CurrWeapon;
+	//}
+	//else
+	//{
+	//	bIsUsingFlashLightItem = true; //TODO: 이 변수에 대한 처리가 필요함
+	//}
+
+	//NextItem->Equip(PlayerOwner);
+
+	//----------------------------------------
+
+	if (!IsValid(NextItem) || !IsValid(PlayerOwner))
 	{
-		CurrWeapon = Cast<AWeapon>(NextItem);
-		CurrItem = CurrWeapon;
+		return;
+	}
+
+	AItem* ItemToEquip = NextItem;
+	NextItem = nullptr;
+
+	if (AWeapon* Weapon = Cast<AWeapon>(ItemToEquip))
+	{
+		CurrWeapon = Weapon;
+		CurrThrowableWeapon = nullptr;
+		CurrItem = Weapon;
+
+		int32 WeaponSlotIndex = INDEX_NONE;
+
+		if (IsItemInSourceInventory(
+			EInventoryName::Weapon,
+			Weapon,
+			WeaponSlotIndex))
+		{
+			CurrWeaponIdx = WeaponSlotIndex;
+		}
+	}
+	else if (AThrowableWeapon* ThrowableWeapon =
+		Cast<AThrowableWeapon>(ItemToEquip))
+	{
+		CurrThrowableWeapon = ThrowableWeapon;
+		CurrItem = ThrowableWeapon;
+
+		int32 ThrowableSlotIndex = INDEX_NONE;
+
+		if (IsItemInSourceInventory(
+			EInventoryName::ThrowableWeapon,
+			ThrowableWeapon,
+			ThrowableSlotIndex))
+		{
+			CurrThrowableWeaponIdx = ThrowableSlotIndex;
+		}
+
+		// CurrWeapon remains available as the last selected firearm.
+		// Its equipped state must be treated separately.
+	}
+	else if (AFlashlightItem* Flashlight =
+		Cast<AFlashlightItem>(ItemToEquip))
+	{
+		CurrFlashLightItem = Flashlight;
+		CurrItem = Flashlight;
+		bIsUsingFlashLightItem = true;
 	}
 	else
 	{
-		bIsUsingFlashLightItem = true; //TODO: 이 변수에 대한 처리가 필요함
+		CurrItem = ItemToEquip;
 	}
 
-	NextItem->Equip(PlayerOwner);
+	ItemToEquip->Equip(PlayerOwner);
+
+	//SynchronizeQuickSlots();
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+
 }
 
-void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
-{
-	if (WeaponInventory.IsValidIndex(WeaponIndex) && !WeaponInventory[WeaponIndex].IsEmpty())
-	{
-		NextItem = WeaponInventory[WeaponIndex].GetItem(0);
+//void UInventorySystemComponent::ChangeWeapon(int32 WeaponIndex)
+//{
+//	if (WeaponInventory.IsValidIndex(WeaponIndex) && !WeaponInventory[WeaponIndex].IsEmpty())
+//	{
+//		NextItem = WeaponInventory[WeaponIndex].GetItem(0);
+//
+//		if (IsValid(CurrWeapon))
+//		{
+//			//CurrWeapon->SwitchWeapon(PlayerOwner, false);
+//			CurrWeapon->Unequip(PlayerOwner);
+//		}
+//		else
+//		{
+//			SwitchToNextItem();
+//		}
+//	}
+//}
 
-		if (IsValid(CurrWeapon))
-		{
-			//CurrWeapon->SwitchWeapon(PlayerOwner, false);
-			CurrWeapon->Unequip(PlayerOwner);
-		}
-		else
-		{
-			//SwitchToOtherWeapon();
-			SwitchToNextItem();
-		}
-	}
-}
+
 EThrowableWeaponStateType UInventorySystemComponent::GetCurrThrowableWeaponStateType() const
 {
 	if (CurrThrowableWeapon) return CurrThrowableWeapon->GetCurrentState();
@@ -1416,11 +1740,11 @@ void UInventorySystemComponent::SwitchToIndexThrowableWeapon(int32 idx)
 	//	OnWeaponSwitched.Broadcast(PrevIndex, CurrThrowableWeaponIdx);
 	//}
 }
-void UInventorySystemComponent::SwitchToOtherThrowableWeapon()
-{
-	//ThrowableWeaponInventory[CurrThrowableWeaponIdx]->SwitchWeapon(PlayerOwner, true);
-	//CurrThrowableWeapon = ThrowableWeaponInventory[CurrThrowableWeaponIdx];
-}
+//void UInventorySystemComponent::SwitchToOtherThrowableWeapon()
+//{
+//	//ThrowableWeaponInventory[CurrThrowableWeaponIdx]->SwitchWeapon(PlayerOwner, true);
+//	//CurrThrowableWeapon = ThrowableWeaponInventory[CurrThrowableWeaponIdx];
+//}
 void UInventorySystemComponent::ChangeThrowableWeapon(int32 WeaponIndex)
 {
 	if (ThrowableWeaponInventory.IsValidIndex(WeaponIndex))
@@ -1571,3 +1895,440 @@ bool UInventorySystemComponent::FindFlashLightInInventory()
 }
 #pragma endregion
 
+void UInventorySystemComponent::SynchronizeQuickSlots()
+{
+	bool bInventoryChanged = false;
+	bool bSelectionChanged = false;
+
+	const int32 PreviousSelection = CurrentQuickSlotIndex;
+
+	for (int32 QuickIndex = 0; QuickIndex < QuickSlotInventory.Num(); ++QuickIndex)
+	{
+		FQuickSlot& QuickSlot = QuickSlotInventory[QuickIndex];
+
+		if (QuickSlot.IsEmpty())
+		{
+			if (QuickSlot.SourceSlotIndex != INDEX_NONE)
+			{
+				QuickSlot.Clear();
+				bInventoryChanged = true;
+			}
+
+			continue;
+		}
+
+		AItem* ReferencedItem = QuickSlot.GetItem();
+		int32 FoundSourceIndex = INDEX_NONE;
+
+		const bool bStillOwned = IsItemInSourceInventory(
+			QuickSlot.SourceInventory,
+			ReferencedItem,
+			FoundSourceIndex
+		);
+
+		if (!bStillOwned)
+		{
+			QuickSlot.Clear();
+			bInventoryChanged = true;
+
+			if (CurrentQuickSlotIndex == QuickIndex)
+			{
+				CurrentQuickSlotIndex = INDEX_NONE;
+				bSelectionChanged = true;
+			}
+
+			continue;
+		}
+
+		if (QuickSlot.SourceSlotIndex != FoundSourceIndex)
+		{
+			QuickSlot.SourceSlotIndex = FoundSourceIndex;
+			bInventoryChanged = true;
+		}
+	}
+
+	if (bInventoryChanged)
+	{
+		//OnQuickSlotInventoryChanged.Broadcast();
+	}
+
+	if (bSelectionChanged)
+	{
+		//OnQuickSlotSelectionChanged.Broadcast(
+		//	PreviousSelection,
+		//	CurrentQuickSlotIndex
+		//);
+	}
+}
+
+void UInventorySystemComponent::InitQuickSlotInventory()
+{
+	QuickSlotInventory.SetNum(QuickSlotCount);
+
+	QuickSlotInventory[0].SlotType = EQuickSlotType::PrimaryWeapon;
+	QuickSlotInventory[0].SourceInventory = EInventoryName::Weapon;
+
+	QuickSlotInventory[1].SlotType = EQuickSlotType::PrimaryWeapon;
+	QuickSlotInventory[1].SourceInventory = EInventoryName::Weapon;
+
+	QuickSlotInventory[2].SlotType = EQuickSlotType::SecondaryWeapon;
+	QuickSlotInventory[2].SourceInventory = EInventoryName::Weapon;
+
+	QuickSlotInventory[3].SlotType = EQuickSlotType::ThrowableWeapon;
+	QuickSlotInventory[3].SourceInventory = EInventoryName::ThrowableWeapon;
+
+	QuickSlotInventory[4].SlotType = EQuickSlotType::Flashlight;
+	QuickSlotInventory[4].SourceInventory = EInventoryName::Item;
+
+	for (FQuickSlot& Slot : QuickSlotInventory)
+	{
+		Slot.Clear();
+	}
+
+	CurrentQuickSlotIndex = INDEX_NONE;
+	EquippedQuickSlotItem.Reset();
+
+	//OnQuickSlotInventoryChanged.Broadcast();
+}
+
+const TArray<FInventorySlot>* UInventorySystemComponent::GetQuickSlotSourceInventory(EInventoryName InventoryName) const
+{
+	return GetInventoryConst(InventoryName);
+}
+
+bool UInventorySystemComponent::IsItemInSourceInventory(EInventoryName InventoryName, const AItem* Item, int32& OutSlotIndex) const
+{
+	OutSlotIndex = INDEX_NONE;
+	if (!IsValid(Item)) { return false; }
+	const TArray<FInventorySlot>* Inventory = GetQuickSlotSourceInventory(InventoryName);
+	if (!Inventory) { return false; }
+
+	for (int32 SlotIndex = 0; SlotIndex < Inventory->Num(); ++SlotIndex)
+	{
+		const FInventorySlot& Slot = (*Inventory)[SlotIndex];
+
+		for (const TObjectPtr<AItem>& StoredItem : Slot.Items)
+		{
+			if (StoredItem.Get() == Item)
+			{
+				OutSlotIndex = SlotIndex;
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool UInventorySystemComponent::IsItemInQuickSlots(const AItem* Item, int32& OutSlotIndex) const
+{
+	OutSlotIndex = INDEX_NONE;
+	if (!IsValid(Item)) { return false; }
+
+	for (int32 SlotIndex = 0; SlotIndex < QuickSlotInventory.Num(); ++SlotIndex)
+	{
+		const FQuickSlot& Slot = QuickSlotInventory[SlotIndex];
+		if (Slot.GetItem() == Item)
+		{
+			OutSlotIndex = SlotIndex;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UInventorySystemComponent::IsQuickSlotCompatible(int32 QuickSlotIndex, EInventoryName SourceInventory, const AItem* Item) const
+{
+	if (!QuickSlotInventory.IsValidIndex(QuickSlotIndex) || !IsValid(Item))
+	{
+		return false;
+	}
+
+	const EQuickSlotType SlotType = QuickSlotInventory[QuickSlotIndex].SlotType;
+
+
+	// TODO: Item Type 확인 방법 다른 방법 생각해보기
+	switch (SlotType)
+	{
+	case EQuickSlotType::PrimaryWeapon:
+	case EQuickSlotType::SecondaryWeapon:
+		return SourceInventory == EInventoryName::Weapon
+			&& Item->IsWeapon()
+			&& Item->IsA(AWeapon::StaticClass());
+
+	case EQuickSlotType::ThrowableWeapon:
+		return SourceInventory == EInventoryName::ThrowableWeapon
+			&& Item->IsA(AThrowableWeapon::StaticClass());
+
+	case EQuickSlotType::Flashlight:
+		return SourceInventory == EInventoryName::Item
+			&& Item->IsA(AFlashlightItem::StaticClass());
+
+	default:
+		return false;
+	}
+}
+
+bool UInventorySystemComponent::IsQuickSlotSelectable(int32 QuickSlotIndex) const
+{
+	if (!QuickSlotInventory.IsValidIndex(QuickSlotIndex))
+	{
+		UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::IsQuickSlotSelectable(int32 QuickSlotIndex) const 1"));
+
+		return false;
+	}
+
+	const FQuickSlot& Slot = QuickSlotInventory[QuickSlotIndex];
+
+	int32 SourceIndex = INDEX_NONE;
+
+	return IsItemInSourceInventory(Slot.SourceInventory, Slot.GetItem(), SourceIndex);
+}
+
+//TODO: 기존 Equip 요청 함수와 비교
+bool UInventorySystemComponent::RequestQuickSlotEquip(AItem* Item)
+{
+	if (!IsValid(Item) || !IsValid(PlayerOwner)) { return false; }
+
+	if (CurrItem == Item)
+	{
+		return true;
+	}
+
+	// Prevent changing weapon during an incompatible state.
+	if (IsValid(CurrWeapon) && CurrItem == CurrWeapon)
+	{
+		const EWeaponStateType State = GetCurrWeaponStateType();
+
+		if (State != EWeaponStateType::WeaponStateType_Idle)
+		{
+			return false;
+		}
+	}
+
+	NextItem = Item;
+
+	if (IsValid(CurrItem))
+	{
+		// Existing unequip flow calls SwitchToNextItem.
+		CurrItem->Unequip(PlayerOwner);
+	}
+	else
+	{
+		SwitchToNextItem();
+	}
+
+	return true;
+}
+
+void UInventorySystemComponent::HandleQuickSlotScroll(const FInputActionValue& Value)
+{
+	const float ScrollValue = Value.Get<float>();
+	if (ScrollValue > 0.0f)
+	{
+		SelectNextQuickSlot();
+	}
+	else if (ScrollValue < 0.0f)
+	{
+		SelectPreviousQuickSlot();
+	}
+}
+
+AItem* UInventorySystemComponent::GetCurrentQuickSlotItem() const
+{
+	if (!QuickSlotInventory.IsValidIndex(CurrentQuickSlotIndex))
+	{
+		return nullptr;
+	}
+
+	const FQuickSlot& Slot = QuickSlotInventory[CurrentQuickSlotIndex];
+
+	int32 FoundSlotIndex = INDEX_NONE;
+
+	if (!IsItemInSourceInventory(
+		Slot.SourceInventory,
+		Slot.GetItem(),
+		FoundSlotIndex))
+	{
+		return nullptr;
+	}
+
+	return Slot.GetItem();
+}
+
+int32 UInventorySystemComponent::FindEmptyQuickSlot(EQuickSlotType InQuickSlotType)
+{
+	QuickSlotInventory;
+
+	for (int32 QuickSlotIdx = 0; QuickSlotIdx < QuickSlotInventory.Num(); QuickSlotIdx++)
+	{
+		if (QuickSlotInventory[QuickSlotIdx].SlotType == InQuickSlotType)
+		{
+			if (QuickSlotInventory[QuickSlotIdx].IsEmpty())
+			{
+				return QuickSlotIdx;
+			}
+		}
+	}
+	return -1;
+}
+
+bool UInventorySystemComponent::RegisterQuickSlot(int32 QuickSlotIndex, EInventoryName SourceInventory, int32 SourceSlotIndex)
+{
+	if (!QuickSlotInventory.IsValidIndex(QuickSlotIndex)) { return false; }
+	const TArray<FInventorySlot>* Inventory = GetQuickSlotSourceInventory(SourceInventory);
+
+	if (!Inventory || !Inventory->IsValidIndex(SourceSlotIndex)) { return false; }
+	const FInventorySlot& SourceSlot = (*Inventory)[SourceSlotIndex];
+	if (SourceSlot.IsEmpty()) { return false; }
+
+	AItem* Item = SourceSlot.Items[0].Get();
+
+	if (!IsQuickSlotCompatible(QuickSlotIndex, SourceInventory, Item)) { return false; }
+
+	// Prevent one item instance being assigned to multiple quick slots.
+	for (int32 Index = 0; Index < QuickSlotInventory.Num(); ++Index)
+	{
+		if (Index == QuickSlotIndex)
+		{
+			continue;
+		}
+
+		if (QuickSlotInventory[Index].GetItem() == Item)
+		{
+			ClearQuickSlot(Index);
+		}
+	}
+
+	FQuickSlot& QuickSlot = QuickSlotInventory[QuickSlotIndex];
+
+	QuickSlot.SourceInventory = SourceInventory;
+	QuickSlot.SourceSlotIndex = SourceSlotIndex;
+	QuickSlot.Item = Item;
+
+	QuickSlot.Count; //TODO: 이부분에 대한 구현 필요함. Item 종류에 따라서 Count 자체의 정의가 달라지기 때문에 별도의 처리가 필요함.
+
+	//OnQuickSlotInventoryChanged.Broadcast();
+
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+
+	return true;
+}
+
+bool UInventorySystemComponent::ClearQuickSlot(int32 QuickSlotIndex)
+{
+	if (!QuickSlotInventory.IsValidIndex(QuickSlotIndex)) { return false; }
+	FQuickSlot& Slot = QuickSlotInventory[QuickSlotIndex];
+
+	if (Slot.IsEmpty())
+	{
+		return false;
+	}
+
+	Slot.Clear();
+
+	if (CurrentQuickSlotIndex == QuickSlotIndex)
+	{
+		const int32 PreviousIndex = CurrentQuickSlotIndex;
+		CurrentQuickSlotIndex = INDEX_NONE;
+		//OnQuickSlotSelectionChanged.Broadcast(PreviousIndex, INDEX_NONE);
+	}
+
+	//OnQuickSlotInventoryChanged.Broadcast();
+
+	return true;
+}
+
+bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex)
+{
+	if (!IsQuickSlotSelectable(QuickSlotIndex))
+	{
+		UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex) 1"));
+
+		return false;
+	}
+
+	if (CurrentQuickSlotIndex == QuickSlotIndex)
+	{
+		UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex) 2"));
+
+		return true;
+	}
+
+	AItem* TargetItem = QuickSlotInventory[QuickSlotIndex].GetItem();
+
+	if (!RequestQuickSlotEquip(TargetItem))
+	{
+		UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex) 3"));
+
+		return false;
+	}
+
+	const int32 PreviousIndex = CurrentQuickSlotIndex;
+
+	CurrentQuickSlotIndex = QuickSlotIndex;
+
+	//OnQuickSlotSelectionChanged.Broadcast(
+	//	PreviousIndex,
+	//	CurrentQuickSlotIndex
+	//);
+
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+
+	UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex) 4"));
+
+	return true;
+}
+
+void UInventorySystemComponent::SwapQuickSlots(int32 FromIndex, int32 ToIndex)
+{
+	//TODO: 구현 고려
+
+
+	return;
+}
+
+void UInventorySystemComponent::SelectNextQuickSlot()
+{
+	const int32 NumSlots = QuickSlotInventory.Num();
+	if (NumSlots == 0) { return; }
+
+	const int32 StartIndex = CurrentQuickSlotIndex == INDEX_NONE ? NumSlots - 1 : CurrentQuickSlotIndex;
+
+	for (int32 Step = 1; Step <= NumSlots; ++Step)
+	{
+		const int32 NextIndex = (StartIndex + Step) % NumSlots;
+
+		if (bSkipEmptyQuickSlots && !IsQuickSlotSelectable(NextIndex))
+		{
+			continue;
+		}
+
+		if (SelectQuickSlot(NextIndex))
+		{
+			return;
+		}
+	}
+}
+
+void UInventorySystemComponent::SelectPreviousQuickSlot()
+{
+	const int32 NumSlots = QuickSlotInventory.Num();
+	if (NumSlots == 0) { return; }
+	const int32 StartIndex = CurrentQuickSlotIndex == INDEX_NONE ? 0 : CurrentQuickSlotIndex;
+
+	for (int32 Step = 1; Step <= NumSlots; ++Step)
+	{
+		const int32 PreviousIndex = (StartIndex - Step + NumSlots * 2) % NumSlots;
+
+		if (bSkipEmptyQuickSlots && !IsQuickSlotSelectable(PreviousIndex))
+		{
+			continue;
+		}
+
+		if (SelectQuickSlot(PreviousIndex))
+		{
+			return;
+		}
+	}
+}

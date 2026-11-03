@@ -12,6 +12,7 @@
 #include "UI/PlayerDisplayWidget.h"
 #include "UI/ThrowableWeaponInventoryWidget.h"
 #include "UI/InteractionWidget.h"
+#include "UI/QuickSlotWidget.h"
 
 #include "Instance/DefaultGameInstance.h"
 #include "Characters/Player/FPSPlayerController.h"
@@ -432,6 +433,21 @@ void UPlayerUISubsystem::InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWe
     CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.AddUObject(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::CreateInventorySlots);
     CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.AddUObject(ThrowableWeaponInventoryWidget, &UThrowableWeaponInventoryWidget::UpdateInventorySlots);
 
+}
+
+void UPlayerUISubsystem::InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetClass)
+{
+    if (!WidgetClass) { return; }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+    UQuickSlotWidget* QuickSlotWidget = CreateWidget<UQuickSlotWidget>(PlayerController, WidgetClass);
+    if (!IsValid(QuickSlotWidget)) { return; }
+    RegisterUIWidget(QuickSlotWidget);
+    ShowUI(EUIType::QuickSlot);
+
+    CharacterPlayer->OnQuickSlotUpdatedDelegate.AddUObject(QuickSlotWidget, &UQuickSlotWidget::UpdateQuickSlots);
+
+    CharacterPlayer->OnQuickSlotSelectionChanged.AddUObject(QuickSlotWidget, &UQuickSlotWidget::HandleQuickSlotSelectionChanged); //TODO: 필요한가?
 }
 
 //void UPlayerUISubsystem::InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass)
