@@ -647,6 +647,20 @@ bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewIte
 		return false;
 	}
 
+	int32 WeaponIdx = FindItemSlot(ThrowableWeaponInventory, NewItemPickUp->GetItemName());
+	if (WeaponIdx != INDEX_NONE)
+	{
+		if (!ThrowableWeaponInventory[WeaponIdx].IsEmpty())
+		{
+			AThrowableWeapon* Weapon = Cast<AThrowableWeapon>(ThrowableWeaponInventory[WeaponIdx].GetItem(0));
+			if (Weapon)
+			{
+				Weapon->AddAmmo(NewItemPickUp->GetAmmo());
+				return true;
+			}
+		}
+	}
+
 	if (NewItemPickUp->IsStackable())
 	{
 		for (FInventorySlot& Slot : ThrowableWeaponInventory)
@@ -1058,8 +1072,8 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 
 		if (CurrWeapon)
 		{
-			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle
-				&& CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Unequipped)
+			if (CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Idle
+				&& CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Unequipped)
 			{
 				return;
 			}
@@ -1195,8 +1209,8 @@ void UInventorySystemComponent::PickUpItem()
 	{
 		if (CurrWeapon)
 		{
-			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Unequipped
-				&& CurrWeapon->GetCurrentState()->GetWeaponStateType() != EWeaponStateType::WeaponStateType_Idle)
+			if (CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Unequipped
+				&& CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Idle)
 			{
 				return;
 			}
@@ -1503,12 +1517,12 @@ FTransform UInventorySystemComponent::GetWeaponAimSocketRelativeTransform()
 #pragma region SwitchWeapon
 bool UInventorySystemComponent::IsCurrentSkillWeaponTargeting()
 {
-	if (CurrWeapon && CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Waiting) { return true; }
+	if (CurrWeapon && CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Waiting) { return true; }
 	else { return false; }
 }
 EWeaponStateType UInventorySystemComponent::GetCurrWeaponStateType() const
 {
-	if (CurrWeapon) return CurrWeapon->GetCurrentState()->GetWeaponStateType();
+	if (CurrWeapon) return CurrWeapon->GetCurrentState();
 	else return EWeaponStateType::WeaponStateType_None;
 }
 
@@ -1761,13 +1775,12 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 	UE_LOG(LogTemp, Error, TEXT("void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)"));
 
 	if (!ThrowableWeaponInventory.IsValidIndex(WeaponIdx)) return;
+	if (ThrowableWeaponInventory[WeaponIdx].IsEmpty()) return;
 
 	if (CurrFlashLightItem)
 	{
 		bIsUsingFlashLightItem = false;
 	}
-
-	if (ThrowableWeaponInventory[WeaponIdx].IsEmpty()) return;
 
 	NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem(0);
 
@@ -1779,6 +1792,11 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 	{
 		NextItem->Equip(PlayerOwner);
 	}
+
+	//-------------------------------
+
+
+
 }
 #pragma endregion
 
@@ -1792,10 +1810,10 @@ bool UInventorySystemComponent::TryTakeControl(AWeapon* NewWeapon)
 	}
 	else
 	{
-		EWeaponStateType CurrWeaponStateType = CurrWeapon->GetCurrentState()->GetWeaponStateType();
+		EWeaponStateType CurrWeaponStateType = CurrWeapon->GetCurrentState();
 		if (CurrWeaponStateType == EWeaponStateType::WeaponStateType_Idle) //TODO: 다른 state일 때 스킬 어떻게 작동해야 하는지
 		{
-			CurrWeapon->ChangeState(CurrWeapon->WaitingState);
+			CurrWeapon->SetState(EWeaponStateType::WeaponStateType_Waiting);
 			ControllingWeapon = NewWeapon;
 			return true;
 		}
@@ -1813,10 +1831,10 @@ void UInventorySystemComponent::ReleaseControl()
 	}
 	else
 	{
-		EWeaponStateType CurrWeaponStateType = CurrWeapon->GetCurrentState()->GetWeaponStateType();
+		EWeaponStateType CurrWeaponStateType = CurrWeapon->GetCurrentState();
 		if (CurrWeaponStateType == EWeaponStateType::WeaponStateType_Waiting)
 		{
-			CurrWeapon->ChangeState(CurrWeapon->IdleState);
+			CurrWeapon->SetState(EWeaponStateType::WeaponStateType_Idle);
 			ControllingWeapon = CurrWeapon;
 		}
 		else
@@ -1857,8 +1875,8 @@ void UInventorySystemComponent::ToggleFlashLight()
 	{
 		if (CurrWeapon)
 		{
-			if (CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
-				|| CurrWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {
+			if (CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Switching
+				|| CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Unequipped) {
 				return;
 			}
 

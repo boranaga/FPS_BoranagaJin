@@ -344,7 +344,7 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 			{
 				if (AWeapon* CurrentWeapon = CharacterPlayer->GetInventorySystemComponent()->GetCurrentWeapon())
 				{
-					EWeaponStateType CurrentWeaponState = CurrentWeapon->GetCurrentState()->GetWeaponStateType();
+					EWeaponStateType CurrentWeaponState = CurrentWeapon->GetCurrentState();
 					if (CurrentWeaponState == EWeaponStateType::WeaponStateType_Firing)
 					{
 						bIsRunning = false;

@@ -400,7 +400,7 @@ void AWeaponTargeting::FireSingleProjectile(FWeaponFireParams* FireData, int32 N
 {
 	//UE_LOG(LogTemp, Warning, TEXT("FireSingleProjectile_Pool"));
 
-	if (CurrentState == UnequippedState) return;
+	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
 	if (!FireData) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
@@ -540,11 +540,11 @@ void AWeaponTargeting::ActivateTargetingSkillWidget(bool bflag)
 #pragma region FireMode/Targeting
 void AWeaponTargeting::StartTargetDetection()
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("Start Target Detection!!!"));
 
-		ChangeState(TargetingState);
+		SetState(EWeaponStateType::WeaponStateType_Targeting);
 		PlayWeaponSound(TargetSearchLoopSound);
 		UpdateTargetDetection(GetWorld()->GetDeltaSeconds());
 	}
@@ -630,7 +630,7 @@ void AWeaponTargeting::UpdateTargetDetection(float DeltaTime)
 }
 void AWeaponTargeting::StopTargetDetection(FWeaponFireParams* FireData)
 {
-	if (CurrentState == TargetingState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Targeting)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("Stop Target Detection!!!"));
 
@@ -880,7 +880,7 @@ void AWeaponTargeting::StartMissileLaunch(TArray<AActor*> TargetActors, FWeaponF
 	}
 	else
 	{
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 		UpdateMissileLaunch(FireData);
 	}
 }
@@ -913,17 +913,17 @@ void AWeaponTargeting::StopMissileLaunch()
 	CurrentTargetIndex = 0;
 
 	ReleaseControl();
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 #pragma endregion
 
 #pragma region Skill/Targeting
 void AWeaponTargeting::HandleTargetDetectionSkill()
 {
-	if (CurrentState == IdleState && bCanUseTargetingSkill)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle && bCanUseTargetingSkill)
 	{
 		if (!TryTakeControl()) { return; };
-		ChangeState(TargetingState);
+		SetState(EWeaponStateType::WeaponStateType_Targeting);
 		PlayWeaponSound(TargetSearchLoopSound);
 		if (TargetingSkillWidget) { TargetingSkillWidget->SetDetectionTimeUIVisible(true); }
 		UpdateTargetDetectionSkill(GetWorld()->GetDeltaSeconds());
@@ -933,7 +933,7 @@ void AWeaponTargeting::HandleTargetDetectionSkill()
 		OnRocketLauncherSkillActivated.Broadcast();
 
 	}
-	else if (CurrentState == TargetingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_Targeting)
 	{
 		CancelTargetingSkill();
 	}
@@ -1049,7 +1049,7 @@ void AWeaponTargeting::UpdateTargetDetectionSkill(float DeltaTime)
 }
 void AWeaponTargeting::HandleTargetingSkillFire(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
-	if (CurrentState == TargetingState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Targeting)
 	{
 		GetWorld()->GetTimerManager().ClearTimer(TargetDetectionTimer);
 
@@ -1099,9 +1099,9 @@ void AWeaponTargeting::HandleTargetingSkillFire(bool bIsLeftInput, bool bSingleP
 		if (LockedOnTargets.Num() == 0)
 		{
 			StartMissileLaunch(LockedOnTargets, &FireData_Skill);
-			if (CurrentState == IdleState)
+			if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 			{
-				ChangeState(FiringState);
+				SetState(EWeaponStateType::WeaponStateType_Firing);
 				StartSingleShot(bIsLeftInput, bSingleProjectile, NumPenetrable);
 			}
 		}
@@ -1110,13 +1110,13 @@ void AWeaponTargeting::HandleTargetingSkillFire(bool bIsLeftInput, bool bSingleP
 			StartMissileLaunch(LockedOnTargets, &FireData_Skill);
 		}
 	}
-	else if (CurrentState == IdleState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
 		if (!bAllowNormalFireForSkillWeapon) { return; }
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 		StartSingleShot(bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
-	else if (CurrentState == PumpActionReloadingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		if (!bAllowNormalFireForSkillWeapon) { return; }
 		BufferedFireRequest = FBufferedFireRequest(EWeaponAction::WeaponAction_SingleShot, bIsLeftInput, bSingleProjectile, NumPenetrable);
@@ -1144,7 +1144,7 @@ void AWeaponTargeting::CancelTargetingSkill()
 	if (TargetingSkillWidget) { TargetingSkillWidget->SetDetectionTimeUIVisible(false); }
 
 	ReleaseControl();
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 
 	//suhyeon
 	// 스킬 취소 시 델리게이트를 브로드캐스트하여 위젯에 알림

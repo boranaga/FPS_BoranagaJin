@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Items/Item.h"
+#include "Items/WeaponState/WeaponStateType.h"
 #include "WeaponName.h"
 #include "WeaponAction.h"
 #include "WeaponFireParams.h"
@@ -145,6 +146,30 @@ public:
 public:
 	virtual void OnItemStateRestored() override;
 #pragma endregion
+
+#pragma region State
+public:
+	void SetState(EWeaponStateType NewState);
+	EWeaponStateType GetCurrentState() const { return CurrentState; }
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State") 
+	EWeaponStateType CurrentState = EWeaponStateType::WeaponStateType_None;
+
+protected:
+	void EnterState(EWeaponStateType NewState);
+	void ExitState(EWeaponStateType OldState);
+	void UpdateState(float DeltaTime);
+	//void UpdateIdle(float DeltaTime);
+	//void UpdateAiming(float DeltaTime);
+	//void UpdateThrown(float DeltaTime);
+	//void UpdateSwitching(float DeltaTime);
+	//virtual void OnEnterIdle();
+	//virtual void OnEnterAiming();
+	//virtual void OnEnterThrown();
+
+
+#pragma endregion
+
 #pragma region Socket
 protected:
 	FName WeaponSocketName = FName("");
@@ -186,30 +211,30 @@ protected:
 
 #pragma region WeaponState
 public:
-	UPROPERTY(VisibleAnywhere)
-	UWeaponBaseState* CurrentState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponIdleState* IdleState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponFiringState* FiringState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponFullAutoFiringState* FullAutoFiringState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponUnequippedState* UnequippedState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponReloadingState* ReloadingState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponPumpActionReloadState* PumpActionReloadingState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponSwitchingState* SwitchingState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponChargingState* ChargingState = nullptr;
-	UPROPERTY(VisibleAnywhere)
-	UWeaponWaitingState* WaitingState = nullptr;
-public:
-	UFUNCTION()
-	UWeaponBaseState* GetCurrentState() const { return CurrentState; }
-	void ChangeState(UWeaponBaseState* NewState);
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponBaseState* CurrentState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponIdleState* IdleState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponFiringState* FiringState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponFullAutoFiringState* FullAutoFiringState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponUnequippedState* UnequippedState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponReloadingState* ReloadingState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponPumpActionReloadState* PumpActionReloadingState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponSwitchingState* SwitchingState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponChargingState* ChargingState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponWaitingState* WaitingState = nullptr;
+//public:
+//	UFUNCTION()
+//	UWeaponBaseState* GetCurrentState() const { return CurrentState; }
+//	void ChangeState(UWeaponBaseState* NewState);
 
 protected:
 	///** The Character holding this weapon*/

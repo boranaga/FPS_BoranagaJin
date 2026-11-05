@@ -8,7 +8,7 @@
 #include "Items/InventorySystemComponent.h"
 #include "Items/FlashlightItem.h"
 #include "Items/Weapons/Weapon.h"
-#include "Items/WeaponState/WeaponBaseState.h"
+//#include "Items/WeaponState/WeaponBaseState.h"
 
 #include "KismetAnimationLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -194,7 +194,7 @@ void UPlayerCharacterAnimInstance::UpdateWeapon()
 
 				AimSocketRelativeTransform = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetAimSocketRelativeTransform();
 
-				CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState()->GetWeaponStateType();
+				CurrentWeaponStateType = PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon()->GetCurrentState();
 
 
 				if (CurrentWeapon != PlayerCharacter->GetInventorySystemComponent()->GetCurrentWeapon())
@@ -372,7 +372,7 @@ FTransform UPlayerCharacterAnimInstance::GetTargetLeftHandTransfrom() //TODO: ¼ö
 #pragma region RightHandSocket
 void UPlayerCharacterAnimInstance::UpdateRightHandSocket(float DeltaTime)
 {
-	if (CurrentWeapon && CurrentWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Waiting)
+	if (CurrentWeapon && CurrentWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Waiting)
 	{
 		if (bIsCrouching)
 		{
@@ -485,7 +485,7 @@ void UPlayerCharacterAnimInstance::UpdateSkillWeaponSocket(float DeltaTime)
 	//UE_LOG(LogTemp, Error, TEXT("No SkillWeapon!!!"));
 	if (!CurrentSkillWeapon) { return; }
 
-	if (CurrentSkillWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Targeting || CurrentSkillWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Firing)
+	if (CurrentSkillWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Targeting || CurrentSkillWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Firing)
 	{
 		CurrentSkillWeaponSocketTransform.SetRotation((FMath::RInterpTo(CurrentSkillWeaponSocketTransform.GetRotation().Rotator(), SkillWeaponSocketTransform_Active.GetRotation().Rotator(), DeltaTime, ActiveRotationInterpSpeed_SkillWeapon)).Quaternion());
 		CurrentSkillWeaponSocketTransform.SetTranslation(FMath::VInterpTo(CurrentSkillWeaponSocketTransform.GetTranslation(), SkillWeaponSocketTransform_Active.GetTranslation(), DeltaTime, ActiveLocationInterpSpeed_SkillWeapon));

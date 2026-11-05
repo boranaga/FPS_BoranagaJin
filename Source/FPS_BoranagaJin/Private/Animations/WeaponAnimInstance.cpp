@@ -2,7 +2,8 @@
 
 #include "Animations/WeaponAnimInstance.h"
 #include "Items/Weapons/Weapon.h"
-#include "Items/WeaponState/WeaponBaseState.h"
+//#include "Items/WeaponState/WeaponBaseState.h"
+#include "Items/WeaponState/WeaponStateType.h"
 
 void UWeaponAnimInstance::NativeInitializeAnimation()
 {
@@ -25,17 +26,14 @@ void UWeaponAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 
 	if (Weapon)
 	{
-		if (Weapon->GetCurrentState())
+		if (CurrentWeaponStateType != Weapon->GetCurrentState())
 		{
-			if (CurrentWeaponStateType != Weapon->GetCurrentState()->GetWeaponStateType())
-			{
-				PreviousWeaponStateType = CurrentWeaponStateType;
-				CurrentWeaponStateType = Weapon->GetCurrentState()->GetWeaponStateType();
+			PreviousWeaponStateType = CurrentWeaponStateType;
+			CurrentWeaponStateType = Weapon->GetCurrentState();
 
-				if (CurrentWeaponStateType == EWeaponStateType::WeaponStateType_Reloading)
-				{
-					Montage_Play(AM_Mag_Reload);
-				}
+			if (CurrentWeaponStateType == EWeaponStateType::WeaponStateType_Reloading)
+			{
+				Montage_Play(AM_Mag_Reload);
 			}
 		}
 	}

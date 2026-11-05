@@ -803,21 +803,22 @@ void AWeapon::BeginPlay()
 {
 	Super::BeginPlay();
 
-	IdleState = NewObject<UWeaponIdleState>(this, UWeaponIdleState::StaticClass());
-	FiringState = NewObject<UWeaponFiringState>(this, UWeaponFiringState::StaticClass());
-	FullAutoFiringState = NewObject<UWeaponFullAutoFiringState>(this, UWeaponFullAutoFiringState::StaticClass());
-	UnequippedState = NewObject<UWeaponUnequippedState>(this, UWeaponUnequippedState::StaticClass());
-	ReloadingState = NewObject<UWeaponReloadingState>(this, UWeaponReloadingState::StaticClass());
-	PumpActionReloadingState = NewObject<UWeaponPumpActionReloadState>(this, UWeaponPumpActionReloadState::StaticClass());
-	SwitchingState = NewObject<UWeaponSwitchingState>(this, UWeaponSwitchingState::StaticClass());
+	//IdleState = NewObject<UWeaponIdleState>(this, UWeaponIdleState::StaticClass());
+	//FiringState = NewObject<UWeaponFiringState>(this, UWeaponFiringState::StaticClass());
+	//FullAutoFiringState = NewObject<UWeaponFullAutoFiringState>(this, UWeaponFullAutoFiringState::StaticClass());
+	//UnequippedState = NewObject<UWeaponUnequippedState>(this, UWeaponUnequippedState::StaticClass());
+	//ReloadingState = NewObject<UWeaponReloadingState>(this, UWeaponReloadingState::StaticClass());
+	//PumpActionReloadingState = NewObject<UWeaponPumpActionReloadState>(this, UWeaponPumpActionReloadState::StaticClass());
+	//SwitchingState = NewObject<UWeaponSwitchingState>(this, UWeaponSwitchingState::StaticClass());
 
 	//TargetingState = NewObject<UWeaponTargetingState>(this, UWeaponTargetingState::StaticClass());
-	ChargingState = NewObject<UWeaponChargingState>(this, UWeaponChargingState::StaticClass());
-	WaitingState = NewObject<UWeaponWaitingState>(this, UWeaponWaitingState::StaticClass());
+	//ChargingState = NewObject<UWeaponChargingState>(this, UWeaponChargingState::StaticClass());
+	//WaitingState = NewObject<UWeaponWaitingState>(this, UWeaponWaitingState::StaticClass());
 
 	WeaponAnimInstance = WeaponMesh->GetAnimInstance();
 
-	CurrentState = UnequippedState;
+	//CurrentState = UnequippedState;
+	CurrentState = EWeaponStateType::WeaponStateType_Unequipped;
 
 	if (MuzzlePoint)
 	{
@@ -829,10 +830,12 @@ void AWeapon::BeginPlay()
 void AWeapon::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (CurrentState)
-	{
-		CurrentState->UpdateState(this, DeltaTime);
-	}
+	//if (CurrentState)
+	//{
+	//	CurrentState->UpdateState(this, DeltaTime);
+	//}
+	UpdateState(DeltaTime);
+
 	UpdateRecoil(DeltaTime);
 	UpdateSpread(DeltaTime);
 	//UpdateGlobalTimeDiation(DeltaTime); //TODO: If the player tries to switch weapons, reset the global time dilation to its default value
@@ -942,7 +945,7 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 {
 	//UE_LOG(LogTemp, Warning, TEXT("FireSingleProjectile_Pool"));
 
-	if (CurrentState == UnequippedState) return;
+	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
 	if (!FireData) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
@@ -1062,7 +1065,7 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 
 void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius, int32 AdditionalPellet, bool bIsHoming, AActor* HomingTarget)
 {
-	if (CurrentState == UnequippedState) return;
+	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
 	if (!FireData) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
@@ -1185,9 +1188,118 @@ void AWeapon::OnItemStateRestored()
 	}
 }
 
+void AWeapon::SetState(EWeaponStateType NewState)
+{
+	if (CurrentState == NewState) { return; }
+	ExitState(CurrentState);
+	CurrentState = NewState;
+	EnterState(CurrentState);
+}
+
+void AWeapon::EnterState(EWeaponStateType NewState)
+{
+	switch (NewState)
+	{
+	case EWeaponStateType::WeaponStateType_None:
+		break;
+	case EWeaponStateType::WeaponStateType_Idle:
+		AutoReload();
+		break;
+	case EWeaponStateType::WeaponStateType_Firing:
+		break;
+	case EWeaponStateType::WeaponStateType_FullAutoFiring:
+		break;
+	case EWeaponStateType::WeaponStateType_Reloading:
+		StartReload();
+		break;
+	case EWeaponStateType::WeaponStateType_PumpActionReloading:
+		StartPumpActionReload();
+		break;
+	case EWeaponStateType::WeaponStateType_Unequipped:
+		ForceStopCamModification();
+		ActivateAimUIWidget(false);
+		ActivateAmmoCounterWidget(false);
+		break;
+	case EWeaponStateType::WeaponStateType_Switching:
+		ZoomOut();
+		break;
+	case EWeaponStateType::WeaponStateType_Targeting:
+		break;
+	case EWeaponStateType::WeaponStateType_Charging:
+		break;
+	case EWeaponStateType::WeaponStateType_Waiting:
+		ActivateAimUIWidget(false);
+		break;
+	default:
+		break;
+	}
+}
+
+void AWeapon::ExitState(EWeaponStateType OldState)
+{
+	switch (OldState)
+	{
+	case EWeaponStateType::WeaponStateType_None:
+		break;
+	case EWeaponStateType::WeaponStateType_Idle:
+		break;
+	case EWeaponStateType::WeaponStateType_Firing:
+		break;
+	case EWeaponStateType::WeaponStateType_FullAutoFiring:
+		break;
+	case EWeaponStateType::WeaponStateType_Reloading:
+		break;
+	case EWeaponStateType::WeaponStateType_PumpActionReloading:
+		break;
+	case EWeaponStateType::WeaponStateType_Unequipped:
+		break;
+	case EWeaponStateType::WeaponStateType_Switching:
+		break;
+	case EWeaponStateType::WeaponStateType_Targeting:
+		break;
+	case EWeaponStateType::WeaponStateType_Charging:
+		break;
+	case EWeaponStateType::WeaponStateType_Waiting:
+		break;
+	default:
+		break;
+	}
+}
+
+void AWeapon::UpdateState(float DeltaTime)
+{
+	switch (CurrentState)
+	{
+	case EWeaponStateType::WeaponStateType_None:
+		break;
+	case EWeaponStateType::WeaponStateType_Idle:
+		break;
+	case EWeaponStateType::WeaponStateType_Firing:
+		break;
+	case EWeaponStateType::WeaponStateType_FullAutoFiring:
+		break;
+	case EWeaponStateType::WeaponStateType_Reloading:
+		break;
+	case EWeaponStateType::WeaponStateType_PumpActionReloading:
+		break;
+	case EWeaponStateType::WeaponStateType_Unequipped:
+		break;
+	case EWeaponStateType::WeaponStateType_Switching:
+		break;
+	case EWeaponStateType::WeaponStateType_Targeting:
+		break;
+	case EWeaponStateType::WeaponStateType_Charging:
+		break;
+	case EWeaponStateType::WeaponStateType_Waiting:
+		break;
+	default:
+		break;
+	}
+}
+
 void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
-	if (CurrentState == UnequippedState) return;
+	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
 	if (!FireData) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
@@ -1292,7 +1404,7 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 #pragma region AutoAim
 void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
-	if (CurrentState == UnequippedState) return;
+	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
 	if (!FireData) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
@@ -1398,7 +1510,7 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 
 void AWeapon::ZoomToggle()
 {
-	if (CurrentState == IdleState || CurrentState == FiringState || CurrentState == FullAutoFiringState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle || CurrentState == EWeaponStateType::WeaponStateType_Firing || CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("Zoom!!!"));
 
@@ -1437,19 +1549,19 @@ void AWeapon::ZoomOut()
 	ActivateAimUIWidget(true);
 }
 
-#pragma region WeaponState
-void AWeapon::ChangeState(UWeaponBaseState* NewState)
-{
-	if (!NewState || NewState == CurrentState) return;
-
-	if (CurrentState)
-	{
-		CurrentState->ExitState(this);
-	}
-	CurrentState = NewState;
-	CurrentState->EnterState(this);
-}
-#pragma endregion
+//#pragma region WeaponState
+//void AWeapon::ChangeState(UWeaponBaseState* NewState)
+//{
+//	if (!NewState || NewState == CurrentState) return;
+//
+//	if (CurrentState)
+//	{
+//		CurrentState->ExitState(this);
+//	}
+//	CurrentState = NewState;
+//	CurrentState->EnterState(this);
+//}
+//#pragma endregion
 
 #pragma region Animation
 void AWeapon::StartFireAnimation(UAnimMontage* CharacterFireAnimation, UAnimMontage* WeaponFireAnimation)
@@ -1724,22 +1836,22 @@ FTransform AWeapon::GetAimSocketRelativeTransform()
 #pragma region Equip/Unequip
 void AWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 {
-	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Reloading || CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		CancelReload();
 	}
-	else if (CurrentState == FiringState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_Firing)
 	{
 		BurstShotFired = 0;
 		GetWorld()->GetTimerManager().ClearTimer(SingleShotTimer);
 		GetWorld()->GetTimerManager().ClearTimer(BurstShotTimer);
 	}
-	else if (CurrentState == FullAutoFiringState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
 	{
 		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
 	}
 
-	ChangeState(SwitchingState);
+	SetState(EWeaponStateType::WeaponStateType_Switching);
 
 	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter]() {OnUnequipEnded(TargetCharacter); }, WeaponSwitchingRate, false);
 	StartAnimation(AM_Unequip_Character, nullptr, WeaponSwitchingRate, WeaponSwitchingRate);
@@ -1749,22 +1861,22 @@ void AWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 }
 void AWeapon::Equip(ACharacterPlayer* TargetCharacter)
 {
-	if (CurrentState == ReloadingState || CurrentState == PumpActionReloadingState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Reloading || CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		CancelReload();
 	}
-	else if (CurrentState == FiringState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_Firing)
 	{
 		BurstShotFired = 0;
 		GetWorld()->GetTimerManager().ClearTimer(SingleShotTimer);
 		GetWorld()->GetTimerManager().ClearTimer(BurstShotTimer);
 	}
-	else if (CurrentState == FullAutoFiringState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
 	{
 		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
 	}
 
-	ChangeState(SwitchingState);
+	SetState(EWeaponStateType::WeaponStateType_Switching);
 
 	AttachItemToPlayer(TargetCharacter);
 	//GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter, bEquip]() {EndWeaponSwitch(TargetCharacter, bEquip); }, WeaponSwitchingRate, false);
@@ -1785,7 +1897,7 @@ void AWeapon::UnequipWeapon_Legacy(ACharacterPlayer* TargetCharacter)
 {
 	ResetInputActionBinding();
 	DetachWeaponFromPlayer();
-	ChangeState(UnequippedState);
+	SetState(EWeaponStateType::WeaponStateType_Unequipped);
 }
 
 void AWeapon::OnUnequipEnded(ACharacterPlayer* TargetCharacter)
@@ -1795,7 +1907,7 @@ void AWeapon::OnUnequipEnded(ACharacterPlayer* TargetCharacter)
 	//UnequipWeapon(TargetCharacter);
 	ResetInputActionBinding();
 	DetachWeaponFromPlayer();
-	ChangeState(UnequippedState);
+	SetState(EWeaponStateType::WeaponStateType_Unequipped);
 	if (UInventorySystemComponent* InventorySystem = TargetCharacter->GetInventorySystemComponent())
 	{
 		InventorySystem->SwitchToNextItem();
@@ -1807,7 +1919,7 @@ void AWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter)
 	if (!TargetCharacter) { return; }
 
 	SetInputActionBinding();
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 
 	//if (bActivateDirectly)
 	//{
@@ -1956,12 +2068,12 @@ void AWeapon::ResetInputActionBinding()
 #pragma region Reload
 void AWeapon::HandleReload()
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
 		if (LeftAmmoInCurrMag < MaxAmmoPerMag && TotalAmmo > 0)
 		{
 			//TODO: ReloadingState�� EnterState���� StartReload �ص� �� ��
-			ChangeState(ReloadingState);
+			SetState(EWeaponStateType::WeaponStateType_Reloading);
 			//StartReload();
 
 			ReportReloadingSoundToAI();
@@ -1970,11 +2082,11 @@ void AWeapon::HandleReload()
 }
 void AWeapon::HandlePumpActionReload()
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
 		if (LeftAmmoInCurrMag < MaxAmmoPerMag && TotalAmmo > 0)
 		{
-			ChangeState(PumpActionReloadingState);
+			SetState(EWeaponStateType::WeaponStateType_PumpActionReloading);
 
 			ReportReloadingSoundToAI();
 		}
@@ -2160,7 +2272,7 @@ void AWeapon::StartPumpActionReload(bool bStartFromMiddle)
 void AWeapon::StopReload()
 {
 	ReloadAmmo();
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 
 void AWeapon::StopPumpActionReload()
@@ -2171,7 +2283,7 @@ void AWeapon::StopPumpActionReload()
 	{
 		if (LeftAmmoInCurrMag >= MaxAmmoPerMag)
 		{
-			ChangeState(IdleState);
+			SetState(EWeaponStateType::WeaponStateType_Idle);
 
 			const FBufferedFireRequest& Request = BufferedFireRequest.GetValue();
 			if (Request.ActionName == EWeaponAction::WeaponAction_SingleShot)
@@ -2213,7 +2325,7 @@ void AWeapon::StopPumpActionReload()
 		if (LeftAmmoInCurrMag >= MaxAmmoPerMag)
 		{
 			bFireInputDuringReload = false;
-			ChangeState(IdleState);
+			SetState(EWeaponStateType::WeaponStateType_Idle);
 		}
 		else
 		{
@@ -2251,7 +2363,7 @@ void AWeapon::StopPumpActionReload()
 		}
 		else
 		{
-			ChangeState(IdleState);
+			SetState(EWeaponStateType::WeaponStateType_Idle);
 		}
 	}
 }
@@ -2260,7 +2372,7 @@ void AWeapon::InterruptReloadAndFire()
 {
 	if (BufferedFireRequest.IsSet())
 	{
-		ChangeState(IdleState);
+		SetState(EWeaponStateType::WeaponStateType_Idle);
 
 		const FBufferedFireRequest& Request = BufferedFireRequest.GetValue();
 		if (Request.ActionName == EWeaponAction::WeaponAction_SingleShot)
@@ -2280,7 +2392,7 @@ void AWeapon::InterruptReloadAndFire()
 	{
 		//UE_LOG(LogTemp, Error, TEXT("Why1?"));
 		bFireInputDuringReload = false;
-		ChangeState(IdleState);
+		SetState(EWeaponStateType::WeaponStateType_Idle);
 	}
 }
 
@@ -2388,11 +2500,11 @@ void AWeapon::AutoReload()
 		{
 			if (bActivePumpActionReload)
 			{
-				ChangeState(PumpActionReloadingState);
+				SetState(EWeaponStateType::WeaponStateType_PumpActionReloading);
 			}
 			else
 			{
-				ChangeState(ReloadingState);
+				SetState(EWeaponStateType::WeaponStateType_Reloading);
 			}
 		}
 	}
@@ -2489,18 +2601,18 @@ void AWeapon::SetUpAimUIDelegateBinding(AProjectile* Projectile)
 void AWeapon::HandleSingleFire(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
 	//UE_LOG(LogTemp, Warning, TEXT("Handle Single Fire"));
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 		StartSingleShot(bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
-	else if (CurrentState == FullAutoFiringState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
 	{
 		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 		StartSingleShot(bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
-	else if (CurrentState == PumpActionReloadingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		//UE_LOG(LogTemp, Error, TEXT("Fire input buffered during reload"));
 		BufferedFireRequest = FBufferedFireRequest(EWeaponAction::WeaponAction_SingleShot, bIsLeftInput, bSingleProjectile, NumPenetrable);
@@ -2508,12 +2620,12 @@ void AWeapon::HandleSingleFire(bool bIsLeftInput, bool bSingleProjectile, int32 
 }
 void AWeapon::HandleBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 		StartBurstFire(bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
-	else if (CurrentState == PumpActionReloadingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		//UE_LOG(LogTemp, Error, TEXT("Fire input buffered during reload"));
 		BufferedFireRequest = FBufferedFireRequest(EWeaponAction::WeaponAction_BurstShot, bIsLeftInput, bSingleProjectile, NumPenetrable);
@@ -2521,9 +2633,9 @@ void AWeapon::HandleBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 N
 }
 void AWeapon::HandleFullAutoFire() //TODO: �Ⱦ���. ���� ���
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
-		ChangeState(FullAutoFiringState);
+		SetState(EWeaponStateType::WeaponStateType_FullAutoFiring);
 		StartSingleShot();
 	}
 }
@@ -2572,7 +2684,7 @@ void AWeapon::StartSingleShot(bool bIsLeftInput, bool bSingleProjectile, int32 N
 }
 void AWeapon::StopSingleShot()
 {
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 #pragma endregion
 
@@ -2642,19 +2754,19 @@ void AWeapon::StopBurstFire()
 }
 void AWeapon::EndBurstShot()
 {
-	ChangeState(IdleState);
+	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 #pragma endregion
 
 #pragma region FireMode/FullAuto
 void AWeapon::StartFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
-		ChangeState(FullAutoFiringState);
+		SetState(EWeaponStateType::WeaponStateType_FullAutoFiring);
 		UpdateFullAutoShot(bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
-	else if (CurrentState == PumpActionReloadingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		bFireInputDuringReload = true;
 	}
@@ -2736,13 +2848,13 @@ void AWeapon::UpdateFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int3
 }
 void AWeapon::StopFullAutoShot()
 {
-	if (CurrentState == FullAutoFiringState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("FullAutoShot Ended!!!"));
 		GetWorld()->GetTimerManager().ClearTimer(FullAutoShotTimer);
-		ChangeState(IdleState);
+		SetState(EWeaponStateType::WeaponStateType_Idle);
 	}
-	else if (CurrentState == PumpActionReloadingState)
+	else if (CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
 	{
 		bFireInputDuringReload = false;
 	}
@@ -3132,9 +3244,9 @@ void AWeapon::StopFullAutoShot()
 #pragma region FireMode/Charging
 void AWeapon::StartCharge()
 {
-	if (CurrentState == IdleState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
 	{
-		ChangeState(ChargingState);
+		SetState(EWeaponStateType::WeaponStateType_Charging);
 
 		SpawnChargeEffect(ChargeEffectLocation, ChargeEffectRotation, ChargeEffenctScale);
 		PlayWeaponSound(ChargeSound);
@@ -3187,14 +3299,14 @@ void AWeapon::UpdateCharge()
 }
 void AWeapon::StopCharge()
 {
-	if (CurrentState == ChargingState)
+	if (CurrentState == EWeaponStateType::WeaponStateType_Charging)
 	{
 		GetWorld()->GetTimerManager().ClearTimer(ChargingTimer);
 
 		DestroyChargeEffect();
 		StopWeaponSound();
 
-		ChangeState(FiringState);
+		SetState(EWeaponStateType::WeaponStateType_Firing);
 
 		float ChargingAdditionalDamage = 0.f;
 		float AdditionalRecoilAmountPitch = 0.f;
