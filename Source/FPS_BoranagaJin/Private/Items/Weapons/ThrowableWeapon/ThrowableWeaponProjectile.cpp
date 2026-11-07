@@ -1,4 +1,4 @@
-#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponProjectile.h"
+ï»¿#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponProjectile.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
 #include "Characters/DamageParams.h"
 #include "Interface/DamageInterface.h"
@@ -9,9 +9,13 @@
 #include "Components/DecalComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Perception/AISense_Hearing.h"
 
 AThrowableWeaponProjectile::AThrowableWeaponProjectile()
@@ -19,36 +23,31 @@ AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 	PrimaryActorTick.bCanEverTick = true;
 
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
-	//CollisionComp->InitSphereRadius(5.0f);
-	CollisionComp->SetCollisionProfileName("PlayerProjectile");
+	CollisionComp->SetCollisionProfileName(TEXT("PlayerProjectile"));
 	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel3);
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore); //Projectile
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //Player
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore); //Weapon
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore);
 	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-
-
-	//CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
-	CollisionComp->SetCollisionResponseToChannel(
-		ECC_WorldStatic,
-		ECR_Block
-	);
-
-
+	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 	CollisionComp->bReturnMaterialOnMove = true;
 	CollisionComp->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
 	CollisionComp->CanCharacterStepUpOn = ECB_No;
-
 	RootComponent = CollisionComp;
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileComp"));
 	ProjectileMovement->UpdatedComponent = CollisionComp;
-	ProjectileMovement->InitialSpeed = InitialSpeed;
+	ProjectileMovement->InitialSpeed = 1000.f;
 	ProjectileMovement->MaxSpeed = 0.f;
+	ProjectileMovement->bInitialVelocityInLocalSpace = false;
 	ProjectileMovement->bRotationFollowsVelocity = true;
-	ProjectileMovement->bShouldBounce = false; //TODO: DT¿¡¼­ custom°ú projectileMovement µÑ Áß¿¡¼­ ¾î´À °Í »ç¿ëÇÒÁö ¼³Á¤ÇÒ ¼ö ÀÖµµ·Ï
-	ProjectileMovement->ProjectileGravityScale = 0.f;
+	ProjectileMovement->bShouldBounce = true;
+	ProjectileMovement->Bounciness = 0.35f;
+	ProjectileMovement->Friction = 0.6f;
+	ProjectileMovement->BounceVelocityStopSimulatingThreshold = 10.f;
+	ProjectileMovement->ProjectileGravityScale = 1.f;
+	ProjectileMovement->bForceSubStepping = true;
 	ProjectileMovement->bAutoActivate = false;
 
 	ProjectileMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ProjectileMesh"));
@@ -56,14 +55,10 @@ AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 	ProjectileMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ProjectileMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	ProjectileMesh->SetCollisionObjectType(ECC_GameTraceChannel3);
-	ProjectileMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
-
 	ProjectileMesh->SetCastShadow(false);
 
-	// <Pooling Version>
-	InitialLifeSpan = 0;
+	InitialLifeSpan = 0.f;
 	SetActorHiddenInGame(true);
-	//SetActorEnableCollision(false);
 	SetActorTickEnabled(false);
 }
 
@@ -71,16 +66,16 @@ void AThrowableWeaponProjectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!bIsActiveInPool) return;
+	if (!bIsActiveInPool)
+	{
+		return;
+	}
 
 	UpdateTrailEffect();
 
-	if (bIsHitScan)
+	if (bIsHitScan && bActivatedMeshMovementForHitScan)
 	{
-		if (bActivatedMeshMovementForHitScan)
-		{
-			UpdateHitScanProjectileMovement(DeltaTime);
-		}
+		UpdateHitScanProjectileMovement(DeltaTime);
 	}
 
 	if (bUseCustomProjectieMovement)
@@ -88,9 +83,12 @@ void AThrowableWeaponProjectile::Tick(float DeltaTime)
 		UpdateProjectileMovement(DeltaTime);
 	}
 
-	//--------------------------------
-	// <Pool Version>
-	CheckAndDeactivateIfStuck();
+	// A throwable is allowed to come to rest while its fuse is still running.
+	// The old stuck check would incorrectly return a resting grenade to the pool.
+	if (!bUseThrowableBehavior)
+	{
+		CheckAndDeactivateIfStuck();
+	}
 }
 
 void AThrowableWeaponProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -130,58 +128,68 @@ void AThrowableWeaponProjectile::OutsideWorldBounds()
 
 void AThrowableWeaponProjectile::InitProjectile(AActor* OwnerOfProjectile, AThrowableWeapon* OwnerWeapon, float additonalDamage, int32 NumPenetrable, bool HitScan)
 {
-	//TODO: Æ÷¹°¼± ±ËÀûÀÎÁö Á÷¼± °æ·ÎÀÎÁö Á¤ÇÒ ¼öÀÖµµ·Ï ÇØ¾ßÇÔ
+	// Data must be loaded before trail spawning, movement setup, fuse setup, and bounce setup.
+	LoadProjectileData();
 
 	bIsActivated = true;
+	bPayloadActivated = false;
+	bUseThrowableBehavior = !HitScan;
+
 	SetActorHiddenInGame(false);
-	//SetActorEnableCollision(true);
-	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	//CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-
-
 	SetActorTickEnabled(true);
 
-	if (IsValid(OwnerWeapon)) { ThrowableWeapon = OwnerWeapon; }
-	if (IsValid(OwnerOfProjectile))
+	ProjectileOwner = IsValid(OwnerOfProjectile) ? OwnerOfProjectile : nullptr;
+	ThrowableWeapon = IsValid(OwnerWeapon) ? OwnerWeapon : nullptr;
+	AdditionalDamage = additonalDamage;
+
+	ConfigureFlightCollision();
+
+	if (ProjectileMesh)
 	{
-		ProjectileOwner = OwnerOfProjectile;
+		ProjectileMesh->SetVisibility(true);
+	}
+
+	if (ProjectileMovement && CollisionComp)
+	{
+		ProjectileMovement->Deactivate();
+		ProjectileMovement->StopMovementImmediately();
+		ProjectileMovement->SetUpdatedComponent(CollisionComp);
+		ProjectileMovement->bSimulationEnabled = true;
+		ProjectileMovement->Velocity = FVector::ZeroVector;
+	}
+
+	if (TrailEffect)
+	{
 		SpawnTrailEffect();
 	}
 
 	if (HitScan)
 	{
-		bIsHitScan = HitScan;
+		bIsHitScan = true;
 		NumPenetrableObjects = NumPenetrable;
 		InitHitScan();
 	}
 	else
 	{
+		bIsHitScan = false;
+
+		if (!CollisionComp->OnComponentHit.IsAlreadyBound(this, &AThrowableWeaponProjectile::OnHit))
+		{
+			CollisionComp->OnComponentHit.AddDynamic(this, &AThrowableWeaponProjectile::OnHit);
+		}
+
+		// Preserve the legacy penetration path when explicitly requested.
 		if (NumPenetrable > 0)
 		{
-			InitPhysicsProjectile();
 			NumPenetrableObjects = NumPenetrable;
-		}
-		else
-		{
-			if (!CollisionComp->OnComponentHit.IsAlreadyBound(this, &AThrowableWeaponProjectile::OnHit))
-			{
-				CollisionComp->OnComponentHit.AddDynamic(this, &AThrowableWeaponProjectile::OnHit);
-			}
+			InitPhysicsProjectile();
 		}
 	}
 
-	if (bCanSimpleBounce)
-	{
-		ProjectileMovement->bShouldBounce = true;
-		ProjectileMovement->Bounciness = 0.6f;    //(0~1)
-		ProjectileMovement->Friction = 0.2f;
-		ProjectileMovement->BounceVelocityStopSimulatingThreshold = 10.0f;
-		ProjectileMovement->bRotationFollowsVelocity = true;
-	}
-
-	AdditionalDamage = additonalDamage;
-
-	StartLifeTimer(LifeSpan);
+	CurrentRicochetCount = 0;
+	NumPenetratedObjects = 0;
+	StuckCount = 0;
+	DistanceMoved = 0.f;
 }
 
 void AThrowableWeaponProjectile::InitPhysicsProjectile()
@@ -206,59 +214,24 @@ void AThrowableWeaponProjectile::InitHitScan()
 
 void AThrowableWeaponProjectile::LoadProjectileData()
 {
-	ProjectileData = ProjectileDataTableHandle.GetRow<FThrowableWeaponProjectileData>("");
-	if (ProjectileData)
+	ProjectileData = nullptr;
+
+	if (bUseDataTable)
 	{
-		// <Effect>
-		TrailEffect = ProjectileData->TrailEffect;
-		ImpactEffect = ProjectileData->ImpactEffect;
-		ExplosionEffect = ProjectileData->ExplosionEffect;
-		ImpactDecalMaterial = ProjectileData->ImpactDecal;
-		TrailOffsetDist = ProjectileData->TrailOffsetDist;
-
-		LifeSpan = ProjectileData->InitialLifeSpan;
-
-		// <Sound>
-		HitSound_Default = ProjectileData->HitSound_Default;
-		HitSound_Metal = ProjectileData->HitSound_Metal;
-		HitSound_Glass = ProjectileData->HitSound_Glass;
-		HitSound_Enemy = ProjectileData->HitSound_Enemy;
-		HitSound_Energy = ProjectileData->HitSound_Energy;
-
-		// <Damage>
-		DefaultDamage = ProjectileData->DefaultDamage;
-		HeadShotAdditionalDamage = ProjectileData->HeadShotAdditionalDamage;
-
-		// <Explosive>
-		bIsExplosive = ProjectileData->bIsExplosive;
-		bVisualizeExplosionRadius = ProjectileData->bVisualizeExplosionRadius;
-		MaxExplosiveDamage = ProjectileData->MaxExplosiveDamage;
-		MaxExplosionRadius = ProjectileData->MaxExplosionRadius;
-
-		// <Velocity>
-		ProjectileMovement->InitialSpeed = ProjectileData->InitialSpeed;
-		ProjectileMovement->MaxSpeed = ProjectileData->MaxSpeed;
-		PM_Vel = ProjectileData->MaxSpeed;
-		HitScanProjectileVelocity = ProjectileData->InitialSpeed;
-
-		InitialRadius = ProjectileData->InitialRadius;
-		CollisionComp->SetSphereRadius(InitialRadius);
-
-		// <Impulse>
-		bCanApplyImpulseToEnemy = ProjectileData->bCanApplyImpulseToEnemy;
-		HitImpulseToEnemy = ProjectileData->HitImpulseToEnemy;
-
-		// <Ricochet>
-		bCanSimpleBounce = ProjectileData->bCanSimpleBounce;
-		MaxRicochetCount = ProjectileData->MaxRicochetCount;
-		MinIncidenceAngle = ProjectileData->MinIncidenceAngle;
-
-		// <HitScan>
-		bDebugHitScan = ProjectileData->bDebugHitScan;
-
-		// <CustomProjectileMovement>
-		PM_Cam_To_d_Len = ProjectileData->PM_Cam_To_d_Len;
+		ProjectileData = ProjectileDataTableHandle.GetRow<FThrowableWeaponProjectileData>(TEXT("AThrowableWeaponProjectile::LoadProjectileData"));
 	}
+	else
+	{
+		ProjectileData = &BlueprintProjectileData;
+	}
+
+	if (!ProjectileData)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Throwable projectile data is invalid: %s"), *GetName());
+		return;
+	}
+
+	ApplyProjectileData();
 }
 
 void AThrowableWeaponProjectile::SetWeapon(AThrowableWeapon* NewWeapon)
@@ -274,29 +247,33 @@ void AThrowableWeaponProjectile::LaunchProjectile(FVector StartPos, FRotator Dir
 
 void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed)
 {
-	if (!IsValid(ProjectileMovement))
+	if (!IsValid(ProjectileMovement) || !IsValid(CollisionComp))
 	{
 		return;
 	}
 
-	const FVector NormalizedDirection =
-		Direction.GetSafeNormal();
+	const FVector NormalizedDirection = Direction.GetSafeNormal();
+	if (NormalizedDirection.IsNearlyZero())
+	{
+		return;
+	}
 
-	SetActorLocationAndRotation(
-		StartPosition,
-		NormalizedDirection.Rotation()
-	);
+	SetActorLocationAndRotation(StartPosition, NormalizedDirection.Rotation());
 
+	ProjectileMovement->Deactivate();
 	ProjectileMovement->StopMovementImmediately();
-
+	ProjectileMovement->SetUpdatedComponent(CollisionComp);
+	ProjectileMovement->bSimulationEnabled = true;
 	ProjectileMovement->Velocity = NormalizedDirection * LaunchSpeed;
-
 	ProjectileMovement->Activate(true);
 
+	StartFuse();
+	StartLifeTimer(LifeSpan);
 
-	UE_LOG(LogTemp, Error, TEXT("Projectile InitialSpeed: %f"), ProjectileMovement->InitialSpeed);
-	UE_LOG(LogTemp, Error, TEXT("Projectile MaxSpeed: %f"), ProjectileMovement->MaxSpeed);
-	UE_LOG(LogTemp, Error, TEXT("Projectile Velocity: %f"), LaunchSpeed);
+	UE_LOG(LogTemp, Error, TEXT("Throwable launched. Type=%s Speed=%.1f GravityScale=%.2f"),
+		*UEnum::GetValueAsString(ProjectileType),
+		LaunchSpeed,
+		ProjectileMovement->ProjectileGravityScale);
 }
 
 void AThrowableWeaponProjectile::StartLifeTimer(float Seconds)
@@ -321,41 +298,59 @@ void AThrowableWeaponProjectile::StopLifeTimer()
 
 void AThrowableWeaponProjectile::ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation)
 {
-	if (bCanExplosiveDamage)
+	if (!bCanExplosiveDamage || MaxExplosionRadius <= KINDA_SMALL_NUMBER)
 	{
-		TArray<AActor*> OverlappedActors;
-		if (SearchOverlappedActor(CenterLocation, MaxExplosionRadius, OverlappedActors))
+		return;
+	}
+
+	TArray<AActor*> OverlappedActors;
+	if (!FindActorsInRadius(CenterLocation, MaxExplosionRadius, OverlappedActors, bCanAffectOwner))
+	{
+		return;
+	}
+
+	for (AActor* OverlappedActor : OverlappedActors)
+	{
+		if (!IsValid(OverlappedActor) || OverlappedActor == this)
 		{
-			for (AActor* OverlappedActor : OverlappedActors)
-			{
-				float DistanceToTarget = FVector::Distance(CenterLocation, OverlappedActor->GetActorLocation());
-				float DamageAmount;
-				if (DistanceToTarget > MaxExplosionRadius)
-				{
-					DamageAmount = 0.f;
-				}
-				else
-				{
-					DamageAmount = ((MaxExplosionRadius - DistanceToTarget) / MaxExplosionRadius) * MaxExplosiveDamage;
-				}
-				ApplyDamage(OverlappedActor, DamageAmount, EGameDamageType::Explosion, true, NAME_None);
-				if (OnBodyShot.IsBound())
-				{
-					OnBodyShot.Execute();
-				}
-			}
+			continue;
 		}
 
-		if (bVisualizeExplosionRadius)
+		if (bExplosionRequiresLineOfSight && !HasEffectLineOfSight(CenterLocation, OverlappedActor))
 		{
-			DrawSphere(CenterLocation, MaxExplosionRadius);
+			continue;
 		}
+
+		const float DistanceToTarget = FVector::Distance(CenterLocation, OverlappedActor->GetActorLocation());
+		const float DistanceAlpha = 1.f - FMath::Clamp(DistanceToTarget / MaxExplosionRadius, 0.f, 1.f);
+		const float FalloffAlpha = FMath::Pow(DistanceAlpha, FMath::Max(ExplosionDamageFalloffExponent, 0.01f));
+		const float DamageAmount = FMath::Lerp(MinExplosiveDamage, MaxExplosiveDamage, FalloffAlpha);
+
+		ApplyDamage(
+			OverlappedActor,
+			DamageAmount,
+			EGameDamageType::Explosion,
+			true,
+			NAME_None,
+			SurfaceType1,
+			(OverlappedActor->GetActorLocation() - CenterLocation).GetSafeNormal(),
+			OverlappedActor->GetActorLocation());
+
+		if (OnBodyShot.IsBound())
+		{
+			OnBodyShot.Execute();
+		}
+	}
+
+	if (bVisualizeExplosionRadius)
+	{
+		DrawSphere(CenterLocation, MaxExplosionRadius);
 	}
 }
 
 void AThrowableWeaponProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType, const FVector ImpulseDirection, const FVector ImpactPoint)
 {
-	FDamageParams Damage; //TODO: ÂøÅº À§Ä¡
+	FDamageParams Damage; //TODO: ï¿½ï¿½Åº ï¿½ï¿½Ä¡
 	Damage.DamageAmount = DamageAmount;
 	Damage.DamageType = DamageType;
 	Damage.bCanForceDamage = bCanForceDamage;
@@ -385,6 +380,34 @@ bool AThrowableWeaponProjectile::SearchOverlappedActor(FVector CenterLocation, f
 
 void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+
+	if (bUseThrowableBehavior)
+	{
+		if (!bIsActivated || bPayloadActivated)
+		{
+			return;
+		}
+
+		if (OtherActor == ProjectileOwner)
+		{
+			return;
+		}
+
+		// OnHit is expected on every bounce. Do not deactivate a normal grenade here.
+		if (Hit.bBlockingHit)
+		{
+			PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
+			ReportNoiseToAI();
+		}
+
+		if (bDetonateOnImpact)
+		{
+			ActivatePayload();
+		}
+
+		return;
+	}
+
 
 	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)"));
 
@@ -431,7 +454,7 @@ void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* Oth
 
 				ReportNoiseToAI();
 
-				//TODO: SoundSystem¿¡ ÆíÀÔ
+				//TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 				PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
 
 				if (HeadShotAdditionalDamage > 0.f && CheckHeadHit(Hit))
@@ -480,7 +503,7 @@ void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* Oth
 				}
 			}
 		}
-		else //TODO: ÀÌ°ÍÀÌ ¹Ýµå½Ã ÇÊ¿äÇÑ ºÐ±âÀÎ°¡?
+		else //TODO: ï¿½Ì°ï¿½ï¿½ï¿½ ï¿½Ýµï¿½ï¿½ ï¿½Ê¿ï¿½ï¿½ï¿½ ï¿½Ð±ï¿½ï¿½Î°ï¿½?
 		{
 			SpawnImpactEffect(Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
 			SpawnDecalEffect(Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
@@ -571,7 +594,7 @@ void AThrowableWeaponProjectile::SpawnTrailEffect(bool bShouldAttachedToWeapon)
 		FTransform TrailEndTransform = ProjectileMesh->GetSocketTransform(FName(TEXT("TrailEnd")), ERelativeTransformSpace::RTS_Component);
 		FVector TrailLocationOffset = (TrailEndTransform.GetLocation() - TrailStartTransform.GetLocation()).GetSafeNormal() * TrailOffsetDist;
 
-		if (bShouldAttachedToWeapon) //TODO: ±â´É »èÁ¦
+		if (bShouldAttachedToWeapon) //TODO: ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		{
 			TrailEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), TrailEffect,
 				ThrowableWeapon->GetMuzzlePointTransform().GetLocation(),
@@ -627,19 +650,19 @@ void AThrowableWeaponProjectile::UpdateTrailEffect() //TODO: Is this necessary?
 void AThrowableWeaponProjectile::DrawSphere(FVector Location, float Radius)
 {
 	DrawDebugSphere(
-		GetWorld(),                
-		Location,       
-		Radius,                     
-		12,                       
-		FColor::Red,              
-		false,                   
-		5.0f,                  
-		0,                    
-		2.0f                 
+		GetWorld(),
+		Location,
+		Radius,
+		12,
+		FColor::Red,
+		false,
+		5.0f,
+		0,
+		2.0f
 	);
 }
 
-void AThrowableWeaponProjectile::PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location) //TODO: SoundSystem¿¡ ÆíÀÔ
+void AThrowableWeaponProjectile::PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location) //TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 {
 	USoundBase* SoundToPlay = nullptr;
 
@@ -807,7 +830,7 @@ void AThrowableWeaponProjectile::UpdateHitScanProjectileMovement(float DeltaTime
 	{
 		if (CurrEndPointIdx + 1 > HitScanEndPoints.Num() - 1)
 		{
-			//TODO: ±×´ë·Î Á÷Áø? Destroy?
+			//TODO: ï¿½×´ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½? Destroy?
 			if (TrailEffectComponent)
 			{
 				TrailEffectComponent->Deactivate();
@@ -836,8 +859,8 @@ void AThrowableWeaponProjectile::SetHitScanActive(bool bflag)
 }
 void AThrowableWeaponProjectile::LaunchHitScan(FVector StartLocation, FVector TraceDirection, FVector MuzzlePos)
 {
-	//PerformHitScan(StartLocation, TraceDirection, 50000.f, ProjectileRadius, HitScanEndPoints); //TODO: MaxDistnace ¼³Á¤ÇØ¾ßÇÔ
-	PerformHitScan(StartLocation, TraceDirection, 50000.f, ProjectileRadius, HitScanEndPoints); //TODO: MaxDistnace ¼³Á¤ÇØ¾ßÇÔ
+	//PerformHitScan(StartLocation, TraceDirection, 50000.f, ProjectileRadius, HitScanEndPoints); //TODO: MaxDistnace ï¿½ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ï¿½ï¿½
+	PerformHitScan(StartLocation, TraceDirection, 50000.f, ProjectileRadius, HitScanEndPoints); //TODO: MaxDistnace ï¿½ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ï¿½ï¿½
 
 	InitHitScanProjectileMovement(MuzzlePos);
 }
@@ -1008,6 +1031,473 @@ void AThrowableWeaponProjectile::ReportNoiseToAI()
 	);
 }
 
+
+void AThrowableWeaponProjectile::ApplyProjectileData()
+{
+	if (!ProjectileData)
+	{
+		return;
+	}
+
+	ProjectileType = ProjectileData->ProjectileType;
+	FuseTime = ProjectileData->FuseTime;
+	LifeSpan = ProjectileData->InitialLifeSpan;
+	bDetonateOnImpact = ProjectileData->bDetonateOnImpact;
+	bCanAffectOwner = ProjectileData->bCanAffectOwner;
+
+	TrailEffect = ProjectileData->TrailEffect;
+	ImpactEffect = ProjectileData->ImpactEffect;
+	ExplosionEffect = ProjectileData->ExplosionEffect;
+	FlashEffect = ProjectileData->FlashEffect;
+	SmokeEffect = ProjectileData->SmokeEffect;
+	ImpactDecalMaterial = ProjectileData->ImpactDecal;
+	TrailOffsetDist = ProjectileData->TrailOffsetDist;
+
+	HitSound_Default = ProjectileData->HitSound_Default;
+	HitSound_Metal = ProjectileData->HitSound_Metal;
+	HitSound_Glass = ProjectileData->HitSound_Glass;
+	HitSound_Enemy = ProjectileData->HitSound_Enemy;
+	HitSound_Energy = ProjectileData->HitSound_Energy;
+	DetonationSound = ProjectileData->DetonationSound;
+	FlashSound = ProjectileData->FlashSound;
+	SmokeStartSound = ProjectileData->SmokeStartSound;
+
+	DefaultDamage = ProjectileData->DefaultDamage;
+	HeadShotAdditionalDamage = ProjectileData->HeadShotAdditionalDamage;
+
+	bIsExplosive = ProjectileData->bIsExplosive;
+	bVisualizeExplosionRadius = ProjectileData->bVisualizeExplosionRadius;
+	MaxExplosiveDamage = ProjectileData->MaxExplosiveDamage;
+	MinExplosiveDamage = ProjectileData->MinExplosiveDamage;
+	MaxExplosionRadius = ProjectileData->MaxExplosionRadius;
+	ExplosionDamageFalloffExponent = ProjectileData->ExplosionDamageFalloffExponent;
+	bExplosionRequiresLineOfSight = ProjectileData->bExplosionRequiresLineOfSight;
+
+	FlashRadius = ProjectileData->FlashRadius;
+	FlashMinDuration = ProjectileData->FlashMinDuration;
+	FlashMaxDuration = ProjectileData->FlashMaxDuration;
+	FlashDistanceFalloffExponent = ProjectileData->FlashDistanceFalloffExponent;
+	bFlashRequiresLineOfSight = ProjectileData->bFlashRequiresLineOfSight;
+	bFlashFadeAudio = ProjectileData->bFlashFadeAudio;
+
+	SmokeDuration = ProjectileData->SmokeDuration;
+	SmokeRadius = ProjectileData->SmokeRadius;
+	bSmokeBlocksVisibilityTrace = ProjectileData->bSmokeBlocksVisibilityTrace;
+
+	InitialSpeed = ProjectileData->InitialSpeed;
+	InitialRadius = ProjectileData->InitialRadius;
+	ProjectileRadius = ProjectileData->InitialRadius;
+	bCanSimpleBounce = ProjectileData->bCanSimpleBounce;
+
+	bCanApplyImpulseToEnemy = ProjectileData->bCanApplyImpulseToEnemy;
+	HitImpulseToEnemy = ProjectileData->HitImpulseToEnemy;
+	MaxRicochetCount = ProjectileData->MaxRicochetCount;
+	MinIncidenceAngle = ProjectileData->MinIncidenceAngle;
+	bDebugHitScan = ProjectileData->bDebugHitScan;
+	PM_Cam_To_d_Len = ProjectileData->PM_Cam_To_d_Len;
+
+	if (CollisionComp)
+	{
+		CollisionComp->SetSphereRadius(InitialRadius);
+	}
+
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->InitialSpeed = ProjectileData->InitialSpeed;
+		ProjectileMovement->MaxSpeed = ProjectileData->MaxSpeed;
+		ProjectileMovement->ProjectileGravityScale = ProjectileData->ProjectileGravityScale;
+		ProjectileMovement->bShouldBounce = ProjectileData->bCanSimpleBounce;
+		ProjectileMovement->Bounciness = ProjectileData->Bounciness;
+		ProjectileMovement->Friction = ProjectileData->Friction;
+		ProjectileMovement->BounceVelocityStopSimulatingThreshold = ProjectileData->BounceVelocityStopSimulatingThreshold;
+		ProjectileMovement->bForceSubStepping = ProjectileData->bForceSubStepping;
+		ProjectileMovement->bRotationFollowsVelocity = true;
+		ProjectileMovement->bInitialVelocityInLocalSpace = false;
+	}
+
+	PM_Vel = ProjectileData->MaxSpeed > 0.f ? ProjectileData->MaxSpeed : ProjectileData->InitialSpeed;
+	HitScanProjectileVelocity = ProjectileData->InitialSpeed;
+}
+
+void AThrowableWeaponProjectile::ConfigureFlightCollision()
+{
+	if (!CollisionComp)
+	{
+		return;
+	}
+
+	CollisionComp->SetCollisionProfileName(TEXT("PlayerProjectile"));
+	CollisionComp->SetCollisionObjectType(ECC_GameTraceChannel3);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel4, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel5, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	CollisionComp->SetGenerateOverlapEvents(true);
+	CollisionComp->SetSphereRadius(InitialRadius);
+}
+
+void AThrowableWeaponProjectile::StopProjectileMovement()
+{
+	if (!ProjectileMovement)
+	{
+		return;
+	}
+
+	ProjectileMovement->StopMovementImmediately();
+	ProjectileMovement->Velocity = FVector::ZeroVector;
+	ProjectileMovement->Deactivate();
+}
+
+void AThrowableWeaponProjectile::StopTrailEffect()
+{
+	if (!TrailEffectComponent)
+	{
+		return;
+	}
+
+	TrailEffectComponent->Deactivate();
+	TrailEffectComponent->DestroyComponent();
+	TrailEffectComponent = nullptr;
+	bShouldUpdateTrailEffect = false;
+}
+
+void AThrowableWeaponProjectile::ClearThrowableTimers()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(FuseTimerHandle);
+	GetWorldTimerManager().ClearTimer(PersistentEffectTimerHandle);
+}
+
+void AThrowableWeaponProjectile::StartFuse()
+{
+	if (bPayloadActivated)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(FuseTimerHandle);
+
+	if (FuseTime <= KINDA_SMALL_NUMBER)
+	{
+		ActivatePayload();
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(
+		FuseTimerHandle,
+		this,
+		&AThrowableWeaponProjectile::OnFuseExpired,
+		FuseTime,
+		false);
+}
+
+void AThrowableWeaponProjectile::OnFuseExpired()
+{
+	ActivatePayload();
+}
+
+void AThrowableWeaponProjectile::ActivatePayload()
+{
+	if (bPayloadActivated || !bIsActivated)
+	{
+		return;
+	}
+
+	bPayloadActivated = true;
+
+	GetWorldTimerManager().ClearTimer(FuseTimerHandle);
+	StopLifeTimer();
+	StopProjectileMovement();
+	StopTrailEffect();
+
+	const FVector ActivationLocation = GetActorLocation();
+
+	switch (ProjectileType)
+	{
+	case EThrowableProjectileType::Grenade:
+		ActivateGrenadePayload();
+		break;
+
+	case EThrowableProjectileType::Flashbang:
+		ActivateFlashbangPayload();
+		break;
+
+	case EThrowableProjectileType::SmokeGrenade:
+		ActivateSmokePayload();
+		break;
+
+	default:
+		break;
+	}
+
+	BP_OnPayloadActivated(ProjectileType, ActivationLocation);
+
+	if (ProjectileType != EThrowableProjectileType::SmokeGrenade)
+	{
+		DeactivateProjectile();
+	}
+}
+
+void AThrowableWeaponProjectile::ActivateGrenadePayload()
+{
+	const FVector CenterLocation = GetActorLocation();
+
+	SpawnExplosionEffect(CenterLocation);
+
+	if (DetonationSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, DetonationSound, CenterLocation);
+	}
+
+	ApplyExplosiveDamage(bIsExplosive, CenterLocation);
+	ReportNoiseToAI();
+}
+
+void AThrowableWeaponProjectile::ActivateFlashbangPayload()
+{
+	const FVector CenterLocation = GetActorLocation();
+
+	if (FlashEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			FlashEffect,
+			CenterLocation,
+			FRotator::ZeroRotator,
+			FVector::OneVector,
+			true,
+			true,
+			ENCPoolMethod::AutoRelease);
+	}
+
+	if (FlashSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, FlashSound, CenterLocation);
+	}
+
+	ApplyFlashEffect(CenterLocation);
+	ReportNoiseToAI();
+}
+
+void AThrowableWeaponProjectile::ActivateSmokePayload()
+{
+	const FVector CenterLocation = GetActorLocation();
+
+	if (ProjectileMesh)
+	{
+		ProjectileMesh->SetVisibility(false);
+	}
+
+	if (SmokeEffect)
+	{
+		SmokeEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			SmokeEffect,
+			CenterLocation,
+			FRotator::ZeroRotator,
+			FVector::OneVector,
+			false,
+			true,
+			ENCPoolMethod::None);
+	}
+
+	if (SmokeStartSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SmokeStartSound, CenterLocation);
+	}
+
+	if (CollisionComp)
+	{
+		CollisionComp->SetSphereRadius(SmokeRadius);
+		CollisionComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+
+		if (bSmokeBlocksVisibilityTrace)
+		{
+			CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			CollisionComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		}
+		else
+		{
+			CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+
+	BP_OnSmokeStarted(CenterLocation, SmokeRadius, SmokeDuration);
+	ReportNoiseToAI();
+
+	if (SmokeDuration <= KINDA_SMALL_NUMBER)
+	{
+		FinishSmokeEffect();
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(
+		PersistentEffectTimerHandle,
+		this,
+		&AThrowableWeaponProjectile::FinishSmokeEffect,
+		SmokeDuration,
+		false);
+}
+
+void AThrowableWeaponProjectile::FinishSmokeEffect()
+{
+	GetWorldTimerManager().ClearTimer(PersistentEffectTimerHandle);
+
+	if (SmokeEffectComponent)
+	{
+		SmokeEffectComponent->Deactivate();
+		SmokeEffectComponent->DestroyComponent();
+		SmokeEffectComponent = nullptr;
+	}
+
+	DeactivateProjectile();
+}
+
+void AThrowableWeaponProjectile::ApplyFlashEffect(const FVector& CenterLocation)
+{
+	if (FlashRadius <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	TArray<AActor*> AffectedActors;
+	if (!FindActorsInRadius(CenterLocation, FlashRadius, AffectedActors, bCanAffectOwner))
+	{
+		return;
+	}
+
+	for (AActor* AffectedActor : AffectedActors)
+	{
+		if (!IsValid(AffectedActor) || AffectedActor == this)
+		{
+			continue;
+		}
+
+		if (bFlashRequiresLineOfSight && !HasEffectLineOfSight(CenterLocation, AffectedActor))
+		{
+			continue;
+		}
+
+		const float Intensity = CalculateFlashIntensity(CenterLocation, AffectedActor);
+		if (Intensity <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		const float Duration = FMath::Lerp(FlashMinDuration, FlashMaxDuration, Intensity);
+
+		if (APawn* Pawn = Cast<APawn>(AffectedActor))
+		{
+			if (APlayerController* PlayerController = Cast<APlayerController>(Pawn->GetController()))
+			{
+				if (PlayerController->IsLocalController() && PlayerController->PlayerCameraManager)
+				{
+					PlayerController->PlayerCameraManager->StartCameraFade(
+						FMath::Clamp(Intensity, 0.f, 1.f),
+						0.f,
+						Duration,
+						FLinearColor::White,
+						bFlashFadeAudio,
+						false);
+				}
+			}
+		}
+
+		// Project-specific AI stun / perception suppression can be connected here in BP
+		// without creating separate C++ projectile subclasses.
+		BP_OnFlashActorAffected(AffectedActor, Intensity, Duration);
+	}
+}
+
+float AThrowableWeaponProjectile::CalculateFlashIntensity(const FVector& CenterLocation, const AActor* TargetActor) const
+{
+	if (!IsValid(TargetActor) || FlashRadius <= KINDA_SMALL_NUMBER)
+	{
+		return 0.f;
+	}
+
+	const float Distance = FVector::Distance(CenterLocation, TargetActor->GetActorLocation());
+	const float DistanceAlpha = 1.f - FMath::Clamp(Distance / FlashRadius, 0.f, 1.f);
+
+	return FMath::Pow(
+		DistanceAlpha,
+		FMath::Max(FlashDistanceFalloffExponent, 0.01f));
+}
+
+bool AThrowableWeaponProjectile::HasEffectLineOfSight(const FVector& CenterLocation, const AActor* TargetActor) const
+{
+	if (!IsValid(TargetActor) || !GetWorld())
+	{
+		return false;
+	}
+
+	FVector TargetLocation;
+	FRotator TargetRotation;
+	TargetActor->GetActorEyesViewPoint(TargetLocation, TargetRotation);
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ThrowableEffectLineOfSight), false);
+	QueryParams.AddIgnoredActor(this);
+
+	if (IsValid(ProjectileOwner))
+	{
+		QueryParams.AddIgnoredActor(ProjectileOwner);
+	}
+
+	FHitResult Hit;
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(
+		Hit,
+		CenterLocation,
+		TargetLocation,
+		ECC_Visibility,
+		QueryParams);
+
+	return !bHit || Hit.GetActor() == TargetActor;
+}
+
+bool AThrowableWeaponProjectile::FindActorsInRadius(
+	const FVector& CenterLocation,
+	float SearchRadius,
+	TArray<AActor*>& OutActors,
+	bool bIncludeOwner) const
+{
+	if (!GetWorld() || SearchRadius <= KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody));
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_GameTraceChannel6));
+
+	TArray<AActor*> IgnoreActors;
+	IgnoreActors.Add(const_cast<AThrowableWeaponProjectile*>(this));
+
+	if (!bIncludeOwner && IsValid(ProjectileOwner))
+	{
+		IgnoreActors.Add(ProjectileOwner);
+	}
+
+	return UKismetSystemLibrary::SphereOverlapActors(
+		GetWorld(),
+		CenterLocation,
+		SearchRadius,
+		ObjectTypes,
+		nullptr,
+		IgnoreActors,
+		OutActors);
+}
+
+
 void AThrowableWeaponProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
 {
 	OwningPool = NewPool;
@@ -1015,177 +1505,94 @@ void AThrowableWeaponProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
 
 void AThrowableWeaponProjectile::OnActivateFromPool()
 {
-	//bIsActiveInPool = true;
-
-	////--------------------
-
-	//SetActorHiddenInGame(false);
-	//SetActorTickEnabled(true);
-
-	//-----------------
-
 	bIsActiveInPool = true;
+	bIsActivated = false;
+	bPayloadActivated = false;
+	bUseThrowableBehavior = true;
 
 	SetActorHiddenInGame(false);
 	SetActorTickEnabled(true);
 
-	// ------------------------------------------------
-	// Collision º¹±¸
-	// ------------------------------------------------
+	ClearThrowableTimers();
+
+	if (ProjectileMesh)
+	{
+		ProjectileMesh->SetVisibility(true);
+	}
 
 	if (CollisionComp)
 	{
-		CollisionComp->SetCollisionEnabled(
-			ECollisionEnabled::QueryOnly
-		);
+		CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
-
-	// ------------------------------------------------
-	// ProjectileMovement º¹±¸
-	// ------------------------------------------------
 
 	if (ProjectileMovement && CollisionComp)
 	{
 		ProjectileMovement->Deactivate();
-
 		ProjectileMovement->StopMovementImmediately();
-
-		// StopSimulating()¿¡ ÀÇÇØ nullptrÀÌ µÇ¾úÀ» ¼ö ÀÖÀ½
 		ProjectileMovement->SetUpdatedComponent(CollisionComp);
-
 		ProjectileMovement->bSimulationEnabled = true;
-
-		ProjectileMovement->Velocity =
-			FVector::ZeroVector;
+		ProjectileMovement->Velocity = FVector::ZeroVector;
 	}
 
-	// ------------------------------------------------
-	// ÀÌÀü ¹ß»çÀÇ Runtime »óÅÂ ÃÊ±âÈ­
-	// ------------------------------------------------
-
-	bIsActivated = false;
-
 	CurrentRicochetCount = 0;
-
 	NumPenetratedObjects = 0;
-
 	StuckCount = 0;
-
 	PrevProjectileLoc = GetActorLocation();
-
 	DistanceMoved = 0.f;
-
 	bIsHitScan = false;
-
 	bActivatedMeshMovementForHitScan = false;
-
 	HitScanEndPoints.Reset();
-
 	CurrEndPointIdx = 0;
-
 	MovementDirection = FVector::ZeroVector;
 }
 
 void AThrowableWeaponProjectile::OnDeactivateToPool()
 {
-	//bIsActiveInPool = false;
-
-	////-----------------------------
-
-	//if (ProjectileMovement)
-	//{
-	//	ProjectileMovement->StopMovementImmediately();
-	//	ProjectileMovement->Deactivate();
-
-	//	ProjectileMovement->Velocity =
-	//		FVector::ZeroVector;
-	//}
-
-	//StopLifeTimer();
-
-	//SetActorHiddenInGame(true);
-	//SetActorTickEnabled(false);
-
-	//if (CollisionComp)
-	//{
-	//	CollisionComp->SetCollisionEnabled(
-	//		ECollisionEnabled::NoCollision
-	//	);
-	//}
-
-
-	//--------------------
-
 	bIsActiveInPool = false;
 	bIsActivated = false;
+	bPayloadActivated = false;
 
-	// ------------------------------------------------
-	// Movement
-	// ------------------------------------------------
+	ClearThrowableTimers();
+	StopLifeTimer();
+	StopTrailEffect();
+
+	if (SmokeEffectComponent)
+	{
+		SmokeEffectComponent->Deactivate();
+		SmokeEffectComponent->DestroyComponent();
+		SmokeEffectComponent = nullptr;
+	}
 
 	if (ProjectileMovement)
 	{
 		ProjectileMovement->StopMovementImmediately();
-
-		ProjectileMovement->Velocity =
-			FVector::ZeroVector;
-
+		ProjectileMovement->Velocity = FVector::ZeroVector;
 		ProjectileMovement->Deactivate();
 	}
 
-	// ------------------------------------------------
-	// Timer
-	// ------------------------------------------------
-
-	StopLifeTimer();
-
-	// ------------------------------------------------
-	// Trail
-	// ------------------------------------------------
-
-	if (TrailEffectComponent)
-	{
-		TrailEffectComponent->Deactivate();
-		TrailEffectComponent->DestroyComponent();
-		TrailEffectComponent = nullptr;
-	}
-
-	// ------------------------------------------------
-	// Collision
-	// ------------------------------------------------
-
 	if (CollisionComp)
 	{
-		CollisionComp->SetCollisionEnabled(
-			ECollisionEnabled::NoCollision
-		);
+		CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CollisionComp->SetSphereRadius(InitialRadius);
 	}
 
-	// ------------------------------------------------
-	// Runtime state
-	// ------------------------------------------------
+	if (ProjectileMesh)
+	{
+		ProjectileMesh->SetVisibility(true);
+	}
 
 	CurrentRicochetCount = 0;
-
 	NumPenetratedObjects = 0;
-
 	StuckCount = 0;
-
 	PrevProjectileLoc = FVector::ZeroVector;
-
 	DistanceMoved = 0.f;
-
 	HitScanEndPoints.Reset();
-
 	CurrEndPointIdx = 0;
-
 	MovementDirection = FVector::ZeroVector;
-
 	AdditionalDamage = 0.f;
-
-	// ------------------------------------------------
-	// Actor
-	// ------------------------------------------------
+	ProjectileOwner = nullptr;
+	ThrowableWeapon = nullptr;
+	ProjectileData = nullptr;
 
 	SetActorHiddenInGame(true);
 	SetActorTickEnabled(false);

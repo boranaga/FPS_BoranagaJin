@@ -6,7 +6,6 @@
 #include "Items/Weapons/Weapon.h"
 #include "WeaponTargeting.generated.h"
 
-class UWeaponTargetingState;
 class UTargetingSkillWidget;
 class UTargetMarkerWidget;
 
@@ -38,8 +37,8 @@ public:
 
 	virtual void FireSingleProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, bool bIsHoming = false, AActor* HomingTarget = nullptr) override;
 
-	UPROPERTY(VisibleAnywhere)
-	UWeaponTargetingState* TargetingState = nullptr;
+	//UPROPERTY(VisibleAnywhere)
+	//UWeaponTargetingState* TargetingState = nullptr;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")

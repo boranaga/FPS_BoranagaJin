@@ -2,8 +2,11 @@
 #include "Items/BatteryItem.h"
 #include "Items/InventorySystemComponent.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/Player/PlayerCameraComponent.h"
 
 #include "Components/SpotLightComponent.h"
+#include "EnhancedInputComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -53,6 +56,9 @@ void AFlashlightItem::BeginPlay()
 
 void AFlashlightItem::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ResetInputActionBinding();
+	StopZoom();
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(BatteryDrainTimerHandle);
@@ -86,6 +92,12 @@ bool AFlashlightItem::UseItem(ACharacterPlayer* UsingCharacter)
 		return false;
 	}
 
+	// 손전등 전원 조작은 장착 상태에서만 허용한다.
+	if (!bIsEquipped)
+	{
+		return false;
+	}
+
 	if (Character != UsingCharacter)
 	{
 		Character = UsingCharacter;
@@ -113,6 +125,13 @@ void AFlashlightItem::Equip(ACharacterPlayer* TargetCharacter)
 
 void AFlashlightItem::Unequip(ACharacterPlayer* TargetCharacter)
 {
+	// Unequip 시작과 동시에 손전등 전용 입력 및 Zoom을 해제한다.
+	bIsEquipped = false;
+	ResetInputActionBinding();
+	StopZoom();
+
+	// 전원 OFF 자체는 Unequip을 뜻하지 않지만,
+	// 실제 Unequip 시에는 빛을 끄는 정책을 유지한다.
 	TurnOffFlashlight();
 
 	TWeakObjectPtr WeakThis = this;
@@ -124,18 +143,27 @@ void AFlashlightItem::Unequip(ACharacterPlayer* TargetCharacter)
 			}
 
 		}), SwitchingRate, false);
-	
-	
+
+
 	StartAnimation(AM_Unequip_Character, nullptr, SwitchingRate);
 
-	AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
-	AM_Unequip_Character->bEnableAutoBlendOut = false;
+	if (IsValid(AM_Unequip_Character))
+	{
+		AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
+		AM_Unequip_Character->bEnableAutoBlendOut = false;
+	}
 }
 
 void AFlashlightItem::OnEquipEnded(ACharacterPlayer* UsingCharacter)
 {
-	if (!UsingCharacter) { return; }
-	TurnOnFlashlight();
+	if (!IsValid(UsingCharacter)) { return; }
+
+	Character = UsingCharacter;
+	bIsEquipped = true;
+
+	// 장착과 전원 상태는 서로 독립적이다.
+	// 장착 완료 시 자동으로 켜지 않고, 좌클릭에서만 ToggleFlashlight()를 호출한다.
+	SetInputActionBinding();
 }
 
 void AFlashlightItem::OnUnequipEnded()
@@ -177,7 +205,8 @@ bool AFlashlightItem::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 
 	ItemMesh->SetVisibility(true);
 
-	UseItem(Character); //FlashlightLight->SetVisibility(true); //TODO: UseItem을 바로 사용하지 않는 방식으로 바꿔야함
+	// 장착만 수행한다. 전원 ON/OFF는 좌클릭 UseItem()에서 별도로 처리한다.
+	SetLightEnabled(false);
 
 	return true;
 }
@@ -225,6 +254,197 @@ void AFlashlightItem::StartAnimation(UAnimMontage* CharacterAnimation, UAnimMont
 		}
 	}
 }
+
+
+
+#pragma region Input
+void AFlashlightItem::SetInputActionBinding()
+{
+	if (!bIsEquipped || !IsValid(Character))
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+
+	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent);
+	if (!IsValid(EnhancedInputComponent))
+	{
+		return;
+	}
+
+	// Equip이 반복되어도 동일 입력이 중복으로 바인딩되지 않도록 한다.
+	ResetInputActionBinding();
+
+	if (IsValid(LeftMouseAction))
+	{
+		FEnhancedInputActionEventBinding& Binding = EnhancedInputComponent->BindAction(
+			LeftMouseAction,
+			ETriggerEvent::Started,
+			this,
+			&AFlashlightItem::HandleLeftMouseInput
+		);
+
+		InputActionBindingHandles.Add(Binding.GetHandle());
+	}
+
+	if (IsValid(RightMouseAction))
+	{
+		FEnhancedInputActionEventBinding& Binding = EnhancedInputComponent->BindAction(
+			RightMouseAction,
+			ETriggerEvent::Started,
+			this,
+			&AFlashlightItem::HandleRightMouseInput
+		);
+
+		InputActionBindingHandles.Add(Binding.GetHandle());
+	}
+}
+
+void AFlashlightItem::ResetInputActionBinding()
+{
+	if (InputActionBindingHandles.IsEmpty())
+	{
+		return;
+	}
+
+	if (!IsValid(Character))
+	{
+		InputActionBindingHandles.Empty();
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
+	if (!IsValid(PlayerController))
+	{
+		InputActionBindingHandles.Empty();
+		return;
+	}
+
+	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent);
+	if (!IsValid(EnhancedInputComponent))
+	{
+		InputActionBindingHandles.Empty();
+		return;
+	}
+
+	for (const uint32 BindingHandle : InputActionBindingHandles)
+	{
+		EnhancedInputComponent->RemoveBindingByHandle(BindingHandle);
+	}
+
+	InputActionBindingHandles.Empty();
+}
+
+void AFlashlightItem::HandleLeftMouseInput()
+{
+	if (!bIsEquipped || !IsValid(Character))
+	{
+		return;
+	}
+
+	// 좌클릭: 전원 ON/OFF만 변경.
+	// OFF 상태가 되어도 bIsEquipped에는 영향을 주지 않는다.
+	UseItem(Character);
+}
+
+void AFlashlightItem::HandleRightMouseInput()
+{
+	if (!bIsEquipped)
+	{
+		return;
+	}
+
+	// 우클릭: Zoom ON/OFF 토글.
+	ToggleZoom();
+}
+#pragma endregion
+
+#pragma region Zoom
+void AFlashlightItem::ToggleZoom()
+{
+	if (!bIsEquipped)
+	{
+		return;
+	}
+
+	if (bIsZoomed)
+	{
+		StopZoom();
+	}
+	else
+	{
+		StartZoom();
+	}
+}
+
+bool AFlashlightItem::StartZoom()
+{
+	if (!bIsEquipped || !IsValid(Character))
+	{
+		return false;
+	}
+
+	if (bIsZoomed)
+	{
+		return true;
+	}
+
+	UPlayerCameraComponent* PlayerCameraComponent = GetPlayerCameraComponent();
+	if (!IsValid(PlayerCameraComponent))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: PlayerCameraComponent is invalid. Zoom request failed."), *GetName());
+		return false;
+	}
+
+	FPlayerCameraZoomRequest ZoomRequest;
+	ZoomRequest.TargetFOV = ZoomTargetFOV;
+	ZoomRequest.BlendInSpeed = ZoomBlendInSpeed;
+	ZoomRequest.BlendOutSpeed = ZoomBlendOutSpeed;
+	ZoomRequest.Priority = ZoomPriority;
+
+	ZoomRequestHandle = PlayerCameraComponent->RequestZoom(ZoomRequest);
+	if (!ZoomRequestHandle.IsValid())
+	{
+		return false;
+	}
+
+	// 이 값이 true가 되는 순간 GetRightHandSocketTransform()도
+	// RightHandSocketTransform_Zoom을 반환하게 된다.
+	bIsZoomed = true;
+	return true;
+}
+
+void AFlashlightItem::StopZoom()
+{
+	if (ZoomRequestHandle.IsValid())
+	{
+		if (UPlayerCameraComponent* PlayerCameraComponent = GetPlayerCameraComponent())
+		{
+			PlayerCameraComponent->ReleaseZoom(ZoomRequestHandle);
+		}
+
+		ZoomRequestHandle.Invalidate();
+	}
+
+	// 원래 손 위치 Getter로 복귀.
+	bIsZoomed = false;
+}
+
+UPlayerCameraComponent* AFlashlightItem::GetPlayerCameraComponent() const
+{
+	if (!IsValid(Character))
+	{
+		return nullptr;
+	}
+
+	return Character->FindComponentByClass<UPlayerCameraComponent>();
+}
+#pragma endregion
 
 
 void AFlashlightItem::ToggleFlashlight()

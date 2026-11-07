@@ -2,8 +2,7 @@
 
 #include "Animations/WeaponAnimInstance.h"
 #include "Items/Weapons/Weapon.h"
-//#include "Items/WeaponState/WeaponBaseState.h"
-#include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/WeaponStateType.h"
 
 void UWeaponAnimInstance::NativeInitializeAnimation()
 {

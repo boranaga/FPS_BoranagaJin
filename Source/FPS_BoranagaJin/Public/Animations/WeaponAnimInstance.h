@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
-#include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/WeaponStateType.h"
 #include "WeaponAnimInstance.generated.h"
 
 class AWeapon;

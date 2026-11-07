@@ -6,7 +6,6 @@
 
 #include "Items/Weapons/Weapon.h"
 #include "Items/InventorySystemComponent.h"
-#include "Items/WeaponState/WeaponBaseState.h"
 #include "UI/WeaponAimUIWidget.h"
 
 #include "EngineCamerasSubsystem.h"

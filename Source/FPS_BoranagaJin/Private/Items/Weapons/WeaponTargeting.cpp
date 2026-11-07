@@ -4,11 +4,7 @@
 #include "Items/Weapons/WeaponTargeting.h"
 #include "Items/Weapons/Weapon.h"
 #include "Items/InventorySystemComponent.h"
-#include "Items/WeaponState/WeaponIdleState.h"
-#include "Items/WeaponState/WeaponTargetingState.h"
-#include "Items/WeaponState/WeaponFiringState.h"
-#include "Items/WeaponState/WeaponPumpActionReloadState.h"
-#include "Items/WeaponState/WeaponUnequippedState.h"
+
 #include "Data/WeaponData.h"
 #include "Data/PlayerWeaponPrimaryDataAsset.h"
 #include "UI/TargetMarkerWidget.h"

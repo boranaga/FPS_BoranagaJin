@@ -7,7 +7,7 @@
 #include "Items/InventorySlot.h"
 #include "Items/QuickSlot.h"
 #include "Items/Weapons/WeaponName.h"
-#include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/WeaponStateType.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponStateType.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "SaveSystem/InventorySaveData.h"

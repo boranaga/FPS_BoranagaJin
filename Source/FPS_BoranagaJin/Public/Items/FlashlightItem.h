@@ -6,6 +6,8 @@
 
 class USpotLightComponent;
 class ABatteryItem;
+class UInputAction;
+class UPlayerCameraComponent;
 
 UCLASS()
 class FPS_BORANAGAJIN_API AFlashlightItem : public AItem
@@ -33,7 +35,22 @@ protected:
 	void DetachFromPlayer();
 	void StartAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* WeaponAnimation, float CharacterAnimPlayRate, FName StartSection = FName());
 
+#pragma region Input
 protected:
+	void SetInputActionBinding();
+	void ResetInputActionBinding();
+	void HandleLeftMouseInput();
+	void HandleRightMouseInput();
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> LeftMouseAction = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> RightMouseAction = nullptr;
+
+	TArray<uint32> InputActionBindingHandles;
+#pragma endregion
+
 protected:
 	UPROPERTY()
 	UAnimInstance* CharacterAnimInstance = nullptr;
@@ -57,8 +74,48 @@ public:
 	void TurnOffFlashlight();
 	UFUNCTION(BlueprintPure, Category = "Flashlight")
 	bool IsFlashlightOn() const { return bIsFlashlightOn; }
+
+	UFUNCTION(BlueprintPure, Category = "Flashlight")
+	bool IsEquipped() const { return bIsEquipped; }
+
 private:
 	void SetLightEnabled(bool bEnabled);
+#pragma endregion
+
+#pragma region Zoom
+public:
+	UFUNCTION(BlueprintCallable, Category = "Flashlight|Zoom")
+	void ToggleZoom();
+
+	UFUNCTION(BlueprintCallable, Category = "Flashlight|Zoom")
+	bool StartZoom();
+
+	UFUNCTION(BlueprintCallable, Category = "Flashlight|Zoom")
+	void StopZoom();
+
+	UFUNCTION(BlueprintPure, Category = "Flashlight|Zoom")
+	bool IsZoomed() const { return bIsZoomed; }
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flashlight|Zoom", meta = (ClampMin = "5.0", ClampMax = "170.0"))
+	float ZoomTargetFOV = 65.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flashlight|Zoom", meta = (ClampMin = "0.0"))
+	float ZoomBlendInSpeed = 12.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flashlight|Zoom", meta = (ClampMin = "0.0"))
+	float ZoomBlendOutSpeed = 12.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flashlight|Zoom")
+	int32 ZoomPriority = 10;
+
+private:
+	UPlayerCameraComponent* GetPlayerCameraComponent() const;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Flashlight|Zoom")
+	bool bIsZoomed = false;
+
+	FGuid ZoomRequestHandle;
 #pragma endregion
 
 #pragma region Battery
@@ -159,14 +216,30 @@ private:
 	UPROPERTY(VisibleInstanceOnly, Category = "Flashlight")
 	bool bIsFlashlightOn = false;
 
+	UPROPERTY(VisibleInstanceOnly, Category = "Flashlight")
+	bool bIsEquipped = false;
+
 #pragma region Animation
 protected:
 	UPROPERTY(EditAnywhere, Category = "Socket")
 	FTransform RightHandSocketTransform;
 	UPROPERTY(EditAnywhere, Category = "Socket")
 	FTransform RightHandSocketTransform_Crouch;
+
+	UPROPERTY(EditAnywhere, Category = "Socket")
+	FTransform RightHandSocketTransform_Zoom;
+
 public:
-	FTransform GetRightHandSocketTransform() const { return RightHandSocketTransform; }
-	FTransform GetRightHandSocketTransform_Crouch() const { return RightHandSocketTransform_Crouch; }
+	FTransform GetRightHandSocketTransform() const
+	{
+		return bIsZoomed ? RightHandSocketTransform_Zoom : RightHandSocketTransform;
+	}
+
+	FTransform GetRightHandSocketTransform_Crouch() const
+	{
+		return bIsZoomed ? RightHandSocketTransform_Zoom : RightHandSocketTransform_Crouch;
+	}
+
+	FTransform GetRightHandSocketTransform_Zoom() const { return RightHandSocketTransform_Zoom; }
 #pragma endregion
 };

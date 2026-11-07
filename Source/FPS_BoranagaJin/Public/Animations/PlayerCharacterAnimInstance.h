@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
 #include "Characters/Player/PlayerMovementComponent.h"
-#include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/WeaponStateType.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "Items/Weapons/ArmRecoilParams.h"
 #include "Data/PlayerAnimationData.h"

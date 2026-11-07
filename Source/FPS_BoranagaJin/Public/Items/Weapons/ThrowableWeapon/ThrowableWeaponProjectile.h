@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -16,6 +16,10 @@ class AEnemyBase;
 class USphereComponent;
 class UProjectileMovementComponent;
 class UNiagaraSystem;
+class UNiagaraComponent;
+class USoundBase;
+class UMaterialInterface;
+class UStaticMeshComponent;
 
 DECLARE_DELEGATE(FHeadShotDelegate);
 DECLARE_DELEGATE(FBodyShotDelegate);
@@ -28,12 +32,13 @@ public:
 	FHeadShotDelegate OnHeadShot;
 	FBodyShotDelegate OnBodyShot;
 
-	const FThrowableWeaponProjectileData* GetProjectileData() const { return ProjectileData; } //MEMO: ÇÊ¿äÇÑ°¡?
+	const FThrowableWeaponProjectileData* GetProjectileData() const { return ProjectileData; } //MEMO: ï¿½Ê¿ï¿½ï¿½Ñ°ï¿½?
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Projectile)
-	FDataTableRowHandle ProjectileDataTableHandle;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Projectile|Data") FDataTableRowHandle ProjectileDataTableHandle;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Data") bool bUseDataTable = true;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Projectile|Data", meta = (EditCondition = "!bUseDataTable", ShowOnlyInnerProperties)) FThrowableWeaponProjectileData BlueprintProjectileData;
 
-	FThrowableWeaponProjectileData* ProjectileData = nullptr;
+	const FThrowableWeaponProjectileData* ProjectileData = nullptr;
 
 	UPROPERTY(VisibleDefaultsOnly, Category = Projectile)
 	USphereComponent* CollisionComp = nullptr;
@@ -47,9 +52,11 @@ protected:
 	UNiagaraSystem* TrailEffect = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
 	UNiagaraSystem* ExplosionEffect = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect") UNiagaraSystem* FlashEffect = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect") UNiagaraSystem* SmokeEffect = nullptr;
 
-	UPROPERTY()
-	UNiagaraComponent* TrailEffectComponent = nullptr;
+	UPROPERTY() UNiagaraComponent* TrailEffectComponent = nullptr;
+	UPROPERTY() UNiagaraComponent* SmokeEffectComponent = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects")
 	UNiagaraSystem* ImpactEffect = nullptr;
 
@@ -94,6 +101,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Explosive")
 	float MaxExplosionRadius = 300.f;
 
+	// Unified throwable payload runtime data
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") EThrowableProjectileType ProjectileType = EThrowableProjectileType::Grenade;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float FuseTime = 3.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bDetonateOnImpact = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bCanAffectOwner = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float MinExplosiveDamage = 10.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float ExplosionDamageFalloffExponent = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bExplosionRequiresLineOfSight = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float FlashRadius = 1800.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float FlashMinDuration = 0.35f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float FlashMaxDuration = 4.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float FlashDistanceFalloffExponent = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bFlashRequiresLineOfSight = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bFlashFadeAudio = true;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float SmokeDuration = 15.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") float SmokeRadius = 500.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable|Runtime") bool bSmokeBlocksVisibilityTrace = true;
+	UPROPERTY() USoundBase* DetonationSound = nullptr;
+	UPROPERTY() USoundBase* FlashSound = nullptr;
+	UPROPERTY() USoundBase* SmokeStartSound = nullptr;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Penetration")
 	int32 NumPenetrableObjects = 4;
 
@@ -131,11 +159,40 @@ public:
 		float LaunchSpeed
 	);
 
+	UFUNCTION(BlueprintCallable, Category = "Throwable|Payload") void StartFuse();
+	UFUNCTION(BlueprintCallable, Category = "Throwable|Payload") void ActivatePayload();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Throwable|Payload") void BP_OnPayloadActivated(EThrowableProjectileType ActivatedType, FVector ActivationLocation);
+	UFUNCTION(BlueprintImplementableEvent, Category = "Throwable|Flashbang") void BP_OnFlashActorAffected(AActor* AffectedActor, float Intensity, float Duration);
+	UFUNCTION(BlueprintImplementableEvent, Category = "Throwable|Smoke") void BP_OnSmokeStarted(FVector CenterLocation, float Radius, float Duration);
+
+protected:
+	void ApplyProjectileData();
+	void ConfigureFlightCollision();
+	void StopProjectileMovement();
+	void StopTrailEffect();
+	void ClearThrowableTimers();
+
+	UFUNCTION() void OnFuseExpired();
+	void ActivateGrenadePayload();
+	void ActivateFlashbangPayload();
+	void ActivateSmokePayload();
+	void FinishSmokeEffect();
+
+	void ApplyFlashEffect(const FVector& CenterLocation);
+	float CalculateFlashIntensity(const FVector& CenterLocation, const AActor* TargetActor) const;
+	bool HasEffectLineOfSight(const FVector& CenterLocation, const AActor* TargetActor) const;
+	bool FindActorsInRadius(const FVector& CenterLocation, float SearchRadius, TArray<AActor*>& OutActors, bool bIncludeOwner) const;
+
 private:
 	UPROPERTY(VisibleAnywhere)
 	bool bIsActivated = false;
 	FTimerHandle LifeTimer;
+	FTimerHandle FuseTimerHandle;
+	FTimerHandle PersistentEffectTimerHandle;
 	float LifeSpan = 0.f;
+	bool bUseThrowableBehavior = true;
+	bool bPayloadActivated = false;
 public:
 	void StartLifeTimer(float Seconds);
 	void StopLifeTimer();
@@ -174,7 +231,7 @@ protected:
 	USoundBase* HitSound_Enemy = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* HitSound_Energy = nullptr;
-	void PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location); //TODO: SoundSystem¿¡ ÆíÀÔ
+	void PlaySoundAtLocationByMaterial(EPhysicalSurface SurfaceType, FVector Location); //TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 #pragma endregion
 
 #pragma region HitScan

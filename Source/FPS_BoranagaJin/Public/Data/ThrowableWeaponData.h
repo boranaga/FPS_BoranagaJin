@@ -101,4 +101,18 @@ struct FPS_BORANAGAJIN_API FThrowableWeaponData : public FTableRowBase
 	//-----------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HitScan")
 	bool bIsHitScan = false;
+	//-----------------------------------------------------------------
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw")
+	float ThrowReleaseDelay = 0.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw")
+	float ThrowAnimationDuration = 0.8f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw|Upward")
+	float UpwardThrowStrength = 1600.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw|Upward")
+	float UpwardPitchOffset = 15.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw|Downward")
+	float DownwardThrowStrength = 900.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable|Throw|Downward")
+	float DownwardPitchOffset = -20.f;
 };

@@ -7,7 +7,7 @@
 #include "GameFramework/Pawn.h"
 #include "Interface/DamageInterface.h"
 #include "Interface/SaveablePlayerInterface.h"
-#include "Items/WeaponState/WeaponStateType.h"
+#include "Items/Weapons/WeaponStateType.h"
 #include "CharacterPlayer.generated.h"
 
 class UCameraComponent;

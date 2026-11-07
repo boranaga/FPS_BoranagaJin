@@ -1,4 +1,4 @@
-#include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
+ï»¿#include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponProjectile.h"
 #include "Items/InventorySystemComponent.h"
 #include "Characters/Player/CharacterPlayer.h"
@@ -41,7 +41,7 @@ AThrowableWeapon::AThrowableWeapon()
 void AThrowableWeapon::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	SetState(EThrowableWeaponStateType::Idle);
 
 	if (MuzzlePoint)
@@ -64,7 +64,7 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
 		//InitializeCamera(Character);
 		LoadData();
-	}   
+	}
 
 	CharacterController = Cast<APlayerController>(Character->GetController());
 	if (CharacterController)
@@ -135,7 +135,7 @@ void AThrowableWeapon::InitUI()
 		AmmoCounterWidget = UISubsystem->CreateAndRegisterWidget(AmmoCounterWidgetClass);
 		if (AmmoCounterWidget)
 		{
-			//TODO: ThrowableWeapon Àü¿ë AmmoCounter Widget ¸¸µé±â
+			//TODO: ThrowableWeapon ï¿½ï¿½ï¿½ï¿½ AmmoCounter Widget ï¿½ï¿½ï¿½ï¿½ï¿½
 			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 			AmmoCounterWidget->SetVisibility(ESlateVisibility::Hidden);
@@ -250,6 +250,14 @@ void AThrowableWeapon::LoadData()
 	// <Penetration>
 	MaxPenetrableObjectsNum = WeaponData->MaxPenetrableObjectsNum;
 
+	// <Throw>
+	ThrowReleaseDelay = WeaponData->ThrowReleaseDelay;
+	ThrowAnimationDuration = WeaponData->ThrowAnimationDuration;
+    UpwardThrowStrength = WeaponData->UpwardThrowStrength;
+	UpwardPitchOffset = WeaponData->UpwardPitchOffset;
+	DownwardThrowStrength = WeaponData->DownwardThrowStrength;
+	DownwardPitchOffset = WeaponData->DownwardPitchOffset;
+
 	//---------------------------------------
 
 	TotalAmmo = MaxAmmo;
@@ -361,6 +369,15 @@ void AThrowableWeapon::LoadDataPost()
 
 	// <Penetration>
 	MaxPenetrableObjectsNum = WeaponData->MaxPenetrableObjectsNum;
+
+
+	// <Throw>
+	ThrowReleaseDelay = WeaponData->ThrowReleaseDelay;
+	ThrowAnimationDuration = WeaponData->ThrowAnimationDuration;
+	UpwardThrowStrength = WeaponData->UpwardThrowStrength;
+	UpwardPitchOffset = WeaponData->UpwardPitchOffset;
+	DownwardThrowStrength = WeaponData->DownwardThrowStrength;
+	DownwardPitchOffset = WeaponData->DownwardPitchOffset;
 }
 
 void AThrowableWeapon::OnItemStateRestored()
@@ -441,7 +458,7 @@ void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 	//{
 	//	CancelPendingThrow();
 	//}
-	
+
 	//---------------------------------
 
 	if (CurrentState == EThrowableWeaponStateType::Reloading)
@@ -544,16 +561,10 @@ void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 		return;
 	}
 
-	//bThrowInProgress = true;
-
-	// Throw ½ÃÀÛ ´ç½Ã ¸ðµå¸¦ È®Á¤
 	PendingFireMode = CurrentFireMode;
 
-	// Throw ½ÃÀÛ ´ç½Ã Ä«¸Þ¶ó ¹æÇâÀ» ±âÁØÀ¸·Î
-	// ½ÇÁ¦ ¹ß»ç ¹æÇâ±îÁö È®Á¤
 	PendingThrowDirection = CalculateThrowDirection(BaseThrowDirection, PendingFireMode);
 
-	// Throw animation
 	PlayThrowAnimation();
 
 	const float ActualReleaseDelay = FMath::Clamp(ThrowReleaseDelay, 0.f, ThrowAnimationDuration);
@@ -649,11 +660,6 @@ void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
 
 void AThrowableWeapon::ExecuteThrow()
 {
-	//if (!bThrowInProgress)
-	//{
-	//	return;
-	//}
-
 	if (PendingFireMode == EThrowableWeaponFireMode::None)
 	{
 		return;
@@ -662,6 +668,8 @@ void AThrowableWeapon::ExecuteThrow()
 	const float ThrowSpeed = GetThrowStrength(PendingFireMode);
 
 	FireSingleProjectile(&FireData, PendingThrowDirection, ThrowSpeed);
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::ExecuteThrow()"));
 }
 
 void AThrowableWeapon::FinishThrowSequence()
@@ -686,6 +694,8 @@ void AThrowableWeapon::FinishThrowSequence()
 	{
 		SetState(EThrowableWeaponStateType::Idle);
 	}
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::FinishThrowSequence()"));
 }
 
 void AThrowableWeapon::PlayThrowAnimation()
@@ -974,7 +984,7 @@ void AThrowableWeapon::StopSingleShot()
 
 void AThrowableWeapon::StartReload()
 {
-	//TODO: ±âÁ¸ »óÅÂ(aiming µî¿¡¼­ reloadingÀ¸·Î ÀüÈ¯µÉ ¶§ ±âÁ¸ »óÅÂ¿¡ ´ëÇÑ Ã³¸® ÇÊ¿ä)
+	//TODO: ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(aiming ï¿½î¿¡ï¿½ï¿½ reloadingï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½È¯ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â¿ï¿½ ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ ï¿½Ê¿ï¿½)
 
 	StartAnimation(AM_Reload_Character, ReloadingTime);
 	TWeakObjectPtr WeakThis = this;
@@ -1038,12 +1048,12 @@ void AThrowableWeapon::InitProjectiles(TSubclassOf<AThrowableWeaponProjectile> P
 
 void AThrowableWeapon::ReturnProjectile(AThrowableWeaponProjectile* Projectile)
 {
-	//TODO: ¿©±â¼­ ÀÌ°É ¿ÖÇÔ? 
+	//TODO: ï¿½ï¿½ï¿½â¼­ ï¿½Ì°ï¿½ ï¿½ï¿½ï¿½ï¿½? 
 }
 
 void AThrowableWeapon::ActivateAimUIWidget(bool bFlag)
 {
-	//TODO: UISubSystem°ú ÅëÇÕ
+	//TODO: UISubSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	if (bFlag)
 	{
 		if (AimUIWidget)
@@ -1065,7 +1075,7 @@ void AThrowableWeapon::ActivateAimUIWidget(bool bFlag)
 
 void AThrowableWeapon::ActivateAmmoCounterWidget(bool bFlag)
 {
-	//TODO: UISubSystem°ú ÅëÇÕ
+	//TODO: UISubSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	if (bFlag)
 	{
 		if (AmmoCounterWidget)
@@ -1279,7 +1289,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 
 	//	if (bWeaponAssetsReady)
 	//	{
-	//		//TODO: SpawnRotation Á¤»óÈ­
+	//		//TODO: SpawnRotation ï¿½ï¿½ï¿½ï¿½È­
 	//		if (InFireData->MuzzleFireEffect)
 	//		{
 	//			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
@@ -1294,7 +1304,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	//}
 
 	//ReportFiringSoundToAI();
-	//if (InFireData->FireSound) //TODO: SoundSystem¿¡ ÅëÇÕ½ÃÅ°±â
+	//if (InFireData->FireSound) //TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½Õ½ï¿½Å°ï¿½ï¿½
 	//{
 	//	UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
 	//}
@@ -1303,7 +1313,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 
 	//// <CamShake>
 	//ApplyCameraShake(InFireData->CamShake);
-	 
+
 	//------------------------------------------------------
 
 	// <New>
@@ -1354,7 +1364,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 
 		if (bWeaponAssetsReady)
 		{
-			//TODO: SpawnRotation Á¤»óÈ­
+			//TODO: SpawnRotation ï¿½ï¿½ï¿½ï¿½È­
 			if (InFireData->MuzzleFireEffect)
 			{
 				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
@@ -1369,7 +1379,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	}
 
 	ReportFiringSoundToAI();
-	if (InFireData->FireSound) //TODO: SoundSystem¿¡ ÅëÇÕ½ÃÅ°±â
+	if (InFireData->FireSound) //TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½Õ½ï¿½Å°ï¿½ï¿½
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
 	}
@@ -1378,10 +1388,6 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 
 	// <CamShake>
 	ApplyCameraShake(InFireData->CamShake);
-
-
-
-
 }
 
 void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireData, const FVector& ThrowDirection, float ThrowSpeed, int32 NumPenetrable, float AdditionalDamage)
@@ -1438,8 +1444,6 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	if (!IsValid(NewProjectile)) { return; }
 
 	NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
-	NewProjectile->LoadProjectileData(); // TEMP
-
 	NewProjectile->LaunchProjectile(SpawnLocation, NormalizedDirection, ThrowSpeed);
 
 	//NewProjectile->InitProjectileMovement(SpawnLocation, NormalizedDirection, SpawnLocation);
@@ -1532,7 +1536,7 @@ void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData,
 
 		if (bWeaponAssetsReady)
 		{
-			//TODO: SpawnRotation Á¤»óÈ­
+			//TODO: SpawnRotation ï¿½ï¿½ï¿½ï¿½È­
 			if (InFireData->MuzzleFireEffect)
 			{
 				UNiagaraFunctionLibrary::SpawnSystemAtLocation(
@@ -1572,19 +1576,6 @@ void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)
 
 		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::HandleSingleFire(int32 NumPenetrable)"));
 
-		//--------------------------
-
-		//if (CurrentState == EThrowableWeaponStateType::Firing)
-		//{
-		//	return;
-		//}
-
-		//if (CurrentState != EThrowableWeaponStateType::Idle &&
-		//	CurrentState != EThrowableWeaponStateType::Aiming)
-		//{
-		//	return;
-		//}
-
 		if (!IsValid(Character)) { return; }
 
 		if (!HasAmmo(FireData.AmmoCost))
@@ -1619,7 +1610,7 @@ void AThrowableWeapon::StartBurstFire(int32 NumPenetrable, float AdditionalDamag
 		if (bIsHitScan) { FireSingleHitScan(&FireData, NumPenetrable, AdditionalDamage); }
 		else { FireSingleProjectile(&FireData, NumPenetrable, AdditionalDamage); }
 
-		BurstShotFired++;	
+		BurstShotFired++;
 		TWeakObjectPtr WeakThis = this;
 		GetWorld()->GetTimerManager().SetTimer(BurstShotTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis, NumPenetrable]()
 			{
@@ -1682,7 +1673,7 @@ void AThrowableWeapon::StartCharge()
 		SetState(EThrowableWeaponStateType::Charging);
 
 		SpawnChargeEffect(ChargeEffectLocation, ChargeEffectRotation, ChargeEffenctScale);
-		//PlayWeaponSound(ChargeSound); //TODO: SoundSystem¿¡ ÅëÇÕ
+		//PlayWeaponSound(ChargeSound); //TODO: SoundSystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
 		UpdateCharge();
 	}
@@ -1693,7 +1684,7 @@ void AThrowableWeapon::UpdateCharge()
 	float DeltaSeconds = GetWorld()->GetDeltaSeconds();
 	ElapsedChargeTime += DeltaSeconds;
 
-	float ChargingCamShakeScale = FMath::Clamp((ElapsedChargeTime / MaxChargeTime), 0.1f, 3.f); //TODO: magic number º¯¼öÈ­
+	float ChargingCamShakeScale = FMath::Clamp((ElapsedChargeTime / MaxChargeTime), 0.1f, 3.f); //TODO: magic number ï¿½ï¿½ï¿½ï¿½È­
 	ApplyCameraShake(ChargingCameraShakeClass, ChargingCamShakeScale);
 
 	if (bAutoFireAtMaxChargeTime)
@@ -1779,7 +1770,7 @@ void AThrowableWeapon::StopReload()
 	SetState(EThrowableWeaponStateType::Idle);
 }
 
-void AThrowableWeapon::InterruptReloadAndFire() //TODO: ÇÑ¹ø »ìÆìº¸±â
+void AThrowableWeapon::InterruptReloadAndFire() //TODO: ï¿½Ñ¹ï¿½ ï¿½ï¿½ï¿½ìº¸ï¿½ï¿½
 {
 	//if (BufferedFireRequest.IsSet())
 	//{
@@ -1819,7 +1810,7 @@ void AThrowableWeapon::ConsumeAmmo(int32 AmmoCost)
 			LeftAmmo = 0;
 		}
 
-		//TODO: PlayerUISubsystem¿¡ ÆíÀÔ
+		//TODO: PlayerUISubsystemï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		if (AmmoCounterWidget)
 		{
 			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
@@ -1827,7 +1818,7 @@ void AThrowableWeapon::ConsumeAmmo(int32 AmmoCost)
 	}
 }
 
-void AThrowableWeapon::ReloadAmmo() //TODO: ÇÑ °³¾¿ reload µÇµµ·Ï º¯°æÇØ¾ßÇÔ.
+void AThrowableWeapon::ReloadAmmo() //TODO: ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ reload ï¿½Çµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ï¿½ï¿½.
 {
 	LeftAmmo += 1;
 	TotalAmmo -= 1;

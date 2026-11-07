@@ -11,16 +11,6 @@
 #include "Characters/Player/CharacterPlayer.h"
 
 #include "Items/Weapons/WeaponName.h"
-#include "Items/WeaponState/WeaponBaseState.h"
-#include "Items/WeaponState/WeaponIdleState.h"
-#include "Items/WeaponState/WeaponFiringState.h"
-#include "Items/WeaponState/WeaponUnequippedState.h"
-#include "Items/WeaponState/WeaponReloadingState.h"
-#include "Items/WeaponState/WeaponPumpActionReloadState.h"
-#include "Items/WeaponState/WeaponSwitchingState.h"
-//#include "Items/WeaponState/WeaponTargetingState.h"
-#include "Items/WeaponState/WeaponChargingState.h"
-#include "Items/WeaponState/WeaponWaitingState.h"
 
 #include "ObjectPoolSubsystem.h"
 
@@ -1782,21 +1772,23 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 		bIsUsingFlashLightItem = false;
 	}
 
-	NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem(0);
+	//-------------------------------
 
-	if (CurrItem)
-	{
-		CurrItem->Unequip(PlayerOwner);
-	}
-	else
-	{
-		NextItem->Equip(PlayerOwner);
-	}
+	//NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem(0);
+
+	//if (CurrItem)
+	//{
+	//	CurrItem->Unequip(PlayerOwner);
+	//}
+	//else
+	//{
+	//	NextItem->Equip(PlayerOwner);
+	//}
 
 	//-------------------------------
 
-
-
+	RegisterQuickSlot(3, EInventoryName::ThrowableWeapon, WeaponIdx);
+	SelectQuickSlot(3);
 }
 #pragma endregion
 
@@ -1857,43 +1849,71 @@ void UInventorySystemComponent::ToggleFlashLight()
 		}
 	}
 
-	if (CurrFlashLightItem->IsFlashlightOn())
+	//------------------------
+
+	//if (CurrFlashLightItem->IsFlashlightOn())
+	//{
+	//	if (CurrWeapon)
+	//	{
+	//		NextItem = CurrWeapon;
+	//		CurrFlashLightItem->Unequip(PlayerOwner);
+	//		bIsUsingFlashLightItem = false; //TODO: Item->Unequip 하면 자동으로 bIsUsingFlashLightItem = false가 되어야함
+	//	}
+	//	else
+	//	{
+	//		CurrFlashLightItem->Unequip(PlayerOwner);
+	//		bIsUsingFlashLightItem = false;
+	//	}
+	//}
+	//else
+	//{
+	//	if (CurrWeapon)
+	//	{
+	//		if (CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Switching
+	//			|| CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Unequipped) {
+	//			return;
+	//		}
+
+	//		NextItem = CurrFlashLightItem;
+
+	//		if (CurrWeapon->IsTwoHandedWeapon())
+	//		{
+	//			CurrWeapon->Unequip(PlayerOwner);
+	//		}
+	//		else
+	//		{
+
+	//		}
+	//	}
+	//	else
+	//	{
+	//		CurrFlashLightItem->Equip(PlayerOwner);
+	//		bIsUsingFlashLightItem = true;
+	//	}
+	//}
+
+	//------------------------
+
+	if (CurrFlashLightItem->IsEquipped())
 	{
 		if (CurrWeapon)
 		{
-			NextItem = CurrWeapon;
-			CurrFlashLightItem->Unequip(PlayerOwner);
-			bIsUsingFlashLightItem = false; //TODO: Item->Unequip 하면 자동으로 bIsUsingFlashLightItem = false가 되어야함
+			int32 WeaponQuickSlotIdx = -1;
+			if (IsItemInQuickSlots(CurrWeapon, WeaponQuickSlotIdx))
+			{
+				SelectQuickSlot(WeaponQuickSlotIdx);
+				bIsUsingFlashLightItem = false; //TODO: Item->Unequip 하면 자동으로 bIsUsingFlashLightItem = false가 되어야함
+			}
 		}
 		else
 		{
-			CurrFlashLightItem->Unequip(PlayerOwner);
-			bIsUsingFlashLightItem = false;
+			//TODO: 아무것도 장착하지 않은 상태가 필요한가?
 		}
 	}
 	else
 	{
-		if (CurrWeapon)
+		if (SelectQuickSlot(4))
 		{
-			if (CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Switching
-				|| CurrWeapon->GetCurrentState() == EWeaponStateType::WeaponStateType_Unequipped) {
-				return;
-			}
-
-			NextItem = CurrFlashLightItem;
-
-			if (CurrWeapon->IsTwoHandedWeapon())
-			{
-				CurrWeapon->Unequip(PlayerOwner);
-			}
-			else
-			{
-
-			}
-		}
-		else
-		{
-			CurrFlashLightItem->Equip(PlayerOwner);
 			bIsUsingFlashLightItem = true;
 		}
 	}
@@ -1906,6 +1926,10 @@ bool UInventorySystemComponent::FindFlashLightInInventory()
 		if (AFlashlightItem* flashlight = Cast<AFlashlightItem>(ItemInventory[idx].GetItem(0)))
 		{
 			CurrFlashLightItem = Cast<AFlashlightItem>(flashlight);
+
+			int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::Flashlight);
+			RegisterQuickSlot(QuickSlotIdx, EInventoryName::Item, idx);
+
 			return true;
 		}
 	}

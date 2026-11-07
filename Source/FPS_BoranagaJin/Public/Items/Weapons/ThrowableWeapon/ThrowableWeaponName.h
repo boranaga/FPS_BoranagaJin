@@ -10,10 +10,11 @@ enum class EThrowableWeaponName : uint8
 
 	ThrowableWeaponName_Base UMETA(DisplayName = "Base"),
 	ThrowableWeaponName_Grenade UMETA(DisplayName = "Grenade"),
-	ThrowableWeaponName_SmokeGrenade UMETA(DisplayName = "SmokeGrenade")
+	ThrowableWeaponName_SmokeGrenade UMETA(DisplayName = "SmokeGrenade"),
+	ThrowableWeaponName_Flashbang UMETA(DisplayName = "Flashbang")
 
 };
-ENUM_RANGE_BY_FIRST_AND_LAST(EThrowableWeaponName, EThrowableWeaponName::ThrowableWeaponName_Base, EThrowableWeaponName::ThrowableWeaponName_SmokeGrenade);
+ENUM_RANGE_BY_FIRST_AND_LAST(EThrowableWeaponName, EThrowableWeaponName::ThrowableWeaponName_Base, EThrowableWeaponName::ThrowableWeaponName_Flashbang);
 
 UCLASS()
 class FPS_BORANAGAJIN_API AThrowableWeaponName : public AActor

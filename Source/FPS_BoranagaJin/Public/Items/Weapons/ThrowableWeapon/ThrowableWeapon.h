@@ -124,7 +124,6 @@ public:
 	void ToggleFireMode();
 	void SetFireMode(EThrowableWeaponFireMode NewFireMode);
     EThrowableWeaponFireMode GetFireMode() const { return CurrentFireMode; }
-	//bool IsThrowInProgress() const { return bThrowInProgress; }
 protected:
 	void ExecuteThrow();
 	void FinishThrowSequence();
@@ -303,8 +302,6 @@ protected:
 	FTimerHandle ThrowSequenceTimerHandle;
 
 	FVector PendingThrowDirection = FVector::ForwardVector;
-	//bool bThrowInProgress = false;
-
 
 	// UI
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Aim") TSubclassOf<UWeaponAimUIWidget> AimUIWidgetClass;
