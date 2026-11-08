@@ -11,6 +11,8 @@ enum class EItemName : uint8
 	ItemName_Rifle UMETA(DisplayName = "Rifle"),
 	ItemName_ShotGun UMETA(DisplayName = "ShotGun"),
 	ItemName_RocketLauncher UMETA(DisplayName = "RocketLauncher"),
+	ItemName_Pistol UMETA(DisplayName = "Pistol"),
+	ItemName_FlareGun UMETA(DisplayName = "FlareGun"),
 	ItemName_Grenade UMETA(DisplayName = "Grenade"),
 	ItemName_SmokeGrenade UMETA(DisplayName = "SmokeGrenade"),
 	ItemName_Bandage UMETA(DisplayName = "Bandage"),

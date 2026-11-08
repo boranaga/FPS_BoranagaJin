@@ -42,8 +42,6 @@ void UInventorySystemComponent::BeginPlay()
 
 	PlayerOwner->OnThrowableWeaponEquipRequestedDelegate.AddUObject(this, &UInventorySystemComponent::EquipThrowableWeapon);
 	PlayerOwner->OnThrowableWeaponInventoryUpdateRequestedDelegate.AddUObject(this, &UInventorySystemComponent::UpdateThrowableWeaponInventorySlots);
-
-
 	//PlayerOwner->OnThrowableWeaponReleaseNotify.AddUObject(this, &UInventorySystemComponent::HandleThrowableWeaponReleaseNotify);
 }
 
@@ -53,6 +51,7 @@ void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	SearchItems(); //TODO: 탐색 조건 넣기
 	//CalculateScreenCenterWorldPositionAndDirection(ScreenCenterWorldLocation, ScreenCenterWorldDirection);
 	CalculateTargetRightHandPosition();
+	UpdateOffHandFlashlightAttachment();
 }
 
 #pragma region PlayerReference
@@ -329,9 +328,9 @@ AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInsta
 			// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
 		}
 	}
-	if (!IsValid(NewItem)) 
+	if (!IsValid(NewItem))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); 
+		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4"));
 		return nullptr;
 	}
 
@@ -536,7 +535,7 @@ bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* NewItemPickUp, in
 			if (CurrFlashLightItem == nullptr)
 			{
 				CurrFlashLightItem = Cast<AFlashlightItem>(NewItem);
-			
+
 				int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::Flashlight);
 				RegisterQuickSlot(QuickSlotIdx, EInventoryName::Item, EmptySlotIndex);
 
@@ -603,8 +602,20 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 	if (!NewWeapon) { return false; }
 
 	bool bWeaponAdded = WeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
-	
-	int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::PrimaryWeapon);
+
+
+	EQuickSlotType WeaponQuickSlotType = NewWeapon->GetQuickSlotType();
+	int32 QuickSlotIdx = -1;
+	if (WeaponQuickSlotType == EQuickSlotType::PrimaryWeapon)
+	{
+		QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::PrimaryWeapon);
+	}
+	else if (WeaponQuickSlotType == EQuickSlotType::SecondaryWeapon)
+	{
+		QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::SecondaryWeapon);
+	}
+
+	//int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::PrimaryWeapon);
 	RegisterQuickSlot(QuickSlotIdx, EInventoryName::Weapon, EmptySlotIndex);
 
 	if (bWeaponAdded)
@@ -649,7 +660,6 @@ bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewIte
 			{
 				Weapon->AddAmmo(NewItemPickUp->GetAmmo());
 				ThrowableWeaponInventory[WeaponIdx].AddItem(Weapon, AddCount);
-
 				return true;
 			}
 		}
@@ -888,7 +898,7 @@ void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int3
 		TargetInventory = &ThrowableWeaponInventory;
 		TargetInventoryName = EInventoryName::ThrowableWeapon;
 	}
-	
+
 	if (!TargetInventory)
 	{
 		return;
@@ -905,7 +915,7 @@ void UInventorySystemComponent::SwapItemInventorySlots(FName InventoryName, int3
 
 	IsItemInQuickSlots((*TargetInventory)[FromIndex].GetItem(), ItemIdxInQuickSlot_A);
 	IsItemInQuickSlots((*TargetInventory)[ToIndex].GetItem(), ItemIdxInQuickSlot_B);
-	
+
 	if (!QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_A) && QuickSlotInventory.IsValidIndex(ItemIdxInQuickSlot_B))
 	{
 		ClearQuickSlot(ItemIdxInQuickSlot_B);
@@ -1003,11 +1013,16 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 		//-----------------------------------------------------------
 		// TODO: 나중에 월드에 Pickup Actor Spawn하려면 여기에서 처리
 		// TODO: Object pooling으로 ItemPickUp 불러오기
-		
+
 		AItem* ItemToDrop = ItemInventory[SlotIndex].GetItem(0);
 		ItemInventory[SlotIndex].ClearSlot();
 
 		if (!IsValid(ItemToDrop)) { return; }
+
+		if (ItemToDrop == CurrFlashLightItem && bOffHandFlashlightActive)
+		{
+			DisableOffHandFlashlight();
+		}
 
 		if (ItemToDrop->GetItemName() == EItemName::ItemName_FlashLight && ItemToDrop == CurrFlashLightItem)
 		{
@@ -1023,7 +1038,7 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 						NextItem = nextflashlight;
 						CurrFlashLightItem->Unequip(PlayerOwner);
 						bIsUsingFlashLightItem = false;
-						CurrFlashLightItem = nextflashlight;			
+						CurrFlashLightItem = nextflashlight;
 					}
 				}
 				else
@@ -1076,10 +1091,14 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 
 		// TODO: GetItem(0)이 아니라 더 깔끔한 방식이 필요함
 		AWeapon* Weapon = Cast<AWeapon>(WeaponInventory[SlotIndex].GetItem(0));
+		if (Weapon == CurrWeapon && bOffHandFlashlightActive)
+		{
+			DisableOffHandFlashlight();
+		}
 		Weapon->UnequipWeapon_Legacy(PlayerOwner);
-		if (Weapon == CurrWeapon) 
-		{ 
-			CurrWeapon = nullptr; 
+		if (Weapon == CurrWeapon)
+		{
+			CurrWeapon = nullptr;
 			CurrItem = nullptr;
 		}
 
@@ -1128,11 +1147,11 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 
 	// 사용할 수 없는 상황이면 수량을 차감하지 않음
 	const bool bUseSucceeded = ItemToUse->UseItem(PlayerOwner);
-	if (!bUseSucceeded) 
-	{ 
+	if (!bUseSucceeded)
+	{
 		UE_LOG(LogTemp, Error, TEXT("UseItemInventorySlot: Use Item Failed!!!"));
 
-		return; 
+		return;
 	}
 
 	// 사용에 성공한 경우 한 개 제거
@@ -1771,6 +1790,10 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 	if (!ThrowableWeaponInventory.IsValidIndex(WeaponIdx)) return;
 	if (ThrowableWeaponInventory[WeaponIdx].IsEmpty()) return;
 
+	if (bOffHandFlashlightActive)
+	{
+		DisableOffHandFlashlight();
+	}
 	if (CurrFlashLightItem)
 	{
 		bIsUsingFlashLightItem = false;
@@ -1794,6 +1817,7 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 	RegisterQuickSlot(3, EInventoryName::ThrowableWeapon, WeaponIdx);
 	SelectQuickSlot(3);
 }
+
 void UInventorySystemComponent::UpdateThrowableWeaponInventorySlots()
 {
 	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
@@ -1850,11 +1874,25 @@ void UInventorySystemComponent::ToggleFlashLight()
 	UE_LOG(LogTemp, Warning, TEXT("void UInventorySystemComponent::ToggleFlashLight()"));
 
 	if (!CurrFlashLightItem)
-	{ 
+	{
 		if (!FindFlashLightInInventory())
 		{
 			return;
 		}
+	}
+
+	if (bOffHandFlashlightActive)
+	{
+		DisableOffHandFlashlight();
+		return;
+	}
+
+	if (IsValid(CurrWeapon) && CurrItem == CurrWeapon && !CurrWeapon->IsTwoHandedWeapon())
+	{
+		// Do not fall through to the legacy QuickSlot replacement path for pistols.
+		// A reload or weapon switch is not a valid time to enter dual-wield stance.
+		TryEnableOffHandFlashlight();
+		return;
 	}
 
 	//------------------------
@@ -1942,6 +1980,99 @@ bool UInventorySystemComponent::FindFlashLightInInventory()
 		}
 	}
 	return false;
+}
+
+bool UInventorySystemComponent::TryEnableOffHandFlashlight()
+{
+	if (!IsValid(PlayerOwner) || !IsValid(CurrWeapon) || !IsValid(CurrFlashLightItem))
+	{
+		return false;
+	}
+
+	if (CurrItem != CurrWeapon
+		|| CurrWeapon->IsTwoHandedWeapon()
+		|| CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Idle)
+	{
+		return false;
+	}
+
+	// Change the gun first; an animation notify can now release the left hand.
+	if (!CurrWeapon->SetGripMode(EWeaponGripMode::OneHanded))
+	{
+		return false;
+	}
+
+	// The flashlight's own Equip() still handles its existing light/zoom/audio logic.
+	// The off-hand attachment is enforced after its regular equip completes.
+	bOffHandFlashlightActive = true;
+	bIsUsingFlashLightItem = true;
+	if (!CurrFlashLightItem->IsEquipped())
+	{
+		CurrFlashLightItem->Equip(PlayerOwner);
+	}
+	UpdateOffHandFlashlightAttachment();
+	return true;
+}
+
+void UInventorySystemComponent::DisableOffHandFlashlight()
+{
+	if (!bOffHandFlashlightActive)
+	{
+		return;
+	}
+
+	bOffHandFlashlightActive = false;
+	bIsUsingFlashLightItem = false;
+
+	if (IsValid(CurrFlashLightItem) && CurrFlashLightItem->IsEquipped())
+	{
+		CurrFlashLightItem->Unequip(PlayerOwner);
+	}
+
+	if (IsValid(CurrWeapon))
+	{
+		CurrWeapon->SetGripMode(EWeaponGripMode::TwoHanded);
+	}
+}
+
+void UInventorySystemComponent::UpdateOffHandFlashlightAttachment()
+{
+	if (!bOffHandFlashlightActive)
+	{
+		return;
+	}
+
+	if (!IsValid(PlayerOwner) || !IsValid(CurrWeapon) || CurrItem != CurrWeapon
+		|| CurrWeapon->IsTwoHandedWeapon() || !IsValid(CurrFlashLightItem))
+	{
+		DisableOffHandFlashlight();
+		return;
+	}
+
+	// Do not override the flashlight's pending equip animation.  Its equip may
+	// be timer/notify-driven, so this check retries after the actor becomes equipped.
+	if (!CurrFlashLightItem->IsEquipped())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* ArmMesh = PlayerOwner->GetArmMesh();
+	USceneComponent* LightRoot = CurrFlashLightItem->GetRootComponent();
+	if (!IsValid(ArmMesh) || !IsValid(LightRoot))
+	{
+		return;
+	}
+
+	if (LightRoot->GetAttachParent() != ArmMesh
+		|| LightRoot->GetAttachSocketName() != OffHandFlashlightSocketName)
+	{
+		CurrFlashLightItem->AttachToComponent(
+			ArmMesh,
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			OffHandFlashlightSocketName);
+	}
+
+	LightRoot->SetRelativeTransform(OffHandFlashlightRelativeTransform);
 }
 #pragma endregion
 
@@ -2156,6 +2287,13 @@ bool UInventorySystemComponent::RequestQuickSlotEquip(AItem* Item)
 		}
 	}
 
+	// Off-hand flashlight is an additional equipped item, not the selected quick slot.
+	// Any switch away from the current pistol ends the dual-wield stance first.
+	if (bOffHandFlashlightActive)
+	{
+		DisableOffHandFlashlight();
+	}
+
 	NextItem = Item;
 
 	if (IsValid(CurrItem))
@@ -2291,6 +2429,19 @@ bool UInventorySystemComponent::ClearQuickSlot(int32 QuickSlotIndex)
 
 bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex)
 {
+	if (QuickSlotInventory.IsValidIndex(QuickSlotIndex)
+		&& IsQuickSlotSelectable(QuickSlotIndex)
+		&& QuickSlotInventory[QuickSlotIndex].GetItem() == CurrFlashLightItem
+		&& IsValid(CurrWeapon)
+		&& CurrItem == CurrWeapon
+		&& !CurrWeapon->IsTwoHandedWeapon())
+	{
+		// Keep the selected weapon slot highlighted.  This is an off-hand toggle.
+		const bool bWasActive = bOffHandFlashlightActive;
+		ToggleFlashLight();
+		return bWasActive || bOffHandFlashlightActive;
+	}
+
 	if (!IsQuickSlotSelectable(QuickSlotIndex))
 	{
 		UE_LOG(LogTemp, Error, TEXT("bool UInventorySystemComponent::SelectQuickSlot(int32 QuickSlotIndex) 1"));

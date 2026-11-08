@@ -583,6 +583,8 @@ void AWeapon::LoadWeaponData_Upgrade()
 	// <AutoAim>
 	bIsAirborneAutoAimActive = WeaponData->bIsAirborneAutoAimActive;
 	AutoAimRadius = WeaponData->AutoAimRadius;
+
+	ConfigureWeaponHandedness();
 }
 
 void AWeapon::LoadWeaponDataPost()
@@ -769,6 +771,8 @@ void AWeapon::LoadWeaponDataPost()
 	// <AutoAim>
 	bIsAirborneAutoAimActive = WeaponData->bIsAirborneAutoAimActive;
 	AutoAimRadius = WeaponData->AutoAimRadius;
+
+	ConfigureWeaponHandedness();
 }
 
 void AWeapon::SetMeshVisibility(bool bflag)
@@ -792,6 +796,7 @@ void AWeapon::BeginPlay()
 	Super::BeginPlay();
 
 	WeaponAnimInstance = WeaponMesh->GetAnimInstance();
+	ConfigureWeaponHandedness();
 
 	//CurrentState = UnequippedState;
 	CurrentState = EWeaponStateType::WeaponStateType_Unequipped;
@@ -828,6 +833,10 @@ bool AWeapon::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 {
 	Character = TargetCharacter;
 	if (Character == nullptr) { return false; }
+
+	// Every newly equipped firearm defaults to two-hand grip.
+	ConfigureWeaponHandedness();
+	SetGripMode(EWeaponGripMode::TwoHanded);
 
 	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
 
@@ -899,6 +908,101 @@ void AWeapon::DetachWeaponFromPlayer()
 	}
 }
 
+#pragma endregion
+
+#pragma region Grip Mode
+void AWeapon::ConfigureWeaponHandedness()
+{
+	// DT's legacy boolean is retained, but the explicit firearm kind is authoritative.
+	// No existing rifle/shotgun/launcher Blueprint can become one-handed by mistake.
+	switch (WeaponName)
+	{
+	case EWeaponName::WeaponName_Pistol:
+	case EWeaponName::WeaponName_FlareGun:
+		bIsTwoHandedWeapon = false;
+		break;
+	default:
+		bIsTwoHandedWeapon = true;
+		break;
+	}
+
+	if (bIsTwoHandedWeapon && CurrentGripMode != EWeaponGripMode::TwoHanded)
+	{
+		SetGripMode(EWeaponGripMode::TwoHanded);
+	}
+}
+
+bool AWeapon::SetGripMode(EWeaponGripMode NewGripMode)
+{
+	if (NewGripMode == EWeaponGripMode::OneHanded && bIsTwoHandedWeapon)
+	{
+		return false;
+	}
+
+	if (CurrentGripMode == NewGripMode)
+	{
+		return true;
+	}
+
+	CurrentGripMode = NewGripMode;
+	RefreshGripAttachment();
+	OnWeaponGripModeChanged.Broadcast(CurrentGripMode);
+	BP_OnGripModeChanged(CurrentGripMode);
+	return true;
+}
+
+void AWeapon::RefreshGripAttachment()
+{
+	if (!IsValid(Character) || !IsValid(WeaponMesh) || !IsValid(Character->GetArmMesh()))
+	{
+		return;
+	}
+
+	// Never reattach an inventory/unequipped weapon just because grip data changed.
+	if (!GetRootComponent() || GetRootComponent()->GetAttachParent() != Character->GetArmMesh())
+	{
+		return;
+	}
+
+	const FName TargetSocket = (CurrentGripMode == EWeaponGripMode::OneHanded)
+		? OneHandedWeaponSocketName
+		: (WeaponSocketName.IsNone() ? FName(TEXT("Gun")) : WeaponSocketName);
+
+	AttachToComponent(Character->GetArmMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TargetSocket);
+
+	// Preserve the existing aiming/IK offset contract with InventorySystemComponent.
+	RightHandToAimSocketOffset = WeaponMesh->GetSocketLocation(FName(TEXT("Aim")))
+		- Character->GetArmMesh()->GetBoneLocation(FName(TEXT("hand_r")));
+
+	if (UInventorySystemComponent* Inventory = Character->GetInventorySystemComponent())
+	{
+		Inventory->SetRightHandToAimSocketOffset(RightHandToAimSocketOffset);
+	}
+	SetAimSocketTransform();
+}
+
+bool AWeapon::IsOneHandedGripActive() const
+{
+	return !bIsTwoHandedWeapon && CurrentGripMode == EWeaponGripMode::OneHanded;
+}
+
+float AWeapon::GetGripSpreadAngle(float BaseAngle) const
+{
+	if (!IsOneHandedGripActive())
+	{
+		return BaseAngle;
+	}
+	return BaseAngle * FMath::Max(1.0f, OneHandedSpreadMultiplier)
+		+ FMath::Max(0.0f, OneHandedBaseSpreadAngle);
+}
+
+void AWeapon::ApplyGripAdjustedFireCameraShake(TSubclassOf<UWeaponCamShakeBase> CamShakeClass)
+{
+	const float Scale = IsOneHandedGripActive()
+		? FMath::Max(1.0f, OneHandedCameraShakeMultiplier)
+		: 1.0f;
+	ApplyCameraShake(CamShakeClass, Scale);
+}
 #pragma endregion
 
 #pragma region Firing
@@ -1012,12 +1116,12 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 	if (bIsZoomIn)
 	{
 		AddRecoilValue(&ZoomRecoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(ZoomCameraShakeClass);
+		ApplyGripAdjustedFireCameraShake(ZoomCameraShakeClass);
 	}
 	else
 	{
 		AddRecoilValue(&FireData->Recoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(FireData->CamShake);
+		ApplyGripAdjustedFireCameraShake(FireData->CamShake);
 	}
 
 	// <ArmRecoil Animation>
@@ -1079,7 +1183,7 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 
 		for (int pellet = 0; pellet < (FireData->PelletsNum + AdditionalPellet); pellet++)
 		{
-			const FVector RandomVec = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(ProjectileDirection.GetSafeNormal(), FireData->MaxAngleOfMultiProjectileSpread);
+			const FVector RandomVec = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(ProjectileDirection.GetSafeNormal(), GetGripSpreadAngle(FireData->MaxAngleOfMultiProjectileSpread));
 
 			AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
 			Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable);
@@ -1123,12 +1227,12 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 	if (bIsZoomIn)
 	{
 		AddRecoilValue(&ZoomRecoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(ZoomCameraShakeClass);
+		ApplyGripAdjustedFireCameraShake(ZoomCameraShakeClass);
 	}
 	else
 	{
 		AddRecoilValue(&FireData->Recoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(FireData->CamShake);
+		ApplyGripAdjustedFireCameraShake(FireData->CamShake);
 	}
 
 	// <ArmRecoil Animation>
@@ -1359,12 +1463,12 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 	if (bIsZoomIn)
 	{
 		AddRecoilValue(&ZoomRecoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(ZoomCameraShakeClass);
+		ApplyGripAdjustedFireCameraShake(ZoomCameraShakeClass);
 	}
 	else
 	{
 		AddRecoilValue(&FireData->Recoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(FireData->CamShake);
+		ApplyGripAdjustedFireCameraShake(FireData->CamShake);
 	}
 
 	// <ArmRecoil Animation>
@@ -1467,12 +1571,12 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 	if (bIsZoomIn)
 	{
 		AddRecoilValue(&ZoomRecoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(ZoomCameraShakeClass);
+		ApplyGripAdjustedFireCameraShake(ZoomCameraShakeClass);
 	}
 	else
 	{
 		AddRecoilValue(&FireData->Recoil, AdditionalRecoilAmountPitch, AdditionalRecoilAmountYaw);
-		ApplyCameraShake(FireData->CamShake);
+		ApplyGripAdjustedFireCameraShake(FireData->CamShake);
 	}
 
 	// <ArmRecoil Animation>
@@ -3664,8 +3768,9 @@ void AWeapon::AddRecoilValue(FWeaponRecoilParams* RecoilStruct, float Additional
 	{
 		CurrentRecoil = RecoilStruct;
 
-		float RandRecoilPitch = FMath::RandRange((RecoilStruct->RecoilAmountPitch + AdditionalRecoilAmountPitch) * RecoilStruct->RecoilRangeMinPitch, (RecoilStruct->RecoilAmountPitch + AdditionalRecoilAmountPitch) * RecoilStruct->RecoilRangeMaxPitch) * (-1);
-		float RandRecoilYaw = FMath::RandRange((RecoilStruct->RecoilAmountYaw + AdditionalRecoilAmountYaw) * RecoilStruct->RecoilRangeMinYaw, (RecoilStruct->RecoilAmountYaw + AdditionalRecoilAmountYaw) * RecoilStruct->RecoilRangeMaxYaw);
+		const float GripMultiplier = IsOneHandedGripActive() ? FMath::Max(1.0f, OneHandedRecoilMultiplier) : 1.0f;
+		float RandRecoilPitch = FMath::RandRange((RecoilStruct->RecoilAmountPitch + AdditionalRecoilAmountPitch) * RecoilStruct->RecoilRangeMinPitch, (RecoilStruct->RecoilAmountPitch + AdditionalRecoilAmountPitch) * RecoilStruct->RecoilRangeMaxPitch) * (-1) * GripMultiplier;
+		float RandRecoilYaw = FMath::RandRange((RecoilStruct->RecoilAmountYaw + AdditionalRecoilAmountYaw) * RecoilStruct->RecoilRangeMinYaw, (RecoilStruct->RecoilAmountYaw + AdditionalRecoilAmountYaw) * RecoilStruct->RecoilRangeMaxYaw) * GripMultiplier;
 
 		TotalTargetRecoilValuePitch += RandRecoilPitch;
 		TotalTargetRecoilValueYaw += RandRecoilYaw;
@@ -3788,9 +3893,18 @@ void AWeapon::UpdateRecoil(float DeltaTime)
 #pragma region Recoil - Arm Animation
 void AWeapon::AddArmRecoil(FArmRecoilParams* armrecoil)
 {
-	if (armrecoil != nullptr && CharacterAnimInstance->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
+	if (armrecoil != nullptr && CharacterAnimInstance && CharacterAnimInstance->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
 	{
-		Cast<IWeaponInterface>(CharacterAnimInstance)->AddArmRecoil(armrecoil);
+		// Keep the source/DT struct untouched and give the animation interface a
+		// persistent address even if the AnimBP stores the argument pointer.
+		AdjustedArmRecoilForGrip = *armrecoil;
+		if (IsOneHandedGripActive())
+		{
+			const float Multiplier = FMath::Max(1.0f, OneHandedArmRecoilMultiplier);
+			AdjustedArmRecoilForGrip.Recoil_Rot *= Multiplier;
+			AdjustedArmRecoilForGrip.Recoil_Vec *= Multiplier;
+		}
+		Cast<IWeaponInterface>(CharacterAnimInstance)->AddArmRecoil(&AdjustedArmRecoilForGrip);
 	}
 }
 
@@ -4035,7 +4149,7 @@ void AWeapon::UpdateSpread(float DeltaTime)
 				{
 					if (AimUIWidget)
 					{
-						AimUIWidget->ApplyAimUISpread(CurrentSpreadVaule);
+						AimUIWidget->ApplyAimUISpread(GetGripSpreadAngle(CurrentSpreadVaule));
 					}
 				}
 			}
@@ -4045,7 +4159,7 @@ void AWeapon::UpdateSpread(float DeltaTime)
 
 FVector AWeapon::GetRandomSpreadVector(FVector BaseDir)
 {
-	const FVector SpreadVector = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(BaseDir.GetSafeNormal(), CurrentSpreadVaule);
+	const FVector SpreadVector = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(BaseDir.GetSafeNormal(), GetGripSpreadAngle(CurrentSpreadVaule));
 
 	return SpreadVector;
 }

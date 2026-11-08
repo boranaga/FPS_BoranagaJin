@@ -34,11 +34,11 @@ struct FInputActionValue;
 struct FInventorySlot;
 struct FInventorySlotSaveData;
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class FPS_BORANAGAJIN_API UInventorySystemComponent : public UActorComponent, public IWeaponInterface
 {
 	GENERATED_BODY()
-public:	
+public:
 	UInventorySystemComponent();
 
 	UPROPERTY(BlueprintAssignable, Category = "Weapon")
@@ -50,7 +50,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-public:	
+public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 #pragma region PlayerReference
 private:
@@ -102,7 +102,7 @@ protected:
 	int32 MaxWeaponSlotsCount = 2;
 	UPROPERTY(EditAnywhere)
 	int32 MaxThrowableWeaponSlotsCount = 3;
-	
+
 	UPROPERTY()
 	TArray<FInventorySlot> ItemInventory;
 	UPROPERTY()
@@ -134,7 +134,7 @@ protected:
 protected:
 	void InitInventoryUI();
 
-public:	
+public:
 	UFUNCTION()
 	void SwapItemInventorySlots(FName InventoryName, int32 FromIndex, int32 ToIndex);
 	UFUNCTION()
@@ -255,9 +255,7 @@ public:
 	void EquipThrowableWeapon(int32 WeaponIdx);
 
 	void UpdateThrowableWeaponInventorySlots();
-
 #pragma endregion
-
 
 #pragma region QuickSlotInventory
 public:
@@ -358,12 +356,31 @@ protected:
 	TObjectPtr<AFlashlightItem> CurrFlashLightItem = nullptr;
 
 	bool bIsUsingFlashLightItem = false;
+
+	/** Off-hand light does not replace CurrItem / CurrentQuickSlotIndex. */
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "Inventory|Flashlight")
+	bool bOffHandFlashlightActive = false;
+
+	/** Socket (or bone) on the first-person arms skeletal mesh: LEFT HAND only. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Flashlight")
+	FName OffHandFlashlightSocketName = FName(TEXT("hand_l"));
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Flashlight")
+	FTransform OffHandFlashlightRelativeTransform = FTransform::Identity;
+
 protected:
 	void ToggleFlashLight();
 	bool FindFlashLightInInventory();
+	bool TryEnableOffHandFlashlight();
+	void DisableOffHandFlashlight();
+	void UpdateOffHandFlashlightAttachment();
+
 public:
 	AFlashlightItem* GetCurrFlashLightItem() { return CurrFlashLightItem; }
 	bool IsUsingFlashLight() const { return bIsUsingFlashLightItem; }
+
+	UFUNCTION(BlueprintPure, Category = "Inventory|Flashlight")
+	bool IsOffHandFlashlightActive() const { return bOffHandFlashlightActive; }
 #pragma endregion
 };
 

@@ -13,6 +13,9 @@
 #include "WeaponFireParams.h"
 #include "WeaponInterface.h"
 #include "WeaponName.h"
+#include "WeaponGripMode.h"
+
+#include "Items/QuickSlotType.h"
 
 //#include "ArmRecoilParams.h"
 //#include "WeaponRecoilParams.h"
@@ -43,6 +46,8 @@ class UWidgetComponent;
 struct FBufferedFireRequest;
 struct FInputBindingHandle;
 struct FStreamableHandle;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponGripModeChanged, EWeaponGripMode, NewGripMode);
 
 UCLASS()
 class FPS_BORANAGAJIN_API AWeapon : public AItem, public IWeaponInterface
@@ -224,13 +229,68 @@ protected:
 
 #pragma endregion
 
-#pragma region Socket
-protected:
-	FName WeaponSocketName = FName("");
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Socket")
-	bool bIsTwoHandedWeapon = true;
+#pragma region Socket And Grip Mode
 public:
+	/** True: rifle/shotgun/launcher (two hands required). False: pistol/flare gun. */
+	UFUNCTION(BlueprintPure, Category = "Weapon|Grip")
 	bool IsTwoHandedWeapon() const { return bIsTwoHandedWeapon; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Grip")
+	EWeaponGripMode GetGripMode() const { return CurrentGripMode; }
+
+	/** Two-handed firearms can never enter OneHanded mode. */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Grip")
+	bool SetGripMode(EWeaponGripMode NewGripMode);
+
+	/** Exposed for the first-person AnimBP/IK layer. */
+	UPROPERTY(BlueprintAssignable, Category = "Weapon|Grip")
+	FOnWeaponGripModeChanged OnWeaponGripModeChanged;
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon|Grip", meta = (DisplayName = "On Grip Mode Changed"))
+	void BP_OnGripModeChanged(EWeaponGripMode NewGripMode);
+
+protected:
+	void ConfigureWeaponHandedness();
+	void RefreshGripAttachment();
+
+	/** Loaded by the existing WeaponDataTable; finalized by weapon kind. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Grip")
+	bool bIsTwoHandedWeapon = true;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Weapon|Grip")
+	EWeaponGripMode CurrentGripMode = EWeaponGripMode::TwoHanded;
+
+	/** Existing two-hand socket from DT; default is Gun. */
+	FName WeaponSocketName = NAME_None;
+
+	/** Must be a RIGHT-hand socket/bone on the first-person arms mesh. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip")
+	FName OneHandedWeaponSocketName = FName(TEXT("hand_r"));
+
+	/** Multipliers are applied ONLY while a one-handed firearm is held in one hand. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip|Accuracy", meta = (ClampMin = "1.0"))
+	float OneHandedRecoilMultiplier = 1.45f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip|Accuracy", meta = (ClampMin = "1.0"))
+	float OneHandedSpreadMultiplier = 1.65f;
+
+	/** First shot also incurs inaccuracy, even when accumulated spread is zero. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip|Accuracy", meta = (ClampMin = "0.0"))
+	float OneHandedBaseSpreadAngle = 0.8f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip|Accuracy", meta = (ClampMin = "1.0"))
+	float OneHandedCameraShakeMultiplier = 1.35f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Grip|Accuracy", meta = (ClampMin = "1.0"))
+	float OneHandedArmRecoilMultiplier = 1.4f;
+
+	/** Persistent storage; never send a pointer to a temporary ArmRecoil struct. */
+	UPROPERTY(Transient)
+	FArmRecoilParams AdjustedArmRecoilForGrip;
+
+	bool IsOneHandedGripActive() const;
+	float GetGripSpreadAngle(float BaseAngle) const;
+	void ApplyGripAdjustedFireCameraShake(TSubclassOf<UWeaponCamShakeBase> CamShakeClass);
 #pragma endregion
 
 #pragma region HitScan
@@ -740,4 +800,12 @@ protected:
 public:
 	bool IsSkillWeapon() const { return bIsSkillWeapon; }
 #pragma endregion
+
+protected:
+	//TODO: ¼öÁ¤
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QuickSlotType")
+	EQuickSlotType QuickSlotType = EQuickSlotType::PrimaryWeapon;
+
+public:
+	EQuickSlotType GetQuickSlotType() const { return QuickSlotType; }
 };
