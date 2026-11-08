@@ -41,6 +41,8 @@ void UInventorySystemComponent::BeginPlay()
 	PlayerOwner->OnInventorySlotUseRequestedDelegate.AddUObject(this, &UInventorySystemComponent::UseItemInventorySlot);
 
 	PlayerOwner->OnThrowableWeaponEquipRequestedDelegate.AddUObject(this, &UInventorySystemComponent::EquipThrowableWeapon);
+	PlayerOwner->OnThrowableWeaponInventoryUpdateRequestedDelegate.AddUObject(this, &UInventorySystemComponent::UpdateThrowableWeaponInventorySlots);
+
 
 	//PlayerOwner->OnThrowableWeaponReleaseNotify.AddUObject(this, &UInventorySystemComponent::HandleThrowableWeaponReleaseNotify);
 }
@@ -646,6 +648,8 @@ bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewIte
 			if (Weapon)
 			{
 				Weapon->AddAmmo(NewItemPickUp->GetAmmo());
+				ThrowableWeaponInventory[WeaponIdx].AddItem(Weapon, AddCount);
+
 				return true;
 			}
 		}
@@ -1786,9 +1790,13 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 	//}
 
 	//-------------------------------
-
+	ClearQuickSlot(3);
 	RegisterQuickSlot(3, EInventoryName::ThrowableWeapon, WeaponIdx);
 	SelectQuickSlot(3);
+}
+void UInventorySystemComponent::UpdateThrowableWeaponInventorySlots()
+{
+	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 }
 #pragma endregion
 

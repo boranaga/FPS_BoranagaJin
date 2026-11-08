@@ -75,7 +75,7 @@ public:
 	bool AddAmmo(int32 NumAmmo);
 	void AutoReload();
 	virtual void ReloadingEnd() override;
-	int32 GetLeftAmmo() const { return LeftAmmo; }
+	//int32 GetLeftAmmo() const { return LeftAmmo; }
 	int32 GetMaxAmmo() const { return MaxAmmo; }
 
 	// Projectile pool
@@ -90,6 +90,7 @@ public:
 
 	// Getters
 	EThrowableWeaponName GetWeaponName() const { return ThrowableWeaponName; }
+	virtual int32 GetItemNum() const override { return TotalAmmo; }
 	FTransform GetRightHandSocketTransform() const { return RightHandSocketTransform_Default; }
 	FTransform GetRightHandSocketTransform_Crouch() const { return RightHandSocketTransform_Crouch; }
 	FTransform GetRightHandSocketTransform_Aim() const { return RightHandSocketTransform_Aim_Default; }
@@ -248,9 +249,9 @@ protected:
 	// Ammo and reload
 	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") bool bCanAutoReload = true;
 	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") float ReloadingTime = 2.5f;
-	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") int32 MaxAmmo = 200;
-	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save") int32 TotalAmmo = 100;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Weapon|Save") int32 LeftAmmo = 0;
+	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") int32 MaxAmmo = 20;
+	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save") int32 TotalAmmo = 1;
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Weapon|Save") int32 LeftAmmo = 0;
 	FTimerHandle ReloadingTimer;
 
 	// Single shot

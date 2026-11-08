@@ -254,6 +254,8 @@ public:
 
 	void EquipThrowableWeapon(int32 WeaponIdx);
 
+	void UpdateThrowableWeaponInventorySlots();
+
 #pragma endregion
 
 

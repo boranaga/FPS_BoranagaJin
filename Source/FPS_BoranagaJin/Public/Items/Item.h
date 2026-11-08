@@ -41,6 +41,8 @@ protected:
 	EItemName ItemName = EItemName::ItemName_Base;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FName ItemID;
+	UPROPERTY(VisibleAnywhere)
+	int32 ItemNum = 1;
 	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ItemMesh")
 	//USkeletalMeshComponent* ItemMesh;
 	UPROPERTY()
@@ -65,6 +67,7 @@ public:
 	//USkeletalMeshComponent* GetItemMesh() { return ItemMesh; }
 	EItemName GetItemName() const { return ItemName; }
 	FName GetItemID() const { return ItemID; }
+	virtual int32 GetItemNum() const { return ItemNum; }
 	bool IsStackable() const { return bIsStackable; }
 	bool IsWeapon() const { return bIsWeapon; }
 protected:

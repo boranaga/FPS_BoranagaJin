@@ -19,8 +19,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FName ItemID = NAME_None;
 
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	//int32 Count = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 ItemCount = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 MaxStackCount = 99;
@@ -46,6 +46,17 @@ public:
 	int32 Num() const
 	{
 		return Items.Num();
+	}
+
+	int32 Count() const
+	{
+		if (!Items.IsEmpty())
+		{
+			return Items[0]->GetItemNum();
+		}
+
+
+		return ItemCount;
 	}
 
 	bool IsSameItem(const EItemName& InItemName) const
@@ -76,16 +87,16 @@ public:
 			Items.Add(InItem);
  			ItemName = InItem->GetItemName();
 			ItemID = InItem->GetItemID();
-			//Count = AddCount;
+			ItemCount = AddCount;
 			return true;
 		}
 
 
-		//if (IsSameItem(InItem->GetItemName()))
-		//{
-		//	Count = FMath::Clamp(Count + AddCount, 0, MaxStackCount);
-		//	return true;
-		//}
+		if (IsSameItem(InItem->GetItemName()))
+		{
+			ItemCount = FMath::Clamp(ItemCount + AddCount, 0, MaxStackCount);
+			return true;
+		}
 
 		Items.Add(InItem);
 

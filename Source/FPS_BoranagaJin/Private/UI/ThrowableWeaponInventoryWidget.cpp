@@ -81,7 +81,7 @@ void UThrowableWeaponInventoryWidget::UpdateInventorySlots(const TArray<FInvento
 		{
 			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
 			{
-				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
+				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Count());
 			}
 		}
 	}

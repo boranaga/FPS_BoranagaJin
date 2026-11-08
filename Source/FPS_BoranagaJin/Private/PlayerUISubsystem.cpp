@@ -858,6 +858,8 @@ void UPlayerUISubsystem::OpenThrowableWeaponInventory()
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
 
+    CharacterPlayer->OnThrowableWeaponInventoryUpdateRequestedDelegate.Broadcast();
+
     ShowUI(EUIType::ThrowableWeaponInventory);
     //PlayUISound(ESoundID::);
 

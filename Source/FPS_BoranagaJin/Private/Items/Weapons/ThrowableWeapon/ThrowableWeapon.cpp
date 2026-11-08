@@ -148,7 +148,7 @@ void AThrowableWeapon::InitUI()
 		if (AmmoCounterWidget)
 		{
 			//TODO: ThrowableWeapon ���� AmmoCounter Widget �����
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
+			//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 			AmmoCounterWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -269,10 +269,6 @@ void AThrowableWeapon::LoadData()
 	UpwardPitchOffset = WeaponData->UpwardPitchOffset;
 	DownwardThrowStrength = WeaponData->DownwardThrowStrength;
 	DownwardPitchOffset = WeaponData->DownwardPitchOffset;
-
-	//---------------------------------------
-
-	TotalAmmo = MaxAmmo;
 }
 
 void AThrowableWeapon::LoadDataPost()
@@ -689,16 +685,9 @@ void AThrowableWeapon::FinishThrowSequence()
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().ClearTimer(
-			ThrowReleaseTimerHandle
-		);
-
-		World->GetTimerManager().ClearTimer(
-			ThrowSequenceTimerHandle
-		);
+		World->GetTimerManager().ClearTimer(ThrowReleaseTimerHandle);
+		World->GetTimerManager().ClearTimer(ThrowSequenceTimerHandle);
 	}
-
-	//bThrowInProgress = false;
 
 	PendingThrowDirection = FVector::ForwardVector;
 	PendingFireMode = EThrowableWeaponFireMode::None;
@@ -1018,7 +1007,7 @@ bool AThrowableWeapon::AddAmmo(int32 NumAmmo)
 		TotalAmmo = NewTotalAmmo;
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
+			//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 		return true;
@@ -1039,7 +1028,7 @@ void AThrowableWeapon::AutoReload()
 
 void AThrowableWeapon::ReloadingEnd()
 {
-	if (LeftAmmo < MaxAmmo)
+	if (TotalAmmo < MaxAmmo)
 	{
 		ReloadAmmo();
 	}
@@ -1762,7 +1751,7 @@ void AThrowableWeapon::HandleReload()
 {
 	if (CurrentState == EThrowableWeaponStateType::Idle)
 	{
-		if (LeftAmmo < MaxAmmo && TotalAmmo > 0)
+		if (TotalAmmo < MaxAmmo && TotalAmmo > 0)
 		{
 			SetState(EThrowableWeaponStateType::Reloading);
 			ReportReloadingSoundToAI();
@@ -1811,45 +1800,45 @@ void AThrowableWeapon::InterruptReloadAndFire() //TODO: �ѹ� ���캸�
 
 void AThrowableWeapon::ConsumeAmmo(int32 AmmoCost)
 {
-	if (LeftAmmo > 0)
+	if (TotalAmmo > 0)
 	{
-		if (LeftAmmo >= AmmoCost)
+		if (TotalAmmo >= AmmoCost)
 		{
-			LeftAmmo -= AmmoCost;
+			TotalAmmo -= AmmoCost;
 		}
 		else
 		{
-			LeftAmmo = 0;
+			TotalAmmo = 0;
 		}
 
 		//TODO: PlayerUISubsystem�� ����
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
+			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 	}
 }
 
 void AThrowableWeapon::ReloadAmmo() //TODO: �� ���� reload �ǵ��� �����ؾ���.
 {
-	LeftAmmo += 1;
+	//LeftAmmo += 1;
 	TotalAmmo -= 1;
 
 	if (AmmoCounterWidget)
 	{
-		AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
+		//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 	}
 }
 
 bool AThrowableWeapon::HasAmmo()
 {
-	return LeftAmmo > 0;
+	return TotalAmmo > 0;
 }
 
 bool AThrowableWeapon::HasAmmo(int32 AmmoCost)
 {
-	return LeftAmmo >= AmmoCost;
+	return TotalAmmo >= AmmoCost;
 }
 
 void AThrowableWeapon::StartFireAnimation(UAnimMontage* CharacterFireAnimation)

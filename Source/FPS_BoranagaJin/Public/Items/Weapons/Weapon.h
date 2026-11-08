@@ -2,143 +2,205 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+
 #include "Items/Item.h"
-#include "Items/Weapons/WeaponStateType.h"
-#include "WeaponName.h"
-#include "WeaponAction.h"
-#include "WeaponFireParams.h"
-#include "WeaponCamConfig.h"
-#include "WeaponInterface.h"
-#include "BufferedFireRequest.h"
 #include "Items/Projectile/ProjectileSpreadConfig.h"
+#include "Items/Weapons/WeaponStateType.h"
+
+#include "BufferedFireRequest.h"
+#include "WeaponAction.h"
+#include "WeaponCamConfig.h"
+#include "WeaponFireParams.h"
+#include "WeaponInterface.h"
+#include "WeaponName.h"
+
 //#include "ArmRecoilParams.h"
 //#include "WeaponRecoilParams.h"
+
 #include "Weapon.generated.h"
 
 class ACharacterPlayer;
+class AProjectileShell;
 
+class UAmmoCounterWidget;
+class UInputAction;
+class UNiagaraComponent;
+class UNiagaraSystem;
+class UWeaponAimUIWidget;
 class UWeaponBaseState;
-class UWeaponIdleState;
+class UWeaponCamShakeBase;
+class UWeaponChargingState;
 class UWeaponFiringState;
 class UWeaponFullAutoFiringState;
-class UWeaponUnequippedState;
-class UWeaponReloadingState;
+class UWeaponIdleState;
 class UWeaponPumpActionReloadState;
+class UWeaponReloadingState;
 class UWeaponSwitchingState;
-
-class UWeaponChargingState;
+class UWeaponUnequippedState;
 class UWeaponWaitingState;
-class AProjectileShell;
-class UWeaponCamShakeBase;
-
-class UNiagaraSystem;
-class UNiagaraComponent;
 class UWidgetComponent;
-class UAmmoCounterWidget;
-class UWeaponAimUIWidget;
-
-class UInputAction;
-struct FInputBindingHandle;
-struct FStreamableHandle;
 
 struct FBufferedFireRequest;
+struct FInputBindingHandle;
+struct FStreamableHandle;
 
 UCLASS()
 class FPS_BORANAGAJIN_API AWeapon : public AItem, public IWeaponInterface
 {
 	GENERATED_BODY()
-public:	
-	AWeapon();
-protected:
-	virtual void BeginPlay() override;
+
+#pragma region Core
 public:
+	AWeapon();
 	virtual void Tick(float DeltaTime) override;
 
-	UPROPERTY(EditAnywhere, Category = Weapon)
-	TSoftObjectPtr<UDataTable> WeaponDataTable;
-	UPROPERTY(EditAnywhere, Category = Weapon)
-	FName WeaponRowName;
+protected:
+	virtual void BeginPlay() override;
 
-	TSharedPtr<FStreamableHandle> WeaponAssetsHandle;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "WeaponMesh")
-	USkeletalMeshComponent* WeaponMesh;
+	/** Ends gameplay for this actor. */
 	UFUNCTION()
-	USkeletalMeshComponent* GetWeaponMesh() { return WeaponMesh; }
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+#pragma endregion
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action")
-	EWeaponAction LeftMouseAction;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action")
-	EWeaponAction RightMouseAction;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Action")
-	EWeaponAction SkillAction;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-	UAnimMontage* FireAnimation;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
-	UStaticMeshComponent* MuzzlePoint;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	class UInputMappingContext* FireMappingContext;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LeftSingleShotAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightSingleShotAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LeftBurstShotAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightBurstShotAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LeftFullAutoShotAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightFullAutoShotAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LeftHoldAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightHoldAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LeftChargeAction;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightChargeAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* SkillToggleAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* RightZoomAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* ReloadAction;
-
-	TArray<FInputBindingHandle*> InputActionBindingHandles;
-
+#pragma region Initialization
+public:
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
 	virtual void InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
+
 	void InitializeCamera(ACharacterPlayer* NewCharacter);
 	virtual void InitializeUI();
-protected:
-	UPROPERTY() UDataTable* LoadedWeaponTable = nullptr;
-	UPROPERTY(Transient) bool bWeaponAssetsReady = false;
-public:
+
 	void LoadWeaponData();
 	virtual void LoadWeaponData_Upgrade();
 	virtual void LoadWeaponDataPost();
 	void SetMeshVisibility(bool bflag);
+#pragma endregion
 
+#pragma region Data
+public:
+	UPROPERTY(EditAnywhere, Category = "Weapon|Data")
+	TSoftObjectPtr<UDataTable> WeaponDataTable;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon|Data")
+	FName WeaponRowName;
+
+	TSharedPtr<FStreamableHandle> WeaponAssetsHandle;
+
+protected:
+	UPROPERTY()
+	UDataTable* LoadedWeaponTable = nullptr;
+
+	UPROPERTY(Transient)
+	bool bWeaponAssetsReady = false;
+#pragma endregion
+
+#pragma region Components
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Components")
+	USkeletalMeshComponent* WeaponMesh;
+
+	UFUNCTION()
+	USkeletalMeshComponent* GetWeaponMesh() { return WeaponMesh; }
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Gameplay")
+	UAnimMontage* FireAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Components")
+	UStaticMeshComponent* MuzzlePoint;
+#pragma endregion
+
+#pragma region Actions
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Action")
+	EWeaponAction LeftMouseAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Action")
+	EWeaponAction RightMouseAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Action")
+	EWeaponAction SkillAction;
+#pragma endregion
+
+#pragma region Input
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	class UInputMappingContext* FireMappingContext;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* LeftSingleShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightSingleShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* LeftBurstShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightBurstShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* LeftFullAutoShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightFullAutoShotAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* LeftHoldAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightHoldAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* LeftChargeAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightChargeAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* SkillToggleAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* RightZoomAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Input", meta = (AllowPrivateAccess = "true"))
+	UInputAction* ReloadAction;
+
+	TArray<FInputBindingHandle*> InputActionBindingHandles;
+
+protected:
+	UPROPERTY()
+	APlayerController* CharacterController = nullptr;
+#pragma endregion
+
+#pragma region Attachment
+public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	virtual bool AttachItemToPlayer(ACharacterPlayer* TargetCharacter) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void DetachWeaponFromPlayer();
+#pragma endregion
 
+#pragma region Firing
+public:
 	virtual void FireSingleProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, bool bIsHoming = false, AActor* HomingTarget = nullptr);
 	void FireMultiProjectile(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, int32 AdditionalPellet = 0, bool bIsHoming = false, AActor* HomingTarget = nullptr);
+#pragma endregion
 
-#pragma region SaveAndLoad
+#pragma region Zoom
+public:
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void ZoomToggle();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void ZoomIn();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void ZoomOut();
+#pragma endregion
+
+
+#pragma region Save And Load
 	//TODO: Save가 필요한 모든 변수에
 	// UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save")
 	// TODO: 기본적으로 DT를 통해 Load되는 변수들에 대해서는 어떻게 처리해야할지 고민 필요
@@ -152,7 +214,7 @@ public:
 	void SetState(EWeaponStateType NewState);
 	EWeaponStateType GetCurrentState() const { return CurrentState; }
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State") 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|State")
 	EWeaponStateType CurrentState = EWeaponStateType::WeaponStateType_None;
 
 protected:
@@ -165,7 +227,7 @@ protected:
 #pragma region Socket
 protected:
 	FName WeaponSocketName = FName("");
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Socket")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Socket")
 	bool bIsTwoHandedWeapon = true;
 public:
 	bool IsTwoHandedWeapon() const { return bIsTwoHandedWeapon; }
@@ -186,28 +248,6 @@ protected:
 
 	void FireSingleAutoAim(FWeaponFireParams* FireData = nullptr, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f);
 #pragma endregion
-
-public:
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void ZoomToggle();
-
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void ZoomIn();
-
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void ZoomOut();
-protected:
-	/** Ends gameplay for this component. */
-	UFUNCTION()
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-protected:
-	///** The Character holding this weapon*/
-	//UPROPERTY()
-	//ACharacterPlayer* Character = nullptr;
-
-	UPROPERTY()
-	APlayerController* CharacterController = nullptr;
 
 #pragma region FireParams
 protected:
@@ -236,38 +276,38 @@ public:
 	FTransform GetSkillWeaponSocketTransform_Inactive() const { return SkillWeaponSocketTransform_Inactive; }
 #pragma endregion
 
-#pragma region Animation/Character
+#pragma region Animation - Character
 protected:
 	UPROPERTY()
 	UAnimInstance* CharacterAnimInstance = nullptr;
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Character")
 	UAnimMontage* AM_Fire_Character = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Character")
 	UAnimMontage* AM_Reload_Character = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Character")
 	UAnimMontage* AM_Equip_Character = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Character")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Character")
 	UAnimMontage* AM_Unequip_Character = nullptr;
 #pragma endregion
 
-#pragma region Animation/Weapon
+#pragma region Animation - Weapon
 protected: // TODO: 처리 고려
 	UPROPERTY()
 	UAnimInstance* WeaponAnimInstance = nullptr;
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Weapon")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Weapon")
 	UAnimMontage* AM_Fire_Weapon = nullptr;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Weapon")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animation|Weapon")
 	UAnimMontage* AM_Reload_Weapon = nullptr;
 #pragma endregion
 
 #pragma region Sound
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Audio")
 	USoundBase* ChargeSound = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Audio")
 	UAudioComponent* WeaponAudioComponent = nullptr;
 
 	void PlayWeaponSound(USoundBase* weaponsound = nullptr);
@@ -285,7 +325,7 @@ protected:
 
 #pragma region Niagara
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Effects")
 	UNiagaraSystem* ChargeEffect = nullptr;
 
 	FVector ChargeEffectLocation;
@@ -300,20 +340,20 @@ public:
 	void DestroyChargeEffect();
 #pragma endregion
 
-#pragma region ProjectileShell
-//TODO: ObjectPoolSubsystem에 편입
+#pragma region Projectile Shell
+	//TODO: ObjectPoolSubsystem에 편입
 protected:
-	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
+	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	TSubclassOf<AProjectileShell> ProjectileShellClass;
-	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
+	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	int32 MaxProjectileShellNum = 5;
 
 	UPROPERTY()
 	TArray<AProjectileShell*> ProjectileShells; //TODO: queue로 대체 , 근데 그냥 array가 나을듯
 
-	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
+	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	FVector DefaultEjectImpulseVec;
-	UPROPERTY(EditAnywhere, Category = "ProjectileShell")
+	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	float DefaultEjectImpulse = 0.f;
 
 	int32 CurrProjectileShellIdx = 0;
@@ -334,7 +374,7 @@ protected:
 protected:
 	float LineTraceMaxDistance = 10000.f;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Aim")
 	float SphereTraceRadius = 20.f;
 
 	FVector ScreenCenterWorldPosition;
@@ -350,18 +390,18 @@ public:
 	FTransform GetAimSocketRelativeTransform();
 #pragma endregion
 
-#pragma region Equip/Unequip
+#pragma region Equip / Unequip
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Equip")
 	float WeaponSwitchingRate = 1.f;
 	FTimerHandle SwitchingTimer;
 public:
 	//void EndWeaponSwitch(ACharacterPlayer* TargetCharacter, bool bEquip);
 	virtual void Unequip(ACharacterPlayer* TargetCharacter) override;
 	virtual void Equip(ACharacterPlayer* TargetCharacter) override;
-	
+
 	//void EquipWeapon(ACharacterPlayer* TargetCharacter, bool bActivateDirectly = false);
-	
+
 	void UnequipWeapon_Legacy(ACharacterPlayer* TargetCharacter);
 
 	void OnUnequipEnded(ACharacterPlayer* TargetCharacter);
@@ -373,13 +413,13 @@ public:
 
 #pragma region Reload
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Reload")
 	bool bCanAutoReload = true;
 	bool bActivePumpActionReload = false;
 	bool bFireInputDuringReload = false;
 	TOptional<FBufferedFireRequest> BufferedFireRequest;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Reload")
 	float ReloadingTime = 2.5f;
 	float PumpReloadingTime_Start = 0.6f;
 	float PumpReloadingTime_Loop = 0.4;
@@ -390,12 +430,12 @@ protected:
 	float CurrPumpActionReloadSectionTime = 1.f;
 	float CurrPumpActionReloadTime = 1.f;
 
-	UPROPERTY(EditAnywhere)
-	int32 MaxTotalAmmo = 200.f;
-	UPROPERTY(EditAnywhere)
-	int32 MaxAmmoPerMag = 20.f;
+	UPROPERTY(EditAnywhere, Category = "Weapon|Reload")
+	int32 MaxTotalAmmo = 200;
+	UPROPERTY(EditAnywhere, Category = "Weapon|Reload")
+	int32 MaxAmmoPerMag = 20;
 	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save")
-	int32 TotalAmmo = 100.f;
+	int32 TotalAmmo = 100;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Weapon|Save")
 	int32 LeftAmmoInCurrMag = 0;
 
@@ -427,13 +467,13 @@ public:
 
 #pragma region UI
 protected:
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "AimUIWidget")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|UI|Aim")
 	TSubclassOf<UWeaponAimUIWidget> AimUIWidgetClass;
 	UPROPERTY()
 	UWeaponAimUIWidget* AimUIWidget;
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "AmmoCounterWidget")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|UI|Ammo")
 	TSubclassOf<UAmmoCounterWidget> AmmoCounterWidgetClass;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AmmoCounterWidget")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|UI|Ammo")
 	UAmmoCounterWidget* AmmoCounterWidget;
 public:
 	void ActivateAimUIWidget(bool bflag);
@@ -448,7 +488,7 @@ protected:
 
 #pragma region WeaponType
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Type")
 	EWeaponName WeaponName = EWeaponName::WeaponName_Rifle;
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	//EWeaponType WeaponType;
@@ -463,28 +503,28 @@ protected:
 	void HandleFullAutoFire();
 #pragma endregion
 
-#pragma region FireMode/SingleShot
+#pragma region Fire Mode - Single Shot
 protected:
 	FTimerHandle SingleShotTimer;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|FireMode|Single")
 	float SingleShotDelay = 1.f;
 public:
 	void StartSingleShot(bool bIsLeftInput = true, bool bSingleProjectile = true, int32 NumPenetrable = 0, float AdditionalDamage = 0.f, float AdditionalRecoilAmountPitch = 0.f, float AdditionalRecoilAmountYaw = 0.f, float AdditionalProjectileRadius = 0.f, int32 AdditionalPellet = 0);
 	void StopSingleShot();
 #pragma endregion
 
-#pragma region FireMode/BurstShot
+#pragma region Fire Mode - Burst Shot
 protected:
 	FTimerHandle BurstShotTimer;
 
-	UPROPERTY(EditAnywhere, Category = "BurstShot")
+	UPROPERTY(EditAnywhere, Category = "Weapon|FireMode|Burst")
 	float BurstShotDelay = 1.f;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|FireMode|Burst")
 	float BurstShotFireRate = 0.1f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|FireMode|Burst")
 	int32 BurstShotCount = 3;
 
 	int32 BurstShotFired = 0;
@@ -495,7 +535,7 @@ protected:
 	void EndBurstShot();
 #pragma endregion
 
-#pragma region FireMode/FullAuto
+#pragma region Fire Mode - Full Auto
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|FireMode")
 	float FullAutoShotFireRate = 0.1f;
@@ -508,7 +548,7 @@ protected:
 	void StopFullAutoShot();
 #pragma endregion
 
-#pragma region FireMode/Charging
+#pragma region Fire Mode - Charging
 protected:
 	bool bAutoFireAtMaxChargeTime = true;
 	float ChargeTimeThreshold = 0.5f;
@@ -535,11 +575,11 @@ protected:
 	int32 MaxPenetrableObjectsNum_Right = 4;
 #pragma endregion
 
-#pragma region Recoil/Aim
+#pragma region Recoil - Aim
 protected:
 	bool bIsRecoiling = false;
 	FWeaponRecoilParams* CurrentRecoil;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
 	FWeaponRecoilParams ZoomRecoil;
 
 	FTimerHandle RecoilRecoverTimer;
@@ -559,18 +599,18 @@ public:
 	void UpdateRecoil(float DeltaTime);
 #pragma endregion
 
-#pragma region Recoil/ArmAnimation
+#pragma region Recoil - Arm Animation
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_L;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_R;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_Hand;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_UpperArm;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_LowerArm;
 public:
 	void AddArmRecoil(FArmRecoilParams* armrecoil = nullptr);
@@ -580,27 +620,27 @@ public:
 	FArmRecoilParams* GetArmRecoilInfo_LowerArm();
 #pragma endregion
 
-#pragma region Recoil/SkilWeapon
+#pragma region Recoil - Skill Weapon
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ArmRecoil")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil|Arm")
 	FArmRecoilParams ArmRecoil_SkillWeapon;
 	void AddSkillWeaponRecoil(FArmRecoilParams* armrecoil = nullptr);
 #pragma endregion
 
 #pragma region Overheat
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Overheat")
 	bool bIsOverheatMode = false;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Overheat")
 	float OverheatBaseIncrement = 0.5f; //TODO: 총기 능력 사용 시간만큼 더해지도록 해야함. 그리고 우클릭 좌클릭 다르게 들어가도록
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Overheat")
 	float MaxOverheatValue = 5.f;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Overheat")
 	float OverheatSpeed = 10.f;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = "Weapon|Overheat")
 	float OverheatRecoverSpeed = 10.f; //TODO: Reload Time을 사용할 수도 있어서 조금 지켜봐야함
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Overheat")
 	float OverheatRecoveryStartTime = 0.2f;
 
 	bool bIsOverheating = false;
@@ -632,19 +672,18 @@ public:
 	void ReturnProjectile(AProjectile* Projectile);
 #pragma endregion
 
-#pragma region Projectile/SingleProjectileSpread
+#pragma region Projectile - Single Projectile Spread
 protected:
 	bool bIsSpreading = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ProjectileSpread")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Projectile|Spread")
 	FProjectileSpreadConfig DefaultSpread;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ProjectileSpread")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Projectile|Spread")
 	FProjectileSpreadConfig ZoomSpread;
 
 	float TotalTargetSpreadValue = 0.f;
 	float CurrentSpreadVaule = 0.f;
 	float SpreadRecoverTimer = 0.f;
-protected:
 	void AddSpreadValue(FProjectileSpreadConfig* SpreadValue = nullptr);
 	void ApplySpread(float DeltaTime, FProjectileSpreadConfig* SpreadValue = nullptr);
 	void RecoverSpread(float DeltaTime, FProjectileSpreadConfig* SpreadValue = nullptr);
@@ -652,11 +691,11 @@ protected:
 	FVector GetRandomSpreadVector(FVector BaseDir);
 #pragma endregion
 
-#pragma region Projectile/MultiProjectileSpread
+#pragma region Projectile - Multi Projectile Spread
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiProjectile")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Projectile|Multi")
 	bool bEnableMultiProjectile_L;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiProjectile")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Projectile|Multi")
 	bool bEnableMultiProjectile_R;
 #pragma endregion
 
@@ -664,13 +703,13 @@ protected:
 protected:
 	bool bIsUsingPlayerCamFov = false;
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Camera")
 	FWeaponCamConfig CamSetting_Default = FWeaponCamConfig(
 		90.f,
 		{ 0.f, 0.f, 0.f },
 		{ 0.f, 0.f, 70.f },
 		1.f, 1.f, 15.f);
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Camera")
 	FWeaponCamConfig CamSetting_ZoomIn = FWeaponCamConfig(
 		90.f,
 		{ 0.f, 0.f, 0.f },
@@ -687,9 +726,9 @@ public:
 
 #pragma region CameraShake
 protected:
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "CameraShake")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Camera|Shake")
 	TSubclassOf<UWeaponCamShakeBase> ZoomCameraShakeClass;
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "CameraShake")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Camera|Shake")
 	TSubclassOf<UWeaponCamShakeBase> ChargingCameraShakeClass;
 public:
 	void ApplyCameraShake(TSubclassOf<UWeaponCamShakeBase> CamShakeClass = nullptr, float Scale = 1.f);

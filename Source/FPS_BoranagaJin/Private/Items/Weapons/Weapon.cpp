@@ -1,50 +1,44 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Items/Weapons/Weapon.h"
-#include "Items/Weapons/WeaponInterface.h"
-#include "Items/InventorySystemComponent.h"
 
-#include "Items/Weapons/WeaponCamShakeBase.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/PlayerMovementComponent.h"
-#include "UI/AmmoCounterWidget.h"
-#include "UI/WeaponAimUIWidget.h"
-#include "Items/Projectile/ProjectileShell.h"
 #include "Data/PlayerWeaponPrimaryDataAsset.h"
 #include "Data/WeaponData.h"
+#include "Items/InventorySystemComponent.h"
+#include "Items/Projectile/ProjectileShell.h"
+#include "Items/Weapons/WeaponCamShakeBase.h"
+#include "Items/Weapons/WeaponInterface.h"
+#include "UI/AmmoCounterWidget.h"
+#include "UI/WeaponAimUIWidget.h"
 
+#include "Animation/AnimInstance.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Components/AudioComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Components/WidgetComponent.h"
+#include "Engine/AssetManager.h"
+#include "Engine/CanvasRenderTarget2D.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/World.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "Animation/AnimInstance.h"
-#include "Engine/LocalPlayer.h"
-#include "Engine/World.h"
-#include "Engine/StreamableManager.h"
-#include "Engine/AssetManager.h"
-
-#include "Camera/CameraComponent.h"
-#include "Camera/PlayerCameraManager.h"
-
-#include "Blueprint/UserWidget.h"
-#include "Components/WidgetComponent.h"
-#include "Components/AudioComponent.h"
-#include "Components/SceneCaptureComponent2D.h"
-
-#include "NiagaraComponent.h"
-#include "NiagaraSystem.h"
-#include "NiagaraFunctionLibrary.h"
-
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Perception/AISense_Hearing.h"
 
-//----------------------------------
-#include "Blueprint/WidgetLayoutLibrary.h"
-#include "Materials/MaterialInstanceDynamic.h"
-#include "Engine/CanvasRenderTarget2D.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
-// Sets default values for this component's properties
+#pragma region Construction And Initialization
 AWeapon::AWeapon()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -790,21 +784,12 @@ void AWeapon::SetMeshVisibility(bool bflag)
 	}
 }
 
+#pragma endregion
+
+#pragma region Lifecycle
 void AWeapon::BeginPlay()
 {
 	Super::BeginPlay();
-
-	//IdleState = NewObject<UWeaponIdleState>(this, UWeaponIdleState::StaticClass());
-	//FiringState = NewObject<UWeaponFiringState>(this, UWeaponFiringState::StaticClass());
-	//FullAutoFiringState = NewObject<UWeaponFullAutoFiringState>(this, UWeaponFullAutoFiringState::StaticClass());
-	//UnequippedState = NewObject<UWeaponUnequippedState>(this, UWeaponUnequippedState::StaticClass());
-	//ReloadingState = NewObject<UWeaponReloadingState>(this, UWeaponReloadingState::StaticClass());
-	//PumpActionReloadingState = NewObject<UWeaponPumpActionReloadState>(this, UWeaponPumpActionReloadState::StaticClass());
-	//SwitchingState = NewObject<UWeaponSwitchingState>(this, UWeaponSwitchingState::StaticClass());
-
-	//TargetingState = NewObject<UWeaponTargetingState>(this, UWeaponTargetingState::StaticClass());
-	//ChargingState = NewObject<UWeaponChargingState>(this, UWeaponChargingState::StaticClass());
-	//WaitingState = NewObject<UWeaponWaitingState>(this, UWeaponWaitingState::StaticClass());
 
 	WeaponAnimInstance = WeaponMesh->GetAnimInstance();
 
@@ -821,10 +806,6 @@ void AWeapon::BeginPlay()
 void AWeapon::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	//if (CurrentState)
-	//{
-	//	CurrentState->UpdateState(this, DeltaTime);
-	//}
 	UpdateState(DeltaTime);
 
 	UpdateRecoil(DeltaTime);
@@ -833,23 +814,6 @@ void AWeapon::Tick(float DeltaTime)
 	//UpdateTargetingSkillUI(); //TODO: Should Update UI When even TargetingSkillTimer is not activated
 
 	// UpdateOverheat(DeltaTime); //TODO: Deactivate
-
-	//--------------------------------------------------
-	//if (CurrentState == TargetingState)
-	//{
-	//	// 모든 위젯의 수동 타이머를 업데이트
-	//	for (UUserWidget* Widget : TargetMarkerWidgets)
-	//	{
-	//		UTargetMarkerWidget* TargetMarker = Cast<UTargetMarkerWidget>(Widget);
-	//		if (TargetMarker)
-	//		{
-	//			float RealDelta = FApp::GetDeltaTime(); // 슬로우타임 무시
-
-	//			// 위젯 자체의 타이머 업데이트 함수를 호출함
-	//			TargetMarker->UpdateLockOnTimer(RealDelta);
-	//		}
-	//	}
-	//}
 }
 
 void AWeapon::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -857,6 +821,9 @@ void AWeapon::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+#pragma endregion
+
+#pragma region Attachment
 bool AWeapon::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
 {
 	Character = TargetCharacter;
@@ -932,6 +899,9 @@ void AWeapon::DetachWeaponFromPlayer()
 	}
 }
 
+#pragma endregion
+
+#pragma region Firing
 void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius, bool bIsHoming, AActor* HomingTarget)
 {
 	//UE_LOG(LogTemp, Warning, TEXT("FireSingleProjectile_Pool"));
@@ -1165,6 +1135,9 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 	AddArmRecoil(&FireData->Armrecoil);
 }
 
+#pragma endregion
+
+#pragma region Save And Load
 void AWeapon::OnItemStateRestored()
 {
 	Super::OnItemStateRestored();
@@ -1179,6 +1152,9 @@ void AWeapon::OnItemStateRestored()
 	}
 }
 
+#pragma endregion
+
+#pragma region State
 void AWeapon::SetState(EWeaponStateType NewState)
 {
 	if (CurrentState == NewState) { return; }
@@ -1288,6 +1264,9 @@ void AWeapon::UpdateState(float DeltaTime)
 	}
 }
 
+#pragma endregion
+
+#pragma region HitScan
 void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
@@ -1392,7 +1371,9 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 	AddArmRecoil(&FireData->Armrecoil);
 }
 
-#pragma region AutoAim
+#pragma endregion
+
+#pragma region Auto Aim
 void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
@@ -1499,6 +1480,7 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 }
 #pragma endregion
 
+#pragma region Zoom
 void AWeapon::ZoomToggle()
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle || CurrentState == EWeaponStateType::WeaponStateType_Firing || CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
@@ -1554,6 +1536,8 @@ void AWeapon::ZoomOut()
 //}
 //#pragma endregion
 
+#pragma endregion
+
 #pragma region Animation
 void AWeapon::StartFireAnimation(UAnimMontage* CharacterFireAnimation, UAnimMontage* WeaponFireAnimation)
 {
@@ -1577,6 +1561,7 @@ void AWeapon::StartFireAnimation(UAnimMontage* CharacterFireAnimation, UAnimMont
 		}
 	}
 }
+
 void AWeapon::StartAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* WeaponAnimation, float CharacterAnimPlayRate, float WeaponAnimPlayRate, FName StartSection)
 {
 	if (CharacterAnimInstance != nullptr && CharacterAnimation != nullptr)
@@ -1612,6 +1597,7 @@ void AWeapon::StartAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* Wea
 		}
 	}
 }
+
 void AWeapon::CancelAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* WeaponAnimation)
 {
 	if (CharacterAnimInstance != nullptr)
@@ -1633,6 +1619,7 @@ void AWeapon::CancelAnimation(UAnimMontage* CharacterAnimation, UAnimMontage* We
 #pragma endregion
 
 
+#pragma region Sound
 void AWeapon::PlayWeaponSound(USoundBase* weaponsound)
 {
 	if (weaponsound)
@@ -1640,6 +1627,7 @@ void AWeapon::PlayWeaponSound(USoundBase* weaponsound)
 		WeaponAudioComponent = UGameplayStatics::SpawnSoundAttached(weaponsound, GetRootComponent(), FName(TEXT("Muzzle")), FVector(0, 0, 0), EAttachLocation::KeepRelativeOffset);
 	}
 }
+
 void AWeapon::StopWeaponSound()
 {
 	if (WeaponAudioComponent)
@@ -1672,6 +1660,8 @@ void AWeapon::ReportFiringSoundToAI()
 	);
 }
 
+#pragma endregion
+
 #pragma region Niagara
 void AWeapon::SpawnMuzzleFireEffect(UNiagaraSystem* FireEffect, FVector SpawnLocation, FRotator SpawnRotation)
 {
@@ -1686,6 +1676,7 @@ void AWeapon::SpawnMuzzleFireEffect(UNiagaraSystem* FireEffect, FVector SpawnLoc
 			true, true, ENCPoolMethod::AutoRelease);
 	}
 }
+
 void AWeapon::SpawnChargeEffect(FVector SpawnLocation, FRotator SpawnRotation, FVector EffectScale)
 {
 	if (ChargeEffect)
@@ -1705,6 +1696,7 @@ void AWeapon::SpawnChargeEffect(FVector SpawnLocation, FRotator SpawnRotation, F
 		ChargeEffectComponent->SetSeekDelta(20.f / MaxChargeTime);
 	}
 }
+
 void AWeapon::DestroyChargeEffect()
 {
 	if (ChargeEffectComponent)
@@ -1734,6 +1726,7 @@ void AWeapon::InitProjectileShells() //TODO: need to be called in Weapon Init
 	int32 numofshell = ProjectileShells.Num();
 	//UE_LOG(LogTemp, Warning, TEXT("Num of Shell: %d"), numofshell);
 }
+
 void AWeapon::EjectProjectileShell()
 {
 	FTransform ActorToWorldTransform = GetTransform();
@@ -1780,6 +1773,7 @@ void AWeapon::EjectProjectileShell()
 }
 #pragma endregion
 
+#pragma region Aim
 FVector AWeapon::CalculateScreenCenterWorldPositionAndDirection(FVector& OutWorldPosition, FVector& OutWorldDirection) const
 {
 	if (!CharacterController || !CharacterController->PlayerCameraManager)
@@ -1824,7 +1818,9 @@ FTransform AWeapon::GetAimSocketRelativeTransform()
 	return AimSocketRelativeTransform;
 }
 
-#pragma region Equip/Unequip
+#pragma endregion
+
+#pragma region Equip / Unequip
 void AWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Reloading || CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
@@ -1850,6 +1846,7 @@ void AWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 	AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
 	AM_Unequip_Character->bEnableAutoBlendOut = false;
 }
+
 void AWeapon::Equip(ACharacterPlayer* TargetCharacter)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Reloading || CurrentState == EWeaponStateType::WeaponStateType_PumpActionReloading)
@@ -2037,6 +2034,7 @@ void AWeapon::SetInputActionBinding()
 		}
 	}
 }
+
 void AWeapon::ResetInputActionBinding()
 {
 	if (Character)
@@ -2071,6 +2069,7 @@ void AWeapon::HandleReload()
 		}
 	}
 }
+
 void AWeapon::HandlePumpActionReload()
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
@@ -2083,11 +2082,13 @@ void AWeapon::HandlePumpActionReload()
 		}
 	}
 }
+
 void AWeapon::CancelReload()
 {
 	CancelAnimation(AM_Reload_Character, AM_Reload_Weapon);
 	GetWorld()->GetTimerManager().ClearTimer(ReloadingTimer);
 }
+
 void AWeapon::StartReload()
 {
 	//UE_LOG(LogTemp, Warning, TEXT("Start Reload!!!"));
@@ -2108,6 +2109,7 @@ void AWeapon::StartReload()
 			}
 		}), ReloadingTime, false);
 }
+
 void AWeapon::StartPumpActionReload(bool bStartFromMiddle)
 {
 	if (bIsZoomIn)
@@ -2260,6 +2262,7 @@ void AWeapon::StartPumpActionReload(bool bStartFromMiddle)
 		}
 	}
 }
+
 void AWeapon::StopReload()
 {
 	ReloadAmmo();
@@ -2414,6 +2417,7 @@ void AWeapon::ConsumeAmmo(int32 AmmoCost, bool AllowFireWithInsufficientAmmo)
 		}
 	}
 }
+
 void AWeapon::ReloadAmmo(bool bPumpAction)
 {
 	if (bPumpAction)
@@ -2460,14 +2464,17 @@ void AWeapon::ReloadAmmo(bool bPumpAction)
 		}
 	}
 }
+
 bool AWeapon::HasAmmoInCurrentMag()
 {
 	return (LeftAmmoInCurrMag > 0);
 }
+
 bool AWeapon::HasAmmoInCurrentMag(int32 AmmoCost)
 {
 	return LeftAmmoInCurrMag >= AmmoCost;
 }
+
 bool AWeapon::AddAmmo(int32 NumAmmo)
 {
 	if (TotalAmmo < MaxTotalAmmo)
@@ -2483,6 +2490,7 @@ bool AWeapon::AddAmmo(int32 NumAmmo)
 	}
 	return false;
 }
+
 void AWeapon::AutoReload()
 {
 	if (bCanAutoReload)
@@ -2500,6 +2508,7 @@ void AWeapon::AutoReload()
 		}
 	}
 }
+
 void AWeapon::ReloadingEnd()
 {
 	//UE_LOG(LogTemp, Warning, TEXT("Reloading End!!!"));
@@ -2561,6 +2570,7 @@ void AWeapon::ActivateAimUIWidget(bool bflag)
 		}
 	}
 }
+
 void AWeapon::ActivateAmmoCounterWidget(bool bflag)
 {
 	if (bflag)
@@ -2609,6 +2619,7 @@ void AWeapon::HandleSingleFire(bool bIsLeftInput, bool bSingleProjectile, int32 
 		BufferedFireRequest = FBufferedFireRequest(EWeaponAction::WeaponAction_SingleShot, bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
 }
+
 void AWeapon::HandleBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
@@ -2622,6 +2633,7 @@ void AWeapon::HandleBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 N
 		BufferedFireRequest = FBufferedFireRequest(EWeaponAction::WeaponAction_BurstShot, bIsLeftInput, bSingleProjectile, NumPenetrable);
 	}
 }
+
 void AWeapon::HandleFullAutoFire() //TODO: �Ⱦ���. ���� ���
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
@@ -2632,7 +2644,7 @@ void AWeapon::HandleFullAutoFire() //TODO: �Ⱦ���. ���� ���
 }
 #pragma endregion
 
-#pragma region FireMode/SingleShot
+#pragma region Fire Mode - Single Shot
 void AWeapon::StartSingleShot(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius, int32 AdditionalPellet)
 {
 	if (bIsLeftInput)
@@ -2673,13 +2685,14 @@ void AWeapon::StartSingleShot(bool bIsLeftInput, bool bSingleProjectile, int32 N
 		}), SingleShotDelay, false);
 
 }
+
 void AWeapon::StopSingleShot()
 {
 	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 #pragma endregion
 
-#pragma region FireMode/BurstShot
+#pragma region Fire Mode - Burst Shot
 void AWeapon::StartBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (BurstShotFired < BurstShotCount)
@@ -2725,6 +2738,7 @@ void AWeapon::StartBurstFire(bool bIsLeftInput, bool bSingleProjectile, int32 Nu
 		StopBurstFire();
 	}
 }
+
 void AWeapon::StopBurstFire()
 {
 	BurstShotFired = 0;
@@ -2743,13 +2757,14 @@ void AWeapon::StopBurstFire()
 
 		}), BurstShotDelay, false);
 }
+
 void AWeapon::EndBurstShot()
 {
 	SetState(EWeaponStateType::WeaponStateType_Idle);
 }
 #pragma endregion
 
-#pragma region FireMode/FullAuto
+#pragma region Fire Mode - Full Auto
 void AWeapon::StartFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
@@ -2762,6 +2777,7 @@ void AWeapon::StartFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int32
 		bFireInputDuringReload = true;
 	}
 }
+
 void AWeapon::UpdateFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int32 NumPenetrable)
 {
 	if (bSingleProjectile)
@@ -2837,6 +2853,7 @@ void AWeapon::UpdateFullAutoShot(bool bIsLeftInput, bool bSingleProjectile, int3
 		StopFullAutoShot();
 	}
 }
+
 void AWeapon::StopFullAutoShot()
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_FullAutoFiring)
@@ -2852,7 +2869,7 @@ void AWeapon::StopFullAutoShot()
 }
 #pragma endregion
 
-#pragma region FireMode/Targeting
+#pragma region Fire Mode - Targeting (Legacy)
 //void AWeapon::StartTargetDetection()
 //{
 //	if (CurrentState == IdleState)
@@ -3232,7 +3249,7 @@ void AWeapon::StopFullAutoShot()
 //}
 #pragma endregion
 
-#pragma region FireMode/Charging
+#pragma region Fire Mode - Charging
 void AWeapon::StartCharge()
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Idle)
@@ -3245,6 +3262,7 @@ void AWeapon::StartCharge()
 		UpdateCharge();
 	}
 }
+
 void AWeapon::UpdateCharge()
 {
 	float DeltaSeconds = GetWorld()->GetDeltaSeconds();
@@ -3288,6 +3306,7 @@ void AWeapon::UpdateCharge()
 			}), DeltaSeconds, false);
 	}
 }
+
 void AWeapon::StopCharge()
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Charging)
@@ -3335,7 +3354,7 @@ void AWeapon::StopCharge()
 }
 #pragma endregion
 
-#pragma region Skill/Targeting
+#pragma region Skill - Targeting (Legacy)
 //void AWeapon::HandleTargetDetectionSkill()
 //{
 //	if (CurrentState == IdleState && bCanUseTargetingSkill)
@@ -3636,7 +3655,7 @@ void AWeapon::StopCharge()
 //}
 #pragma endregion
 
-#pragma region Recoil/Aim
+#pragma region Recoil - Aim
 void AWeapon::AddRecoilValue(FWeaponRecoilParams* RecoilStruct, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw)
 {
 	bIsRecoiling = true;
@@ -3744,6 +3763,7 @@ void AWeapon::RecoverRecoil(float DeltaTime, FWeaponRecoilParams* RecoilStruct)
 		bIsRecoiling = false;
 	}
 }
+
 void AWeapon::UpdateRecoil(float DeltaTime)
 {
 	if (Character)
@@ -3765,7 +3785,7 @@ void AWeapon::UpdateRecoil(float DeltaTime)
 }
 #pragma endregion
 
-#pragma region Recoil/ArmAnimation
+#pragma region Recoil - Arm Animation
 void AWeapon::AddArmRecoil(FArmRecoilParams* armrecoil)
 {
 	if (armrecoil != nullptr && CharacterAnimInstance->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
@@ -3773,25 +3793,29 @@ void AWeapon::AddArmRecoil(FArmRecoilParams* armrecoil)
 		Cast<IWeaponInterface>(CharacterAnimInstance)->AddArmRecoil(armrecoil);
 	}
 }
+
 FArmRecoilParams* AWeapon::GetArmRecoilInfo()
 {
 	return &ArmRecoil_L;
 }
+
 FArmRecoilParams* AWeapon::GetArmRecoilInfo_Hand()
 {
 	return &ArmRecoil_Hand;
 }
+
 FArmRecoilParams* AWeapon::GetArmRecoilInfo_UpperArm()
 {
 	return &ArmRecoil_UpperArm;
 }
+
 FArmRecoilParams* AWeapon::GetArmRecoilInfo_LowerArm()
 {
 	return &ArmRecoil_LowerArm;
 }
 #pragma endregion
 
-#pragma region Recoil/SkilWeapon
+#pragma region Recoil - Skill Weapon
 void AWeapon::AddSkillWeaponRecoil(FArmRecoilParams* armrecoil)
 {
 	if (armrecoil != nullptr && CharacterAnimInstance->GetClass()->ImplementsInterface(UWeaponInterface::StaticClass()))
@@ -3810,6 +3834,7 @@ void AWeapon::AddOverheatValue()
 	TotalTargetOverheatValue += OverheatBaseIncrement; // TODO: �ѱ� �ɷ� ��� �ð� ��ŭ ����������
 	TotalTargetOverheatValue = FMath::Clamp(TotalTargetOverheatValue, 0.f, MaxOverheatValue);
 }
+
 void AWeapon::ApplyOverheat(float DeltaTime)
 {
 	float InterpOverheatTargetValue = FMath::FInterpConstantTo(CurrentOverheatVaule, TotalTargetOverheatValue, DeltaTime, OverheatSpeed);
@@ -3817,6 +3842,7 @@ void AWeapon::ApplyOverheat(float DeltaTime)
 
 	OverheatRecoverTimer += DeltaTime;
 }
+
 void AWeapon::RecoverOverheat(float DeltaTime)
 {
 	float InterpOverheatRecoverTargetValue = FMath::FInterpConstantTo(CurrentOverheatVaule, 0.f, DeltaTime, OverheatRecoverSpeed);
@@ -3834,6 +3860,7 @@ void AWeapon::RecoverOverheat(float DeltaTime)
 		//TODO: Overheat UI ������Ʈ �ؾ���
 	}
 }
+
 void AWeapon::UpdateOverheat(float DeltaTime)
 {
 	if (Character)
@@ -3856,7 +3883,7 @@ void AWeapon::UpdateOverheat(float DeltaTime)
 #pragma endregion
 
 
-#pragma region Projectiles
+#pragma region Projectile Pool
 void AWeapon::InitProjectiles(TSubclassOf<AProjectile> ProjectileClass, int32 NumObject)
 {
 	UWorld* const World = GetWorld();
@@ -3880,6 +3907,7 @@ void AWeapon::InitProjectiles(TSubclassOf<AProjectile> ProjectileClass, int32 Nu
 	//UE_LOG(LogTemp, Warning, TEXT("InitProjectiles"));
 	//UE_LOG(LogTemp, Warning, TEXT("ProjectilePool Num: %d"), Pool.Num());
 }
+
 AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass)
 {
 	UWorld* const World = GetWorld();
@@ -3910,6 +3938,7 @@ AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileC
 
 	return Projectile;
 }
+
 void AWeapon::ReturnProjectile(AProjectile* Projectile)
 {
 	//UE_LOG(LogTemp, Warning, TEXT("ReturnProjectile"));
@@ -3927,7 +3956,7 @@ void AWeapon::ReturnProjectile(AProjectile* Projectile)
 }
 #pragma endregion
 
-#pragma region Projectile/SingleProjectileSpread
+#pragma region Projectile - Single Projectile Spread
 void AWeapon::AddSpreadValue(FProjectileSpreadConfig* SpreadValue)
 {
 	if (!SpreadValue) return;
@@ -3940,6 +3969,7 @@ void AWeapon::AddSpreadValue(FProjectileSpreadConfig* SpreadValue)
 	TotalTargetSpreadValue += RandSpreadValue;
 	TotalTargetSpreadValue = FMath::Clamp(TotalTargetSpreadValue, 0.f, SpreadValue->MaxSpreadValue);
 }
+
 void AWeapon::ApplySpread(float DeltaTime, FProjectileSpreadConfig* SpreadValue)
 {
 	if (!SpreadValue) return;
@@ -3949,6 +3979,7 @@ void AWeapon::ApplySpread(float DeltaTime, FProjectileSpreadConfig* SpreadValue)
 
 	SpreadRecoverTimer += DeltaTime;
 }
+
 void AWeapon::RecoverSpread(float DeltaTime, FProjectileSpreadConfig* SpreadValue)
 {
 	if (!SpreadValue) return;
@@ -3971,6 +4002,7 @@ void AWeapon::RecoverSpread(float DeltaTime, FProjectileSpreadConfig* SpreadValu
 		}
 	}
 }
+
 void AWeapon::UpdateSpread(float DeltaTime)
 {
 	if (Character)
@@ -4010,6 +4042,7 @@ void AWeapon::UpdateSpread(float DeltaTime)
 		}
 	}
 }
+
 FVector AWeapon::GetRandomSpreadVector(FVector BaseDir)
 {
 	const FVector SpreadVector = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(BaseDir.GetSafeNormal(), CurrentSpreadVaule);
@@ -4030,6 +4063,7 @@ void AWeapon::StartCameraSettingChange(FWeaponCamConfig* CamSetting)
 
 	//UpdateCameraSetting(GetWorld()->GetDeltaSeconds(), CamSetting);
 }
+
 void AWeapon::UpdateCameraSetting(float DeltaTime, FWeaponCamConfig* CamSetting)
 {
 	if (Character)
@@ -4068,11 +4102,13 @@ void AWeapon::UpdateCameraSetting(float DeltaTime, FWeaponCamConfig* CamSetting)
 		}
 	}
 }
+
 void AWeapon::StopCameraSettingChange()
 {
 	bIsUsingPlayerCamFov = false;
 	//UE_LOG(LogTemp, Error, TEXT("Modifying Cam Setting is Completed!!!"));
 }
+
 void AWeapon::ForceStopCamModification()
 {
 	bIsUsingPlayerCamFov = false;
@@ -4082,6 +4118,9 @@ void AWeapon::ForceStopCamModification()
 		GetWorld()->GetTimerManager().ClearTimer(CamSettingTimer);
 	}
 }
+#pragma endregion
+
+#pragma region CameraShake
 void AWeapon::ApplyCameraShake(TSubclassOf<UWeaponCamShakeBase> CamShakeClass, float Scale)
 {
 	if (Character && CamShakeClass)
