@@ -76,6 +76,12 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 		}
 	}
 
+	if (MuzzlePoint)
+	{
+		FAttachmentTransformRules AttachmentRules(EAttachmentRule::KeepRelative, true);
+		MuzzlePoint->AttachToComponent(GetRootComponent(), AttachmentRules);
+	}
+
 	InitUI();
 
 	InitProjectiles(FireData.ProjectileClass, 5);
@@ -105,6 +111,12 @@ void AThrowableWeapon::InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp*
 			// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
 			Subsystem->AddMappingContext(InputMappingContext, 1);
 		}
+	}
+
+	if (MuzzlePoint)
+	{
+		FAttachmentTransformRules AttachmentRules(EAttachmentRule::KeepRelative, true);
+		MuzzlePoint->AttachToComponent(GetRootComponent(), AttachmentRules);
 	}
 
 	InitProjectiles(FireData.ProjectileClass, 5);
@@ -650,12 +662,13 @@ void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
 
 	CurrentFireMode = NewFireMode;
 
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("Throwable FireMode changed: %s"),
-		*UEnum::GetValueAsString(CurrentFireMode)
-	);
+	if (AimUIWidget)
+	{
+		AimUIWidget->SetThrowableFireMode(CurrentFireMode);
+	}
+
+
+	UE_LOG(LogTemp, Log, TEXT("Throwable FireMode changed: %s"), *UEnum::GetValueAsString(CurrentFireMode));
 }
 
 void AThrowableWeapon::ExecuteThrow()
@@ -1062,6 +1075,8 @@ void AThrowableWeapon::ActivateAimUIWidget(bool bFlag)
 
 			AimUIWidget->SetVisibility(ESlateVisibility::Visible);
 			AimUIWidget->ResetAimUISize();
+			AimUIWidget->SetThrowableFireMode(CurrentFireMode);
+			AimUIWidget->SetThrowableFireModeUIEnabled(true);
 		}
 	}
 	else
@@ -1124,10 +1139,7 @@ void AThrowableWeapon::EnterState(EThrowableWeaponStateType NewState)
 		AutoReload();
 		break;
 	case EThrowableWeaponStateType::Aiming:
-		if (AimUIWidget)
-		{
-			AimUIWidget->SetVisibility(ESlateVisibility::Visible);
-		}
+		ActivateAimUIWidget(true);
 		break;
 	case EThrowableWeaponStateType::Firing:
 		break;

@@ -202,6 +202,12 @@ public:
 	bool SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors);
 
 	UFUNCTION()
+	void HandleProjectileBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity);
+
+	UFUNCTION()
+	void HandleProjectileStop(const FHitResult& ImpactResult);
+
+	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	UFUNCTION()

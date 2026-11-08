@@ -49,6 +49,10 @@ AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 	ProjectileMovement->ProjectileGravityScale = 1.f;
 	ProjectileMovement->bForceSubStepping = true;
 	ProjectileMovement->bAutoActivate = false;
+	ProjectileMovement->BounceAdditionalIterations = 4;
+	ProjectileMovement->bBounceAngleAffectsFriction = false;
+	ProjectileMovement->OnProjectileBounce.AddDynamic(this, &AThrowableWeaponProjectile::HandleProjectileBounce);
+	ProjectileMovement->OnProjectileStop.AddDynamic(this, &AThrowableWeaponProjectile::HandleProjectileStop);
 
 	ProjectileMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ProjectileMesh"));
 	ProjectileMesh->SetupAttachment(RootComponent);
@@ -134,6 +138,7 @@ void AThrowableWeaponProjectile::InitProjectile(AActor* OwnerOfProjectile, AThro
 	bIsActivated = true;
 	bPayloadActivated = false;
 	bUseThrowableBehavior = !HitScan;
+	bUseCustomProjectieMovement = false; // Never mix custom Tick movement with built-in movement on a thrown object.
 
 	SetActorHiddenInGame(false);
 	SetActorTickEnabled(true);
@@ -264,8 +269,17 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 	ProjectileMovement->StopMovementImmediately();
 	ProjectileMovement->SetUpdatedComponent(CollisionComp);
 	ProjectileMovement->bSimulationEnabled = true;
+	bUseCustomProjectieMovement = false;
+	ProjectileMovement->bShouldBounce = bUseThrowableBehavior || bCanSimpleBounce;
 	ProjectileMovement->Velocity = NormalizedDirection * LaunchSpeed;
 	ProjectileMovement->Activate(true);
+
+	UE_LOG(LogTemp, Log, TEXT("[ThrowableBounce] Launch: Bounce=%d Active=%d Sim=%d Updated=%s Velocity=%s"),
+		ProjectileMovement->bShouldBounce,
+		ProjectileMovement->IsActive(),
+		ProjectileMovement->bSimulationEnabled,
+		*GetNameSafe(ProjectileMovement->UpdatedComponent),
+		*ProjectileMovement->Velocity.ToString());
 
 	StartFuse();
 	StartLifeTimer(LifeSpan);
@@ -274,6 +288,28 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 		*UEnum::GetValueAsString(ProjectileType),
 		LaunchSpeed,
 		ProjectileMovement->ProjectileGravityScale);
+}
+
+void AThrowableWeaponProjectile::HandleProjectileBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity)
+{
+	if (!bUseThrowableBehavior || !bIsActivated || bPayloadActivated) return;
+
+	UE_LOG(LogTemp, Log, TEXT("[ThrowableBounce] Bounce: Surface=%s Normal=%s Incoming=%s Outgoing=%s"),
+		*GetNameSafe(ImpactResult.GetActor()),
+		*ImpactResult.ImpactNormal.ToString(),
+		*ImpactVelocity.ToString(),
+		ProjectileMovement ? *ProjectileMovement->Velocity.ToString() : TEXT("None"));
+}
+
+void AThrowableWeaponProjectile::HandleProjectileStop(const FHitResult& ImpactResult)
+{
+	if (!bUseThrowableBehavior || !bIsActivated || bPayloadActivated) return;
+
+	UE_LOG(LogTemp, Warning, TEXT("[ThrowableBounce] Movement stopped: Surface=%s Bounce=%d Sim=%d Velocity=%s"),
+		*GetNameSafe(ImpactResult.GetActor()),
+		ProjectileMovement ? ProjectileMovement->bShouldBounce : false,
+		ProjectileMovement ? ProjectileMovement->bSimulationEnabled : false,
+		ProjectileMovement ? *ProjectileMovement->Velocity.ToString() : TEXT("None"));
 }
 
 void AThrowableWeaponProjectile::StartLifeTimer(float Seconds)
@@ -1106,7 +1142,9 @@ void AThrowableWeaponProjectile::ApplyProjectileData()
 		ProjectileMovement->InitialSpeed = ProjectileData->InitialSpeed;
 		ProjectileMovement->MaxSpeed = ProjectileData->MaxSpeed;
 		ProjectileMovement->ProjectileGravityScale = ProjectileData->ProjectileGravityScale;
-		ProjectileMovement->bShouldBounce = ProjectileData->bCanSimpleBounce;
+		// Throwable projectiles must bounce on blocking hits; a legacy DT row may have bCanSimpleBounce=false.
+		// Keep the DT field for non-throwable legacy use, but enforce bounce for physical throws.
+		ProjectileMovement->bShouldBounce = bUseThrowableBehavior || ProjectileData->bCanSimpleBounce;
 		ProjectileMovement->Bounciness = ProjectileData->Bounciness;
 		ProjectileMovement->Friction = ProjectileData->Friction;
 		ProjectileMovement->BounceVelocityStopSimulatingThreshold = ProjectileData->BounceVelocityStopSimulatingThreshold;
@@ -1509,6 +1547,7 @@ void AThrowableWeaponProjectile::OnActivateFromPool()
 	bIsActivated = false;
 	bPayloadActivated = false;
 	bUseThrowableBehavior = true;
+	bUseCustomProjectieMovement = false;
 
 	SetActorHiddenInGame(false);
 	SetActorTickEnabled(true);
@@ -1551,6 +1590,7 @@ void AThrowableWeaponProjectile::OnDeactivateToPool()
 	bIsActiveInPool = false;
 	bIsActivated = false;
 	bPayloadActivated = false;
+	bUseCustomProjectieMovement = false;
 
 	ClearThrowableTimers();
 	StopLifeTimer();

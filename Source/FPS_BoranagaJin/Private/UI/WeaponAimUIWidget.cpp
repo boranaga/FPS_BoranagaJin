@@ -25,6 +25,9 @@ void UWeaponAimUIWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    // Throwable fire-mode UI is disabled by default, so existing firearm aim widgets are unaffected.
+    SetThrowableFireModeUIEnabled(bThrowableFireModeUIEnabled);
+
     //UE_LOG(LogTemp, Error, TEXT("UWeaponAimUIWidget::NativeConstruct()!!!"));
 }
 
@@ -34,6 +37,81 @@ void UWeaponAimUIWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
     UpdateHitIndicator(InDeltaTime);
 }
+
+#pragma region ThrowableFireMode
+void UWeaponAimUIWidget::SetThrowableFireModeUIEnabled(bool bEnable)
+{
+    bThrowableFireModeUIEnabled = bEnable;
+
+    const ESlateVisibility NewVisibility =
+        bThrowableFireModeUIEnabled
+        ? ESlateVisibility::HitTestInvisible
+        : ESlateVisibility::Hidden;
+
+    if (ThrowableFireModeOverlay)
+    {
+        ThrowableFireModeOverlay->SetVisibility(NewVisibility);
+    }
+
+    if (ThrowableUpArc)
+    {
+        ThrowableUpArc->SetVisibility(NewVisibility);
+    }
+
+    if (ThrowableDownArc)
+    {
+        ThrowableDownArc->SetVisibility(NewVisibility);
+    }
+
+    if (bThrowableFireModeUIEnabled)
+    {
+        ApplyThrowableFireModeVisual();
+    }
+}
+
+void UWeaponAimUIWidget::SetThrowableFireMode(EThrowableWeaponFireMode NewFireMode)
+{
+    ThrowableFireMode = NewFireMode;
+
+    if (!bThrowableFireModeUIEnabled)
+    {
+        return;
+    }
+
+    ApplyThrowableFireModeVisual();
+}
+
+void UWeaponAimUIWidget::ApplyThrowableFireModeVisual()
+{
+    if (!bThrowableFireModeUIEnabled)
+    {
+        return;
+    }
+
+    auto ApplyArcState = [this](UImage* ArcImage, bool bActive)
+        {
+            if (!ArcImage)
+            {
+                return;
+            }
+
+            ArcImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+            ArcImage->SetRenderScale(bActive ? ThrowableActiveArcScale : ThrowableInactiveArcScale);
+            //FVector2D NewScale_Active = FVector2D(ArcImage->GetRenderTransform().Scale.X * ThrowableActiveArcScale.X, ArcImage->GetRenderTransform().Scale.Y * ThrowableActiveArcScale.Y);
+            //FVector2D NewScale_InActive = FVector2D(ArcImage->GetRenderTransform().Scale.X * ThrowableInactiveArcScale.X, ArcImage->GetRenderTransform().Scale.Y * ThrowableInactiveArcScale.Y);
+            //FVector2D NewScale_Active = FVector2D(ArcImage->GetRenderTransform().Scale.X * ThrowableActiveArcScale.X, ArcImage->GetRenderTransform().Scale.Y * ThrowableActiveArcScale.Y);
+            //FVector2D NewScale_InActive = FVector2D(ArcImage->GetRenderTransform().Scale.X * ThrowableInactiveArcScale.X, ArcImage->GetRenderTransform().Scale.Y * ThrowableInactiveArcScale.Y);
+            //ArcImage->SetRenderScale(bActive ? NewScale_Active : NewScale_InActive);
+            ArcImage->SetRenderOpacity(bActive ? ThrowableActiveArcOpacity : ThrowableInactiveArcOpacity);
+        };
+
+    const bool bUpwardActive = ThrowableFireMode == EThrowableWeaponFireMode::Upward;
+    const bool bDownwardActive = ThrowableFireMode == EThrowableWeaponFireMode::Downward;
+
+    ApplyArcState(ThrowableUpArc, bUpwardActive);
+    ApplyArcState(ThrowableDownArc, bDownwardActive);
+}
+#pragma endregion
 
 #pragma region Spread
 void UWeaponAimUIWidget::ResetAimUISize()

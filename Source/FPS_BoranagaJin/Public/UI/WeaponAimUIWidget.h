@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "BaseUIWidget.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeaponFireMode.h"
 #include "WeaponAimUIWidget.generated.h"
 
 class ACharacterPlayer;
@@ -21,7 +22,7 @@ class FPS_BORANAGAJIN_API UWeaponAimUIWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime);
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual EUIType GetUIType() const { return EUIType::WeaponAim; }
 public:
 	UPROPERTY(meta = (BindWidget))
@@ -48,9 +49,48 @@ public:
 	UPROPERTY(meta = (BindWidget))
 	UImage* RightCrosshair = nullptr;
 
+#pragma region ThrowableFireMode
+public:
+	void SetThrowableFireModeUIEnabled(bool bEnable);
+	void SetThrowableFireMode(EThrowableWeaponFireMode NewFireMode);
 
+protected:
+	void ApplyThrowableFireModeVisual();
+
+	// Optional bindings: existing firearm Aim Widget Blueprints do not need these widgets.
+	UPROPERTY(meta = (BindWidgetOptional))
+	UOverlay* ThrowableFireModeOverlay = nullptr;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UImage* ThrowableUpArc = nullptr;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UImage* ThrowableDownArc = nullptr;
+
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode")
+	//FVector2D DefaultThrowableActiveArcScale = FVector2D(1.15f, 1.15f);
+
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode")
+	//FVector2D DefaultThrowableInactiveArcScale = FVector2D(1.15f, 1.15f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode")
+	FVector2D ThrowableActiveArcScale = FVector2D(50.f, 17.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode")
+	FVector2D ThrowableInactiveArcScale = FVector2D(50.f * 0.80f, 17 * 0.80f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ThrowableActiveArcOpacity = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aim|ThrowableFireMode", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ThrowableInactiveArcOpacity = 0.55f;
+
+	bool bThrowableFireModeUIEnabled = false;
+	EThrowableWeaponFireMode ThrowableFireMode = EThrowableWeaponFireMode::Upward;
+#pragma endregion
 
 #pragma region Spread
+public:
 	void ResetAimUISize();
 	void ApplyAimUISpread(float SpreadValue = 0.f);
 protected:
