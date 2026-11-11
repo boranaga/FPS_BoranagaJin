@@ -239,6 +239,56 @@ void AThrowableWeaponProjectile::LoadProjectileData()
 	ApplyProjectileData();
 }
 
+bool AThrowableWeaponProjectile::GetTrajectoryPhysics(FThrowableProjectileTrajectoryPhysics& OutPhysics) const
+{
+	const FThrowableWeaponProjectileData* Data = nullptr;
+
+	if (bUseDataTable)
+	{
+		Data = ProjectileDataTableHandle.GetRow<FThrowableWeaponProjectileData>(TEXT("AThrowableWeaponProjectile::GetTrajectoryPhysics"));
+	}
+	else
+	{
+		Data = &BlueprintProjectileData;
+	}
+
+	if (!IsValid(CollisionComp) || !IsValid(ProjectileMovement))
+	{
+		return false;
+	}
+
+	// ApplyProjectileData() sets these exact properties on the live projectile.
+	OutPhysics.Radius = Data ? Data->InitialRadius : CollisionComp->GetUnscaledSphereRadius();
+	OutPhysics.GravityScale = Data ? Data->ProjectileGravityScale : ProjectileMovement->ProjectileGravityScale;
+	OutPhysics.MaxSpeed = Data ? Data->MaxSpeed : ProjectileMovement->MaxSpeed;
+	if (Data)
+	{
+		// Payload activation / pool return terminates flight before subsequent collisions.
+		const float Fuse = Data->FuseTime;
+		const float Lifetime = Data->InitialLifeSpan;
+		OutPhysics.MaxFlightTime = Fuse > 0.f ? Fuse : 0.f;
+		if (Lifetime > 0.f)
+		{
+			OutPhysics.MaxFlightTime = OutPhysics.MaxFlightTime > 0.f
+				? FMath::Min(OutPhysics.MaxFlightTime, Lifetime) : Lifetime;
+		}
+	}
+	OutPhysics.ObjectChannel = ECC_GameTraceChannel3;
+
+	// Match the overrides in ConfigureFlightCollision() exactly.
+	OutPhysics.CollisionResponses = CollisionComp->GetCollisionResponseToChannels();
+	OutPhysics.CollisionResponses.SetResponse(ECC_GameTraceChannel1, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_GameTraceChannel2, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_GameTraceChannel3, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_GameTraceChannel4, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_GameTraceChannel5, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_Camera, ECR_Ignore);
+	OutPhysics.CollisionResponses.SetResponse(ECC_WorldStatic, ECR_Block);
+
+	OutPhysics.Radius = FMath::Max(0.1f, OutPhysics.Radius);
+	return true;
+}
+
 void AThrowableWeaponProjectile::SetWeapon(AThrowableWeapon* NewWeapon)
 {
 	ThrowableWeapon = NewWeapon;
@@ -271,7 +321,9 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 	ProjectileMovement->bSimulationEnabled = true;
 	bUseCustomProjectieMovement = false;
 	ProjectileMovement->bShouldBounce = bUseThrowableBehavior || bCanSimpleBounce;
-	ProjectileMovement->Velocity = NormalizedDirection * LaunchSpeed;
+	// Limit the initial velocity exactly as the predictor does when MaxSpeed is configured.
+	const FVector RawLaunchVelocity = NormalizedDirection * LaunchSpeed;
+	ProjectileMovement->Velocity = ProjectileMovement->LimitVelocity(RawLaunchVelocity);
 	ProjectileMovement->Activate(true);
 
 	UE_LOG(LogTemp, Log, TEXT("[ThrowableBounce] Launch: Bounce=%d Active=%d Sim=%d Updated=%s Velocity=%s"),

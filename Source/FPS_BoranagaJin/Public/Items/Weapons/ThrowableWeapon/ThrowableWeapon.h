@@ -14,6 +14,7 @@ class ACharacterPlayer;
 class APlayerController;
 class AItemPickUp;
 class AThrowableWeaponProjectile;
+class AThrowableTrajectoryIndicator;
 class UAnimInstance;
 class UAnimMontage;
 class UInputAction;
@@ -32,6 +33,8 @@ public:
 	AThrowableWeapon();
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 public:
 	// Initialization and data loading
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr) override;
@@ -75,7 +78,6 @@ public:
 	bool AddAmmo(int32 NumAmmo);
 	void AutoReload();
 	virtual void ReloadingEnd() override;
-	//int32 GetLeftAmmo() const { return LeftAmmo; }
 	int32 GetMaxAmmo() const { return MaxAmmo; }
 
 	// Projectile pool
@@ -124,7 +126,7 @@ public:
 	void Throw(const FVector& BaseThrowDirection);
 	void ToggleFireMode();
 	void SetFireMode(EThrowableWeaponFireMode NewFireMode);
-    EThrowableWeaponFireMode GetFireMode() const { return CurrentFireMode; }
+	EThrowableWeaponFireMode GetFireMode() const { return CurrentFireMode; }
 protected:
 	void ExecuteThrow();
 	void FinishThrowSequence();
@@ -135,6 +137,11 @@ protected:
 
 	FVector CalculateThrowDirection(const FVector& BaseDirection, EThrowableWeaponFireMode FireMode) const;
 	float GetThrowStrength(EThrowableWeaponFireMode FireMode) const;
+
+	// 3D trajectory preview (separate from UMG WeaponAimUIWidget).
+	void StartTrajectoryPreview();
+	void UpdateTrajectoryPreview();
+	void StopTrajectoryPreview();
 
 protected:
 	// Fire handling
@@ -251,7 +258,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") float ReloadingTime = 2.5f;
 	UPROPERTY(EditAnywhere, Category = "Weapon|Ammo") int32 MaxAmmo = 20;
 	UPROPERTY(VisibleAnywhere, SaveGame, Category = "Weapon|Save") int32 TotalAmmo = 1;
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Weapon|Save") int32 LeftAmmo = 0;
 	FTimerHandle ReloadingTimer;
 
 	// Single shot
@@ -281,7 +287,7 @@ protected:
 	int32 MaxPenetrableObjectsNum = 4;
 
 	// Throw
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|FireMode") 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|FireMode")
 	EThrowableWeaponFireMode CurrentFireMode = EThrowableWeaponFireMode::Upward;
 
 	EThrowableWeaponFireMode PendingFireMode = EThrowableWeaponFireMode::None;
@@ -303,6 +309,31 @@ protected:
 	FTimerHandle ThrowSequenceTimerHandle;
 
 	FVector PendingThrowDirection = FVector::ForwardVector;
+
+	// Snapshot the aim-time muzzle position. The throw montage must not shift the launch origin.
+	FVector PendingThrowStartLocation = FVector::ZeroVector;
+	bool bPendingThrowStartLocationValid = false;
+
+	// Preview exists only locally, with no collision or gameplay effects.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory")
+	TSubclassOf<AThrowableTrajectoryIndicator> TrajectoryIndicatorClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AThrowableTrajectoryIndicator> TrajectoryIndicator = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "0.1", UIMin = "0.5", UIMax = "5.0"))
+	float TrajectoryPredictionDuration = 3.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "10.0", UIMin = "15.0", UIMax = "60.0"))
+	float TrajectorySimulationFrequency = 30.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "0.016", UIMin = "0.033", UIMax = "0.1"))
+	float TrajectoryRefreshInterval = 0.05f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "1", UIMin = "1", UIMax = "4"))
+	int32 TrajectoryRenderPointStride = 2;
+
+	float TrajectoryRefreshAccumulator = 0.f;
 
 	// UI
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Aim") TSubclassOf<UWeaponAimUIWidget> AimUIWidgetClass;

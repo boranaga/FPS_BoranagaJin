@@ -1,5 +1,6 @@
 ﻿#include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponProjectile.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableTrajectoryIndicator.h"
 #include "Items/InventorySystemComponent.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "PlayerUISubsystem.h"
@@ -21,6 +22,8 @@
 #include "NiagaraComponent.h"
 #include "Perception/AISense_Hearing.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/SphereComponent.h"
+#include "CollisionQueryParams.h"
 
 AThrowableWeapon::AThrowableWeapon()
 {
@@ -49,6 +52,26 @@ void AThrowableWeapon::BeginPlay()
 		FAttachmentTransformRules AttachmentRules(EAttachmentRule::KeepRelative, true);
 		MuzzlePoint->AttachToComponent(GetRootComponent(), AttachmentRules);
 	}
+}
+
+void AThrowableWeapon::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	UpdateState(DeltaSeconds);
+}
+
+void AThrowableWeapon::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopTrajectoryPreview();
+
+	if (IsValid(TrajectoryIndicator))
+	{
+		TrajectoryIndicator->Destroy();
+		TrajectoryIndicator = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
@@ -148,7 +171,6 @@ void AThrowableWeapon::InitUI()
 		if (AmmoCounterWidget)
 		{
 			//TODO: ThrowableWeapon ���� AmmoCounter Widget �����
-			//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 			AmmoCounterWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
@@ -265,7 +287,7 @@ void AThrowableWeapon::LoadData()
 	// <Throw>
 	ThrowReleaseDelay = WeaponData->ThrowReleaseDelay;
 	ThrowAnimationDuration = WeaponData->ThrowAnimationDuration;
-    UpwardThrowStrength = WeaponData->UpwardThrowStrength;
+	UpwardThrowStrength = WeaponData->UpwardThrowStrength;
 	UpwardPitchOffset = WeaponData->UpwardPitchOffset;
 	DownwardThrowStrength = WeaponData->DownwardThrowStrength;
 	DownwardPitchOffset = WeaponData->DownwardPitchOffset;
@@ -570,8 +592,14 @@ void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 	}
 
 	PendingFireMode = CurrentFireMode;
-
 	PendingThrowDirection = CalculateThrowDirection(BaseThrowDirection, PendingFireMode);
+
+	// Preserve the same origin used by the aiming trajectory, even though the hand
+	// moves while the delayed throw montage is being played.
+	bPendingThrowStartLocationValid = IsValid(MuzzlePoint);
+	PendingThrowStartLocation = bPendingThrowStartLocationValid
+		? MuzzlePoint->GetComponentLocation()
+		: FVector::ZeroVector;
 
 	PlayThrowAnimation();
 
@@ -658,6 +686,12 @@ void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
 
 	CurrentFireMode = NewFireMode;
 
+	if (CurrentState == EThrowableWeaponStateType::Aiming)
+	{
+		UpdateTrajectoryPreview();
+		TrajectoryRefreshAccumulator = 0.f;
+	}
+
 	if (AimUIWidget)
 	{
 		AimUIWidget->SetThrowableFireMode(CurrentFireMode);
@@ -685,12 +719,18 @@ void AThrowableWeapon::FinishThrowSequence()
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().ClearTimer(ThrowReleaseTimerHandle);
-		World->GetTimerManager().ClearTimer(ThrowSequenceTimerHandle);
+		World->GetTimerManager().ClearTimer(
+			ThrowReleaseTimerHandle
+		);
+
+		World->GetTimerManager().ClearTimer(
+			ThrowSequenceTimerHandle
+		);
 	}
 
 	PendingThrowDirection = FVector::ForwardVector;
 	PendingFireMode = EThrowableWeaponFireMode::None;
+	bPendingThrowStartLocationValid = false;
 
 	if (CurrentState == EThrowableWeaponStateType::Firing)
 	{
@@ -760,6 +800,7 @@ void AThrowableWeapon::CancelPendingThrow()
 
 	PendingFireMode =
 		EThrowableWeaponFireMode::None;
+	bPendingThrowStartLocationValid = false;
 }
 
 UAnimMontage* AThrowableWeapon::GetThrowMontage() const
@@ -847,6 +888,188 @@ float AThrowableWeapon::GetThrowStrength(EThrowableWeaponFireMode FireMode) cons
 		return UpwardThrowStrength;
 	}
 }
+
+
+#pragma region TrajectoryPreview
+
+void AThrowableWeapon::StartTrajectoryPreview()
+{
+	if (!IsValid(Character) || !Character->IsLocallyControlled())
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::StartTrajectoryPreview() 1"));
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::StartTrajectoryPreview() 2"));
+		return;
+	}
+
+	if (!IsValid(TrajectoryIndicator))
+	{
+		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::StartTrajectoryPreview() 3"));
+		UClass* IndicatorClass = TrajectoryIndicatorClass ? TrajectoryIndicatorClass.Get() : AThrowableTrajectoryIndicator::StaticClass();
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.ObjectFlags |= RF_Transient;
+
+		TrajectoryIndicator = World->SpawnActor<AThrowableTrajectoryIndicator>(IndicatorClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	}
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::StartTrajectoryPreview() 4"));
+
+	TrajectoryRefreshAccumulator = 0.f;
+	UpdateTrajectoryPreview();
+}
+
+void AThrowableWeapon::StopTrajectoryPreview()
+{
+	TrajectoryRefreshAccumulator = 0.f;
+
+	if (IsValid(TrajectoryIndicator))
+	{
+		TrajectoryIndicator->HideTrajectory();
+	}
+
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::StopTrajectoryPreview()"));
+}
+
+void AThrowableWeapon::UpdateTrajectoryPreview()
+{
+	if (CurrentState != EThrowableWeaponStateType::Aiming ||
+		!IsValid(TrajectoryIndicator) || !IsValid(MuzzlePoint) ||
+		!IsValid(Character) || !FireData.ProjectileClass)
+	{
+		StopTrajectoryPreview();
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	const UCameraComponent* Camera = Character->GetCameraComponent();
+	if (!IsValid(World) || !IsValid(Camera))
+	{
+		StopTrajectoryPreview();
+		return;
+	}
+
+	// Never take an active projectile out of the pool just to predict its path.
+	// This reads the exact DT/BP values that InitProjectile/ApplyProjectileData use.
+	const AThrowableWeaponProjectile* ProjectileCDO = FireData.ProjectileClass.GetDefaultObject();
+	FThrowableProjectileTrajectoryPhysics Physics;
+	if (!IsValid(ProjectileCDO) || !ProjectileCDO->GetTrajectoryPhysics(Physics))
+	{
+		StopTrajectoryPreview();
+		return;
+	}
+	// -> TODO: DT를 Tick으로 계속 접근하는 것은 좋지 않은듯함. 최초 발생시 값 복사해놓고 사용하는 것이 좋을 것 같음
+
+
+	const FVector StartLocation = MuzzlePoint->GetComponentLocation();
+	const FVector AimDirection = Camera->GetForwardVector();
+	const FVector ThrowDirection = CalculateThrowDirection(AimDirection, CurrentFireMode);
+	const float LaunchSpeed = GetThrowStrength(CurrentFireMode);
+
+	if (ThrowDirection.IsNearlyZero() || LaunchSpeed <= KINDA_SMALL_NUMBER)
+	{
+		StopTrajectoryPreview();
+		return;
+	}
+
+	// ProjectileMovement::LimitVelocity is also used in LaunchProjectile().
+	FVector Velocity = ThrowDirection * LaunchSpeed;
+	if (Physics.MaxSpeed > 0.f)
+	{
+		Velocity = Velocity.GetClampedToMaxSize(Physics.MaxSpeed);
+	}
+
+	const FVector Gravity(0.f, 0.f, World->GetGravityZ() * Physics.GravityScale);
+	const float Step = 1.f / FMath::Max(10.f, TrajectorySimulationFrequency);
+	float Duration = FMath::Max(Step, TrajectoryPredictionDuration);
+	if (Physics.MaxFlightTime > 0.f)
+	{
+		Duration = FMath::Min(Duration, Physics.MaxFlightTime);
+	}
+	const int32 Steps = FMath::CeilToInt(Duration / Step);
+
+	TArray<FVector> Positions;
+	Positions.Reserve(Steps + 1);
+	Positions.Add(StartLocation);
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ThrowableTrajectoryPreview), false);
+	QueryParams.AddIgnoredActor(this);
+	QueryParams.AddIgnoredActor(Character);
+	QueryParams.bFindInitialOverlaps = true;
+
+	const FCollisionResponseParams ResponseParams(Physics.CollisionResponses);
+	const FCollisionShape Shape = FCollisionShape::MakeSphere(Physics.Radius);
+
+	FVector CurrentPosition = StartLocation;
+	FVector ImpactPoint = FVector::ZeroVector;
+	FVector ImpactNormal = FVector::UpVector;
+	bool bHasHit = false;
+
+	for (int32 Index = 0; Index < Steps; ++Index)
+	{
+		const float Elapsed = Index * Step;
+		const float Dt = FMath::Min(Step, Duration - Elapsed);
+		if (Dt <= KINDA_SMALL_NUMBER)
+		{
+			break;
+		}
+
+		// Exact constant-gravity integration for an unobstructed projectile step.
+		// A sweep between each pair of positions checks the first real blocking hit.
+		const FVector NextPosition = CurrentPosition + Velocity * Dt + 0.5f * Gravity * Dt * Dt;
+		FHitResult HitResult;
+		bHasHit = World->SweepSingleByChannel(
+			HitResult,
+			CurrentPosition,
+			NextPosition,
+			FQuat::Identity,
+			Physics.ObjectChannel,
+			Shape,
+			QueryParams,
+			ResponseParams);
+
+		if (bHasHit)
+		{
+			Positions.Add(HitResult.Location); // projectile center at first contact
+			ImpactPoint = HitResult.ImpactPoint; // surface contact point
+			ImpactNormal = HitResult.ImpactNormal;
+			break;
+		}
+
+		Positions.Add(NextPosition);
+		CurrentPosition = NextPosition;
+		Velocity += Gravity * Dt;
+
+		if (Physics.MaxSpeed > 0.f)
+		{
+			Velocity = Velocity.GetClampedToMaxSize(Physics.MaxSpeed);
+		}
+	}
+
+	// The collision sweeps use all samples; the spline needs only every Nth point.
+	TArray<FVector> RenderPoints;
+	const int32 Stride = FMath::Max(1, TrajectoryRenderPointStride);
+	RenderPoints.Reserve(Positions.Num() / Stride + 2);
+	for (int32 Index = 0; Index < Positions.Num(); Index += Stride)
+	{
+		RenderPoints.Add(Positions[Index]);
+	}
+	if (RenderPoints.Num() == 0 || !RenderPoints.Last().Equals(Positions.Last(), KINDA_SMALL_NUMBER))
+	{
+		RenderPoints.Add(Positions.Last());
+	}
+
+	TrajectoryIndicator->SetTrajectory(RenderPoints, bHasHit, ImpactPoint, ImpactNormal);
+}
+
+#pragma endregion
 
 void AThrowableWeapon::SetInputActionBinding()
 {
@@ -1007,7 +1230,6 @@ bool AThrowableWeapon::AddAmmo(int32 NumAmmo)
 		TotalAmmo = NewTotalAmmo;
 		if (AmmoCounterWidget)
 		{
-			//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		}
 		return true;
@@ -1129,6 +1351,7 @@ void AThrowableWeapon::EnterState(EThrowableWeaponStateType NewState)
 		break;
 	case EThrowableWeaponStateType::Aiming:
 		ActivateAimUIWidget(true);
+		StartTrajectoryPreview();
 		break;
 	case EThrowableWeaponStateType::Firing:
 		break;
@@ -1157,6 +1380,7 @@ void AThrowableWeapon::ExitState(EThrowableWeaponStateType OldState)
 	case EThrowableWeaponStateType::Idle:
 		break;
 	case EThrowableWeaponStateType::Aiming:
+		StopTrajectoryPreview();
 		break;
 	case EThrowableWeaponStateType::Firing:
 		break;
@@ -1180,6 +1404,12 @@ void AThrowableWeapon::UpdateState(float DeltaTime)
 	case EThrowableWeaponStateType::Idle:
 		break;
 	case EThrowableWeaponStateType::Aiming:
+		TrajectoryRefreshAccumulator += DeltaTime;
+		if (TrajectoryRefreshAccumulator >= TrajectoryRefreshInterval)
+		{
+			TrajectoryRefreshAccumulator = 0.f;
+			UpdateTrajectoryPreview();
+		}
 		break;
 	case EThrowableWeaponStateType::Firing:
 		break;
@@ -1429,7 +1659,9 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
 	if (!IsValid(PoolSubsystem)) { return; }
 
-	const FVector SpawnLocation = MuzzlePoint->GetComponentLocation();
+	const FVector SpawnLocation = bPendingThrowStartLocationValid
+		? PendingThrowStartLocation
+		: MuzzlePoint->GetComponentLocation();
 
 	const FVector NormalizedDirection = ThrowDirection.GetSafeNormal();
 
@@ -1821,12 +2053,10 @@ void AThrowableWeapon::ConsumeAmmo(int32 AmmoCost)
 
 void AThrowableWeapon::ReloadAmmo() //TODO: �� ���� reload �ǵ��� �����ؾ���.
 {
-	//LeftAmmo += 1;
 	TotalAmmo -= 1;
 
 	if (AmmoCounterWidget)
 	{
-		//AmmoCounterWidget->UpdateAmmoCount(LeftAmmo);
 		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 	}
 }

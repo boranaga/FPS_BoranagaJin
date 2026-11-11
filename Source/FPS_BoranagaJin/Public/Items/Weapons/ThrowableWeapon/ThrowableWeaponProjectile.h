@@ -3,12 +3,24 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/DataTable.h"
+#include "Engine/EngineTypes.h"
 
 #include "PoolableActorInterface.h"
 #include "Characters/GameDamageType.h"
 #include "Data/ThrowableWeaponProjectileData.h"
 
 #include "ThrowableWeaponProjectile.generated.h"
+
+/** First-flight parameters used by the trajectory preview. Read from the same DT/BP as the projectile. */
+struct FThrowableProjectileTrajectoryPhysics
+{
+	float Radius = 10.f;
+	float GravityScale = 1.f;
+	float MaxSpeed = 0.f;
+	float MaxFlightTime = 0.f; // 0: no fuse/lifespan limit
+	ECollisionChannel ObjectChannel = ECC_GameTraceChannel3;
+	FCollisionResponseContainer CollisionResponses;
+};
 
 class AThrowableWeapon;
 class AEnemyBase;
@@ -152,6 +164,9 @@ public:
 	void InitHitScan();
 	void LoadProjectileData();
 	void SetWeapon(AThrowableWeapon* NewWeapon);
+
+	/** Blueprint/CDO-safe read: no projectile is spawned or activated for prediction. */
+	bool GetTrajectoryPhysics(FThrowableProjectileTrajectoryPhysics& OutPhysics) const;
 	void LaunchProjectile(FVector StartPos, FRotator Direction);
 	void LaunchProjectile(
 		const FVector& StartPosition,
