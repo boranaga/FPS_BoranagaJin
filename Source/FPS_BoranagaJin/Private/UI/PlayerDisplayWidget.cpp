@@ -78,20 +78,38 @@ void UPlayerDisplayWidget::UpdateItemInventorySlots(const TArray<FInventorySlot>
 	}
 }
 
-void UPlayerDisplayWidget::CreateWeaponInventorySlots(int32 InventorySlotCount)
+void UPlayerDisplayWidget::CreatePrimaryWeaponInventorySlots(int32 InventorySlotCount)
 {
-	if (WeaponInventoryUIWidget)
+	if (PrimaryWeaponInventoryUIWidget)
 	{
-		WeaponInventoryUIWidget->InventoryName = FName("WeaponInventory");
+		PrimaryWeaponInventoryUIWidget->InventoryName = FName("PrimaryWeaponInventory");
 		//WeaponInventoryUIWidget->SetOwnerUIManager(OwnerUIManager);
-		WeaponInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
+		PrimaryWeaponInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
 	}
 }
 
-void UPlayerDisplayWidget::UpdateWeaponInventorySlots(const TArray<FInventorySlot>& Inventory)
+void UPlayerDisplayWidget::UpdatePrimaryWeaponInventorySlots(const TArray<FInventorySlot>& Inventory)
 {
-	if (WeaponInventoryUIWidget)
+	if (PrimaryWeaponInventoryUIWidget)
 	{
-		WeaponInventoryUIWidget->UpdateInventorySlots(Inventory);
+		PrimaryWeaponInventoryUIWidget->UpdateInventorySlots(Inventory);
+	}
+}
+
+void UPlayerDisplayWidget::CreateSecondaryWeaponInventorySlots(int32 InventorySlotCount)
+{
+	if (SecondaryWeaponInventoryUIWidget)
+	{
+		SecondaryWeaponInventoryUIWidget->InventoryName = FName("SecondaryWeaponInventory");
+		//WeaponInventoryUIWidget->SetOwnerUIManager(OwnerUIManager);
+		SecondaryWeaponInventoryUIWidget->CreateInventorySlots(InventorySlotCount);
+	}
+}
+
+void UPlayerDisplayWidget::UpdateSecondaryWeaponInventorySlots(const TArray<FInventorySlot>& Inventory)
+{
+	if (SecondaryWeaponInventoryUIWidget)
+	{
+		SecondaryWeaponInventoryUIWidget->UpdateInventorySlots(Inventory);
 	}
 }

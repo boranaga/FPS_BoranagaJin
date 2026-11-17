@@ -325,10 +325,10 @@ protected:
 	float TrajectoryPredictionDuration = 3.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "10.0", UIMin = "15.0", UIMax = "60.0"))
-	float TrajectorySimulationFrequency = 30.0f;
+	float TrajectorySimulationFrequency = 60.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "0.016", UIMin = "0.033", UIMax = "0.1"))
-	float TrajectoryRefreshInterval = 0.05f;
+	float TrajectoryRefreshInterval = 0.01f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Trajectory", meta = (ClampMin = "1", UIMin = "1", UIMax = "4"))
 	int32 TrajectoryRenderPointStride = 2;

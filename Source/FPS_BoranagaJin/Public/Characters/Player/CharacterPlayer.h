@@ -50,7 +50,8 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotDropRequested, FName Invent
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInventorySlotUseRequested, FName InventoryName, int32 SlotIndex);
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryCreated, int32 SlotNum);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
+//DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponInventoryUpdated, const TArray<FInventorySlot>& InventorySlots);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponCategoryInventoryUpdated, const TArray<FInventorySlot>&);
 
 DECLARE_MULTICAST_DELEGATE(FOnThrowableWeaponInventoryUpdateRequested);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnThrowableWeaponInventoryCreated, int32 SlotNum);
@@ -133,8 +134,11 @@ public:
 	FOnInventorySlotDropRequested OnInventorySlotDropRequestedDelegate;
 	FOnInventorySlotUseRequested OnInventorySlotUseRequestedDelegate;
 
-	FOnWeaponInventoryCreated OnWeaponInventoryCreatedDelegate;
-	FOnWeaponInventoryUpdated OnWeaponInventoryUpdatedDelegate;
+	FOnWeaponInventoryCreated OnPrimaryWeaponInventoryCreatedDelegate;
+	FOnWeaponInventoryCreated OnSecondaryWeaponInventoryCreatedDelegate;
+
+	FOnWeaponCategoryInventoryUpdated OnPrimaryWeaponInventoryUpdated;
+	FOnWeaponCategoryInventoryUpdated OnSecondaryWeaponInventoryUpdated;
 
 	FOnThrowableWeaponInventoryUpdateRequested OnThrowableWeaponInventoryUpdateRequestedDelegate;
 	FOnThrowableWeaponInventoryCreated OnThrowableWeaponInventoryCreatedDelegate;

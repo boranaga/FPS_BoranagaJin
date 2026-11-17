@@ -18,14 +18,20 @@ public:
     UPROPERTY(SaveGame)
     TArray<FInventorySlotSaveData> ItemInventorySlots;
 
+    //UPROPERTY(SaveGame)
+    //TArray<FInventorySlotSaveData> WeaponInventorySlots;
+
     UPROPERTY(SaveGame)
-    TArray<FInventorySlotSaveData> WeaponInventorySlots;
+    TArray<FInventorySlotSaveData> PrimaryWeaponInventorySlots;
+
+    UPROPERTY(SaveGame)
+    TArray<FInventorySlotSaveData> SecondaryWeaponInventorySlots;
 
     UPROPERTY(SaveGame)
     TArray<FInventorySlotSaveData> ThrowableWeaponInventorySlots;
 
     UPROPERTY(SaveGame)
-    int32 EquippedWeaponIndex = INDEX_NONE;
+    int32 EquippedQuickSlotIndex = INDEX_NONE;
 
     //UPROPERTY(SaveGame, BlueprintReadOnly)
     //FName EquippedWeaponID = NAME_None; //TODO: ±ª¿Ã?
@@ -35,7 +41,7 @@ public:
         PlayerTransform = FTransform::Identity;
         CurrentHealth = 0.0f;
         ItemInventorySlots.Reset();
-        EquippedWeaponIndex = INDEX_NONE;
+        EquippedQuickSlotIndex = INDEX_NONE;
         //EquippedWeaponID = NAME_None;
     }
 };

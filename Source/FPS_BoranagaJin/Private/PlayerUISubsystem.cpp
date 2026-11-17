@@ -403,19 +403,34 @@ void UPlayerUISubsystem::InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> Widge
     RegisterUIWidget(InventoryWidget);
     HideUI(InventoryWidget);
 
-    InventoryWidget->GetItemInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
-    InventoryWidget->GetItemInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
-    InventoryWidget->GetItemInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
-
-    InventoryWidget->GetWeaponInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
-    InventoryWidget->GetWeaponInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
-    InventoryWidget->GetWeaponInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+    //TODO: nullptr 방어 코드
+    if (InventoryWidget->GetItemInventoryUIWidget())
+    {
+        InventoryWidget->GetItemInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
+        InventoryWidget->GetItemInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
+        InventoryWidget->GetItemInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+    }
+    if (InventoryWidget->GetPrimaryWeaponInventoryUIWidget())
+    {
+        InventoryWidget->GetPrimaryWeaponInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
+        InventoryWidget->GetPrimaryWeaponInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
+        InventoryWidget->GetPrimaryWeaponInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+    }
+    if (InventoryWidget->GetSecondaryWeaponInventoryUIWidget())
+    {
+        InventoryWidget->GetSecondaryWeaponInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
+        InventoryWidget->GetSecondaryWeaponInventoryUIWidget()->OnSwapInventorySlotsRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestSwapInventorySlots);
+        InventoryWidget->GetSecondaryWeaponInventoryUIWidget()->OnUseInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestUseInventorySlot);
+    }
 
     CharacterPlayer->OnInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreateItemInventorySlots);
     CharacterPlayer->OnInventoryUpdatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdateItemInventorySlots);
 
-    CharacterPlayer->OnWeaponInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreateWeaponInventorySlots);
-    CharacterPlayer->OnWeaponInventoryUpdatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdateWeaponInventorySlots);
+    CharacterPlayer->OnPrimaryWeaponInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreatePrimaryWeaponInventorySlots);
+    CharacterPlayer->OnPrimaryWeaponInventoryUpdated.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdatePrimaryWeaponInventorySlots);
+
+    CharacterPlayer->OnSecondaryWeaponInventoryCreatedDelegate.AddUObject(InventoryWidget, &UPlayerDisplayWidget::CreateSecondaryWeaponInventorySlots);
+    CharacterPlayer->OnSecondaryWeaponInventoryUpdated.AddUObject(InventoryWidget, &UPlayerDisplayWidget::UpdateSecondaryWeaponInventorySlots);
 }
 
 void UPlayerUISubsystem::InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass)

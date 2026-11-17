@@ -17,6 +17,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponPickedUp, EWeaponName, WeaponName);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSwitched, int32, PrevIndex, int32, NewIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillWeaponEquipped, class AWeapon*, NewSkillWeapon);
+//DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponCategoryInventoryUpdated, const TArray<FInventorySlot>&);
 
 //DECLARE_MULTICAST_DELEGATE(FOnQuickSlotInventoryChanged);
 //DECLARE_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotSelectionChanged, int32, int32);
@@ -61,11 +62,23 @@ public:
 	bool WriteInventorySaveData(TArray<FInventorySlotSaveData>& OutSaveData, EInventoryName inventoryname) const;
 	bool RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName inventoryname);
 	//TODO: EquipdedFlashLight에 대한 처리
-	void RestoreEquippedWeapon(int32 WeaponIndex);
+	void RestoreEquippedQuickSlot(int32 QuickSlotIndex);
 private:
 	AItem* CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData);
 	void ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory);
 	void NotifyInventoryRestored();
+	//bool RestoreLegacyWeaponInventory(const TArray<FInventorySlotSaveData>& SaveData);
+	//void RefreshLegacyWeaponInventoryView();
+	void NotifyWeaponInventoriesChanged();
+	TArray<FInventorySlot>* GetWeaponInventoryForType(EQuickSlotType SlotType);
+	const TArray<FInventorySlot>* GetWeaponInventoryForType(EQuickSlotType SlotType) const;
+	bool FindOwnedWeapon(EItemName ItemName, AWeapon*& OutWeapon, EInventoryName& OutInventory, int32& OutIndex) const;
+
+	//bool ResolveLegacyWeaponIndex(int32 LegacyIndex, EInventoryName& OutInventory, int32& OutLocalIndex) const;
+
+	void RefreshCurrentWeaponIndex();
+	bool ResolveInventoryName(FName Name, EInventoryName& OutType) const;
+
 #pragma endregion
 #pragma region InputAction 
 private:
@@ -98,20 +111,33 @@ private:
 protected:
 	UPROPERTY(EditAnywhere)
 	int32 MaxItemSlotsCount = 10;
-	UPROPERTY(EditAnywhere)
-	int32 MaxWeaponSlotsCount = 2;
+	// Distinct weapon inventories: two primary firearms and one sidearm.
+	UPROPERTY(EditAnywhere, Category = "Inventory|Weapons", meta = (ClampMin = "2"))
+	int32 MaxPrimaryWeaponSlotsCount = 2;
+
+	UPROPERTY(EditAnywhere, Category = "Inventory|Weapons", meta = (ClampMin = "1"))
+	int32 MaxSecondaryWeaponSlotsCount = 1;
 	UPROPERTY(EditAnywhere)
 	int32 MaxThrowableWeaponSlotsCount = 3;
 
 	UPROPERTY()
 	TArray<FInventorySlot> ItemInventory;
 	UPROPERTY()
-	TArray<FInventorySlot> WeaponInventory;
+	TArray<FInventorySlot> PrimaryWeaponInventory;
+
+	UPROPERTY()
+	TArray<FInventorySlot> SecondaryWeaponInventory;
+
+	//// Legacy-only flattened, read-only mirror. Never store new weapon instances here.
+	//UPROPERTY(Transient)
+	//TArray<FInventorySlot> LegacyWeaponInventoryView;
+
+	//// Maps indices from a pre-split Weapon save to the new flattened indices.
+	//TMap<int32, int32> LegacyRestoredWeaponIndexMap;
+
 	UPROPERTY()
 	TArray<FInventorySlot> ThrowableWeaponInventory;
 
-	UPROPERTY()
-	TArray<FInventorySlot> ItemQuickSlotInventory;
 
 	FTimerHandle InitInventoryUITimerHandle;
 public:
@@ -168,9 +194,6 @@ protected:
 	TMap<EWeaponName, bool> OwnedWeapons;
 public:
 	TMap<EWeaponName, bool> GetOwnerShipMap() const { return OwnedWeapons; }
-protected:
-	void LoadWSCData();
-	void SaveInventory();
 #pragma endregion
 #pragma region Zoom
 protected:
@@ -213,26 +236,26 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
 	AItem* NextItem = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-	int32 CurrWeaponIdx = 0;
+	int32 CurrWeaponIdx = INDEX_NONE;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	EInventoryName CurrWeaponInventory = EInventoryName::PrimaryWeapon;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	int32 CurrItemIdx = 0;
 public:
 	AWeapon* GetCurrentWeapon() { return CurrWeapon; }
-	int32 GetCurrentWeaponIndex() const { return CurrWeaponIdx; }
+	// Backward compatible flattened index (primary 0..N-1, secondary N..).
+	int32 GetCurrentWeaponIndex() const;
+	int32 GetCurrentWeaponLocalIndex() const { return CurrWeaponIdx; }
+	EInventoryName GetCurrentWeaponInventoryName() const { return CurrWeaponInventory; }
 
-	int32 GetWeaponNum() { return WeaponInventory.Num(); }
+	int32 GetWeaponNum() const { return PrimaryWeaponInventory.Num() + SecondaryWeaponInventory.Num(); }
+	int32 GetPrimaryWeaponNum() const { return PrimaryWeaponInventory.Num(); }
+	int32 GetSecondaryWeaponNum() const { return SecondaryWeaponInventory.Num(); }
 	bool IsCurrentSkillWeaponTargeting();
 	EWeaponStateType GetCurrWeaponStateType() const;
 
-	//void SwitchToPreviousWeapon();
-	//void SwitchToNextWeapon();
-	//void SwitchToIndex(int32 idx); // Legacy
-
-	//-------------------------------------
 	void SwitchToNextItem();
-
-	//void ChangeWeapon(int32 WeaponIndex);
 #pragma endregion
 #pragma region ThrowableWeaponInventory
 protected:
@@ -260,6 +283,11 @@ public:
 #pragma region QuickSlotInventory
 public:
 	static constexpr int32 QuickSlotCount = 5;
+
+	// Native notifications for per-category UI widgets. Existing PlayerOwner
+	// OnWeaponInventoryUpdatedDelegate still receives the flattened legacy view.
+	//FOnWeaponCategoryInventoryUpdated OnPrimaryWeaponInventoryUpdated;
+	//FOnWeaponCategoryInventoryUpdated OnSecondaryWeaponInventoryUpdated;
 
 	//FOnQuickSlotInventoryChanged OnQuickSlotInventoryChanged;
 	//FOnQuickSlotSelectionChanged OnQuickSlotSelectionChanged;
@@ -331,7 +359,7 @@ protected:
 	bool IsItemInSourceInventory(EInventoryName InventoryName, const AItem* Item, int32& OutSlotIndex) const;
 	bool IsItemInQuickSlots(const AItem* Item, int32& OutSlotIndex) const;
 
-	bool IsQuickSlotCompatible(int32 QuickSlotIndex, EInventoryName SourceInventory, const AItem* Item) const;
+	bool IsQuickSlotCompatible(int32 QuickSlotIndex, EInventoryName SourceInventory, AItem* Item) const;
 	bool IsQuickSlotSelectable(int32 QuickSlotIndex) const;
 
 	bool RequestQuickSlotEquip(AItem* Item);

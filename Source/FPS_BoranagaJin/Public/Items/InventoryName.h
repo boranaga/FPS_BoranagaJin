@@ -10,7 +10,9 @@ UENUM(BlueprintType)
 enum class EInventoryName : uint8
 {
 	Item UMETA(DisplayName = "Itme"),
-	Weapon UMETA(DisplayName = "Weapon"),
+	//Weapon UMETA(DisplayName = "Weapon"),
+	PrimaryWeapon UMETA(DisplayName = "Primary Weapon"),
+	SecondaryWeapon UMETA(DisplayName = "Secondary Weapon"),
 	ThrowableWeapon UMETA(DisplayName = "ThrowableWeapon")
 };
 ENUM_RANGE_BY_FIRST_AND_LAST(EInventoryName, EInventoryName::Item, EInventoryName::ThrowableWeapon);

@@ -17,7 +17,8 @@ public:
 	virtual void NativeConstruct() override;
 	virtual EUIType GetUIType() const { return EUIType::Inventory; }
 	UInventoryUIWidget* GetItemInventoryUIWidget() { return ItemInventoryUIWidget; }
-	UInventoryUIWidget* GetWeaponInventoryUIWidget() { return WeaponInventoryUIWidget; }
+	UInventoryUIWidget* GetPrimaryWeaponInventoryUIWidget() { return PrimaryWeaponInventoryUIWidget; }
+	UInventoryUIWidget* GetSecondaryWeaponInventoryUIWidget() { return SecondaryWeaponInventoryUIWidget; }
 public:
 	void OpenInventory();
 	void CloseInventory();
@@ -31,16 +32,24 @@ public:
 	UFUNCTION()
 	void UpdateItemInventorySlots(const TArray<FInventorySlot>& Inventory);
 	UFUNCTION()
-	void CreateWeaponInventorySlots(int32 InventorySlotCount);
+	void CreatePrimaryWeaponInventorySlots(int32 InventorySlotCount);
 	UFUNCTION()
-	void UpdateWeaponInventorySlots(const TArray<FInventorySlot>& Inventory);
+	void UpdatePrimaryWeaponInventorySlots(const TArray<FInventorySlot>& Inventory);
+	UFUNCTION()
+	void CreateSecondaryWeaponInventorySlots(int32 InventorySlotCount);
+	UFUNCTION()
+	void UpdateSecondaryWeaponInventorySlots(const TArray<FInventorySlot>& Inventory);
 protected:
 	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "ItemInventoryUIWidget")
 	TSubclassOf<UInventoryUIWidget> ItemInventoryUIWidgetClass;
 	UPROPERTY(meta = (BindWidget))
 	UInventoryUIWidget* ItemInventoryUIWidget = nullptr;
-	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "WeaponInventoryUIWidget")
-	TSubclassOf<UInventoryUIWidget> WeaponInventoryUIWidgetClass;
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "PrimaryWeaponInventoryUIWidget")
+	TSubclassOf<UInventoryUIWidget> PrimaryWeaponInventoryUIWidgetClass;
 	UPROPERTY(meta = (BindWidget))
-	UInventoryUIWidget* WeaponInventoryUIWidget = nullptr;
+	UInventoryUIWidget* PrimaryWeaponInventoryUIWidget = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintreadWrite, Category = "SecondaryWeaponInventoryUIWidget")
+	TSubclassOf<UInventoryUIWidget> SecondaryWeaponInventoryUIWidgetClass;
+	UPROPERTY(meta = (BindWidget))
+	UInventoryUIWidget* SecondaryWeaponInventoryUIWidget = nullptr;
 };

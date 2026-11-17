@@ -19,7 +19,7 @@ public:
 
     // Source inventory.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    EInventoryName SourceInventory = EInventoryName::Weapon;
+    EInventoryName SourceInventory = EInventoryName::PrimaryWeapon;
 
     // Hint for finding the source slot.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
