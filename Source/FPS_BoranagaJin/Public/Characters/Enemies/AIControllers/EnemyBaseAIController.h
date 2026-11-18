@@ -10,51 +10,59 @@ class UAIPerceptionComponent;
 class UAISenseConfig_Sight;
 class UAISenseConfig_Hearing;
 
+/**
+ * Perception receives ALL sound stimuli. Gameplay semantics live in
+ * EnemyStateMachineComponent, not in the sense or the weapon.
+ */
 UCLASS()
 class FPS_BORANAGAJIN_API AEnemyBaseAIController : public AAIController
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AEnemyBaseAIController();
+    AEnemyBaseAIController();
 
 protected:
-	virtual void BeginPlay() override;
-	virtual void OnPossess(APawn* InPawn) override;
+    virtual void BeginPlay() override;
+    virtual void OnPossess(APawn* InPawn) override;
 
 private:
-	UPROPERTY(VisibleAnywhere, Category = "AI|Perception")
-	UAIPerceptionComponent* AIPerceptionComponent;
+    UPROPERTY(VisibleAnywhere, Category = "AI|Perception")
+    TObjectPtr<UAIPerceptionComponent> AIPerceptionComponent;
 
-	UPROPERTY()
-	UAISenseConfig_Sight* SightConfig;
+    UPROPERTY()
+    TObjectPtr<UAISenseConfig_Sight> SightConfig;
 
-	UPROPERTY()
-	TObjectPtr<UAISenseConfig_Hearing> HearingConfig;
+    UPROPERTY()
+    TObjectPtr<UAISenseConfig_Hearing> HearingConfig;
 
-	UFUNCTION()
-	void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
+    UFUNCTION()
+    void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 
-	void HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus);
-	void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
+    void HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus);
+    void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
 
-private:
-	bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
+    bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
+
 protected:
-	UPROPERTY(EditAnywhere, Category = "AI|Movement")
-	float GroundTraceHeight = 300.f;
-	UPROPERTY(EditAnywhere, Category = "AI|Movement")
-	float GroundTraceDepth = 500.f;
-	UPROPERTY(EditAnywhere, Category = "AI|Movement")
-	FVector NavProjectionExtent = FVector(100.f, 100.f, 300.f);
+    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    float GroundTraceHeight = 300.f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    float GroundTraceDepth = 500.f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    FVector NavProjectionExtent = FVector(100.f, 100.f, 300.f);
+
+    /** Skip AI-owned sources (enemy firearms / enemy thrown projectiles). */
+    UPROPERTY(EditAnywhere, Category = "AI|Perception")
+    bool bIgnoreEnemyGeneratedNoise = true;
 
 public:
-	AEnemyBase* GetEnemyCharacter() const;
-
-	void MoveToTarget(AActor* Target);
-	void MoveToLocationPoint(const FVector& Location, float AcceptanceRadius = 50.f);
-	void MoveToLocationPoint_Upgrade(const FVector& Location, float AcceptanceRadius = 50.f);
-	void StopAIMovement();
-
-	void DisablePerception();
+    AEnemyBase* GetEnemyCharacter() const;
+    void MoveToTarget(AActor* Target);
+    void MoveToLocationPoint(const FVector& Location, float AcceptanceRadius = 50.f);
+    void MoveToLocationPoint_Upgrade(const FVector& Location, float AcceptanceRadius = 50.f);
+    void StopAIMovement();
+    void DisablePerception();
 };

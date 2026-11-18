@@ -14,7 +14,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/DecalComponent.h"
 
-#include "Perception/AISense_Hearing.h"
+#include "Characters/Enemies/EnemyCombatNoiseLibrary.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 
@@ -46,7 +46,9 @@ AProjectile::AProjectile()
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore); //Player
 	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Ignore); //PlayerProjectile
 	CollisionComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Ignore);
+	// Physical bullets must BLOCK world geometry to generate OnHit/impact noise.
+	// The projectile MESH remains collision-disabled; this affects only CollisionComp.
+	CollisionComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 
 	CollisionComp->bReturnMaterialOnMove = true;
 
@@ -453,6 +455,14 @@ bool AProjectile::SearchOverlappedActor(FVector CenterLocation, float SearchRadi
 
 void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	if (bIsActivated && Hit.bBlockingHit && OtherActor != ProjectileOwner && !Cast<APawn>(OtherActor))
+	{
+		FVector TravelDir = ProjectileMovement ? ProjectileMovement->Velocity.GetSafeNormal() : FVector::ZeroVector;
+		if (TravelDir.IsNearlyZero()) { TravelDir = PM_Dir.GetSafeNormal(); }
+		if (TravelDir.IsNearlyZero()) { TravelDir = GetActorForwardVector(); }
+		ReportImpactNoiseToAI(Hit.ImpactPoint, TravelDir);
+	}
+
 	//TODO: Projectile�� �ٸ� actor���� hit ���� ��, OtherActor�� ������ ���� �ٸ� event �߻���Ű��. Interface ����ϱ�
 	if (NumPenetrableObjects > 0)
 	{
@@ -496,7 +506,6 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 				}
 
 
-				ReportNoiseToAI();
 
 				PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
 
@@ -856,6 +865,11 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 
 				if (HitResult.GetComponent()->GetCollisionObjectType() == ECC_WorldStatic)
 				{
+					// Instant HitScan has no future physical OnHit to report this collision.
+					ReportImpactNoiseToAI(HitResult.ImpactPoint, Direction);
+					PlaySoundAtLocationByMaterial(
+						UPhysicalMaterial::DetermineSurfaceType(HitResult.PhysMaterial.Get()),
+						HitResult.ImpactPoint);
 					HitStaticLocations.Add(HitResult.ImpactPoint);
 
 					if (bDebugHitScan) { DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 20.f, 12, FColor::Red, false, 50.f); }
@@ -1337,19 +1351,24 @@ void AProjectile::CheckAndDeactivateIfStuck()
 }
 #pragma endregion
 
-void AProjectile::ReportNoiseToAI()
+void AProjectile::ReportImpactNoiseToAI(const FVector& ImpactLocation, const FVector& IncomingTravelDirection)
 {
-	UAISense_Hearing::ReportNoiseEvent(
-		GetWorld(),
-		GetActorLocation(),
-		ProjectileHitNoiseLoudness,
+	if (!GetWorld() || !bIsActivated || ProjectileHitNoiseLoudness <= 0.f || ProjectileHitNoiseRange <= 0.f)
+	{
+		return;
+	}
+
+	UEnemyCombatNoiseLibrary::ReportProjectileImpact(
 		this,
+		ImpactLocation,
+		IsValid(ProjectileOwner) ? ProjectileOwner : this,
+		IncomingTravelDirection.GetSafeNormal(),
+		ProjectileHitNoiseLoudness,
 		ProjectileHitNoiseRange,
-		TEXT("ProjectileHit")
-	);
+		CurrentRicochetCount == 0);
 }
 
-//// Called when the game starts or when spawned
+// Called when the game starts or when spawned
 //void AProjectile::BeginPlay()
 //{
 //	Super::BeginPlay();

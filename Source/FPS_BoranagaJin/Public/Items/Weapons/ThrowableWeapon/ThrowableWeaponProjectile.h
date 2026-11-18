@@ -358,7 +358,15 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Noise")
 	float ProjectileHitNoiseRange = 3000.f;
 protected:
+	/** Legacy AI Perception cue ONLY for payload activation; not for impact collisions. */
 	void ReportNoiseToAI();
+
+	/** Single event for a contact even if Hit and Bounce callbacks both run. */
+	void ReportImpactNoiseToAI(const FVector& ImpactLocation, const FVector& IncomingTravelDirection);
+
+	/** Reset when a pooled projectile is reused. */
+	float LastReportedImpactNoiseTime = -BIG_NUMBER;
+	FVector LastReportedImpactNoiseLocation = FVector::ZeroVector;
 #pragma endregion
 
 #pragma region PoolableActorInterface

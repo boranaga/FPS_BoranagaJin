@@ -323,7 +323,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Noise")
 	float ProjectileHitNoiseRange = 3000.f;
 protected:
-	void ReportNoiseToAI();
+	/** Reports a physical surface impact at the actual hit point (not projectile actor position). */
+	void ReportImpactNoiseToAI(const FVector& ImpactLocation, const FVector& IncomingTravelDirection);
 #pragma endregion
 };
 

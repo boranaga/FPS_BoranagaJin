@@ -17,6 +17,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Perception/AISense_Hearing.h"
+#include "Characters/Enemies/EnemyCombatNoiseLibrary.h"
 
 AThrowableWeaponProjectile::AThrowableWeaponProjectile()
 {
@@ -137,6 +138,8 @@ void AThrowableWeaponProjectile::InitProjectile(AActor* OwnerOfProjectile, AThro
 
 	bIsActivated = true;
 	bPayloadActivated = false;
+	LastReportedImpactNoiseTime = -BIG_NUMBER;
+	LastReportedImpactNoiseLocation = FVector::ZeroVector;
 	bUseThrowableBehavior = !HitScan;
 	bUseCustomProjectieMovement = false; // Never mix custom Tick movement with built-in movement on a thrown object.
 
@@ -346,6 +349,12 @@ void AThrowableWeaponProjectile::HandleProjectileBounce(const FHitResult& Impact
 {
 	if (!bUseThrowableBehavior || !bIsActivated || bPayloadActivated) return;
 
+	if (ImpactResult.bBlockingHit && ImpactResult.GetActor() != ProjectileOwner)
+	{
+		// ImpactVelocity is the velocity BEFORE the bounce (better than current velocity).
+		ReportImpactNoiseToAI(ImpactResult.ImpactPoint, ImpactVelocity.GetSafeNormal());
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[ThrowableBounce] Bounce: Surface=%s Normal=%s Incoming=%s Outgoing=%s"),
 		*GetNameSafe(ImpactResult.GetActor()),
 		*ImpactResult.ImpactNormal.ToString(),
@@ -356,6 +365,12 @@ void AThrowableWeaponProjectile::HandleProjectileBounce(const FHitResult& Impact
 void AThrowableWeaponProjectile::HandleProjectileStop(const FHitResult& ImpactResult)
 {
 	if (!bUseThrowableBehavior || !bIsActivated || bPayloadActivated) return;
+
+	if (ImpactResult.bBlockingHit && ImpactResult.GetActor() != ProjectileOwner)
+	{
+		// No dependable pre-impact velocity here; avoid inventing a shot direction.
+		ReportImpactNoiseToAI(ImpactResult.ImpactPoint, FVector::ZeroVector);
+	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[ThrowableBounce] Movement stopped: Surface=%s Bounce=%d Sim=%d Velocity=%s"),
 		*GetNameSafe(ImpactResult.GetActor()),
@@ -468,6 +483,16 @@ bool AThrowableWeaponProjectile::SearchOverlappedActor(FVector CenterLocation, f
 
 void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	// Normal bullets and throwable grenades both use the physical collision callback.
+	// The helper suppresses duplicates from ProjectileMovement's bounce/stop delegates.
+	if (bIsActivated && !bPayloadActivated && Hit.bBlockingHit &&
+		OtherActor != ProjectileOwner && !Cast<APawn>(OtherActor))
+	{
+		FVector TravelDir = ProjectileMovement ? ProjectileMovement->Velocity.GetSafeNormal() : FVector::ZeroVector;
+		if (TravelDir.IsNearlyZero()) { TravelDir = PM_Dir.GetSafeNormal(); }
+		if (TravelDir.IsNearlyZero() && !bUseThrowableBehavior) { TravelDir = GetActorForwardVector(); }
+		ReportImpactNoiseToAI(Hit.ImpactPoint, TravelDir);
+	}
 
 	if (bUseThrowableBehavior)
 	{
@@ -485,7 +510,6 @@ void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* Oth
 		if (Hit.bBlockingHit)
 		{
 			PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
-			ReportNoiseToAI();
 		}
 
 		if (bDetonateOnImpact)
@@ -539,8 +563,6 @@ void AThrowableWeaponProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* Oth
 						TrailEffectComponent = nullptr;
 					}
 				}
-
-				ReportNoiseToAI();
 
 				//TODO: SoundSystem�� ����
 				PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()), Hit.ImpactPoint);
@@ -854,6 +876,7 @@ void AThrowableWeaponProjectile::PerformHitScan(FVector StartLocation, FVector T
 
 				if (HitResult.GetComponent()->GetCollisionObjectType() == ECC_WorldStatic)
 				{
+					ReportImpactNoiseToAI(HitResult.ImpactPoint, Direction);
 					HitStaticLocations.Add(HitResult.ImpactPoint);
 
 					if (bDebugHitScan) { DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 20.f, 12, FColor::Red, false, 50.f); }
@@ -1107,18 +1130,46 @@ void AThrowableWeaponProjectile::CheckAndDeactivateIfStuck()
 	}
 }
 
-void AThrowableWeaponProjectile::ReportNoiseToAI()
+void AThrowableWeaponProjectile::ReportImpactNoiseToAI(
+	const FVector& ImpactLocation, const FVector& IncomingTravelDirection)
 {
-	UAISense_Hearing::ReportNoiseEvent(
-		GetWorld(),
-		GetActorLocation(),
-		ProjectileHitNoiseLoudness,
+	if (!GetWorld() || !bIsActivated || bPayloadActivated ||
+		ProjectileHitNoiseLoudness <= 0.f || ProjectileHitNoiseRange <= 0.f)
+	{
+		return;
+	}
+
+	// OnHit and OnProjectileBounce can both fire for the same physical contact.
+	// Do not suppress subsequent bounces at new positions or after the cooldown.
+	const float Now = GetWorld()->GetTimeSeconds();
+	if ((Now - LastReportedImpactNoiseTime) < 0.12f &&
+		FVector::DistSquared(LastReportedImpactNoiseLocation, ImpactLocation) < FMath::Square(100.f))
+	{
+		return;
+	}
+
+	LastReportedImpactNoiseTime = Now;
+	LastReportedImpactNoiseLocation = ImpactLocation;
+	UEnemyCombatNoiseLibrary::ReportProjectileImpact(
 		this,
+		ImpactLocation,
+		IsValid(ProjectileOwner) ? ProjectileOwner : this,
+		IncomingTravelDirection.GetSafeNormal(),
+		ProjectileHitNoiseLoudness,
 		ProjectileHitNoiseRange,
-		TEXT("ProjectileHit")
-	);
+		false);
 }
 
+void AThrowableWeaponProjectile::ReportNoiseToAI()
+{
+	// Payload activation is also emitted through the SAME hearing pipeline.
+	// Use the persistent projectile owner to keep the source valid when the
+	// pooled projectile is returned before perception processes the event.
+	AActor* SoundOwner = IsValid(ProjectileOwner) ? ProjectileOwner : this;
+	UEnemyCombatNoiseLibrary::ReportPayloadActivation(
+		this, GetActorLocation(), SoundOwner,
+		ProjectileHitNoiseLoudness, ProjectileHitNoiseRange);
+}
 
 void AThrowableWeaponProjectile::ApplyProjectileData()
 {
@@ -1595,6 +1646,8 @@ void AThrowableWeaponProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
 
 void AThrowableWeaponProjectile::OnActivateFromPool()
 {
+	LastReportedImpactNoiseTime = -BIG_NUMBER;
+	LastReportedImpactNoiseLocation = FVector::ZeroVector;
 	bIsActiveInPool = true;
 	bIsActivated = false;
 	bPayloadActivated = false;
@@ -1639,6 +1692,8 @@ void AThrowableWeaponProjectile::OnActivateFromPool()
 
 void AThrowableWeaponProjectile::OnDeactivateToPool()
 {
+	LastReportedImpactNoiseTime = -BIG_NUMBER;
+	LastReportedImpactNoiseLocation = FVector::ZeroVector;
 	bIsActiveInPool = false;
 	bIsActivated = false;
 	bPayloadActivated = false;

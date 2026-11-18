@@ -376,8 +376,13 @@ protected:
 	float ReloadingSoundLoudness = 0.5;
 	float ReloadingSoundRange = 800;
 
+	/** Combat noise sent once per actual shot through EnemyCombatNoiseLibrary. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|AI|CombatNoise", meta = (ClampMin = "0.0"))
 	float FiringSoundLoudness = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|AI|CombatNoise", meta = (ClampMin = "0.0"))
 	float FiringSoundRange = 3000.f;
+
 
 	void ReportReloadingSoundToAI();
 	void ReportFiringSoundToAI();

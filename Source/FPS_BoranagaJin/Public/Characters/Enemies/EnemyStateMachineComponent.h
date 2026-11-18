@@ -58,11 +58,11 @@ private:
 
 	float LastAttackTime = -999.f;
 
-// <AudioComponent>
+	// <AudioComponent>
 private:
 	UPROPERTY()
 	TObjectPtr<UEnemyAudioComponent> EnemyAudioComponent;
-// <Stamina and Health>
+	// <Stamina and Health>
 private:
 	UPROPERTY()
 	TObjectPtr<UHealthComponent> HealthComponent;
@@ -76,7 +76,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Enemy|Stamina")
 	float ChaseStaminaCostPerSecond = 5.f;
 
-// <Idle>
+	// <Idle>
 #pragma region Idle
 private:
 	FTimerHandle IdleToPatrolTimerHandle;
@@ -142,6 +142,7 @@ private:
 public:
 	void SetTarget(AActor* NewTarget);
 	void ClearTarget();
+	AActor* GetTrackedTarget() const { return TargetActor.Get(); }
 
 	void OnTargetFound();
 	void OnTargetMissed();
@@ -151,6 +152,15 @@ public:
 
 	bool IsInDefensiveState() const;
 	void NotifyThreatSeen(AActor* ThreatActor);
+
+	// Called by AIController after UAISense_Hearing detects the sound. Never assigns TargetActor.
+	void NotifyGunshotHeard(const FVector& SoundLocation, float Loudness, float MaxRange);
+	void NotifyProjectileImpactHeard(
+		const FVector& ImpactLocation,
+		const FVector& ProjectileTravelDirection,
+		float Loudness,
+		float MaxRange,
+		bool bMayInferShooterFromDirection = true);
 
 
 private:
@@ -167,6 +177,7 @@ private:
 	void UpdateHide(float DeltaTime);
 	void UpdateRecover(float DeltaTime);
 	void UpdateInvestigate(float DeltaTime);
+	void UpdateEvadeImpact(float DeltaTime);
 	void UpdateDead(float DeltaTime);
 
 	bool CanSeeTarget() const;
@@ -196,7 +207,7 @@ private:
 	void Task_MoveToHideLocation();
 	void Task_StopMovement();
 
-// <Patrol Point>
+	// <Patrol Point>
 private:
 	void MoveToCurrentPatrolPoint();
 	void SelectNextPatrolPoint();
@@ -204,7 +215,7 @@ private:
 	bool IsAtCurrentPatrolPoint() const;
 	FVector GetCurrPatrolPointLocation() const;
 
-// <Investigate>
+	// <Investigate>
 private:
 	FVector LastHeardLocation = FVector::ZeroVector;
 
@@ -213,6 +224,14 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Enemy|Investigate")
 	float InvestigateWaitTime = 2.f;
+
+	// Fail-safe for unreachable/invalid investigation destinations.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Investigate", meta = (ClampMin = "1.0"))
+	float InvestigateMaximumTravelTime = 12.f;
+
+	float InvestigateStartTime = 0.f;
+	float LastInvestigateMoveTime = -BIG_NUMBER;
+	FVector LastRequestedInvestigateLocation = FVector::ZeroVector;
 
 	bool bHasHeardLocation = false;
 	bool bIsWaitingAtInvestigateLocation = false;
@@ -227,11 +246,104 @@ private:
 	bool IsAtLastHeardLocation() const;
 	void OnInvestigateWaitFinished();
 
-// <Damaged>
+	// <Combat Hearing> -- all distances are in centimeters.
+private:
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float CombatHearingRange = 3500.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float OccludedSoundMultiplier = 0.55f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MinimumAudibility = 0.06f;
+
+	// At low audibility a larger position error is applied to gunshots.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotMinimumEstimateError = 120.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotMaximumEstimateError = 800.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotMemoryDuration = 10.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotMoveRetargetInterval = 0.65f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotRetargetDistance = 150.f;
+
+	// Optional projectile flight bearing can refine (not reveal) a recent shot.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GunshotImpactFusionWeight = 0.25f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "0.0"))
+	float GunshotImpactFusionMaxCorrection = 700.f;
+
+	/** With only a bullet bearing, hypothesize a point somewhere behind the impact. */
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "100.0"))
+	float ImpactOnlyMinimumSourceEstimateDistance = 1200.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Hearing", meta = (ClampMin = "100.0"))
+	float ImpactOnlyMaximumSourceEstimateDistance = 2200.f;
+
+	FVector EstimatedGunshotLocation = FVector::ZeroVector;
+	bool bHasGunshotMemory = false;
+	float LastGunshotTime = -BIG_NUMBER;
+	float LastGunshotMoveTime = -BIG_NUMBER;
+
+	bool TryHearCombatNoise(const FVector& NoiseLocation, float Loudness,
+		float MaxRange, float& OutAudibility) const;
+	FVector EstimateGunshotLocation(const FVector& NoiseLocation, float Audibility) const;
+	bool HasRecentGunshotMemory() const;
+	void RefineGunshotEstimateFromImpact(const FVector& ImpactLocation,
+		const FVector& ProjectileTravelDirection);
+
+	// <Impact Evasion> -- independent of health-based Flee/Hide/Recover.
+private:
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.0"))
+	float ImpactReactionRadius = 1500.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.0"))
+	float ImpactSafeDistance = 1650.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "100.0"))
+	float ImpactEvadeSearchRadius = 1300.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "1", UIMin = "1"))
+	int32 ImpactEvadeSampleCount = 20;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "10.0"))
+	float ImpactEvadeAcceptanceRadius = 110.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.0"))
+	float ImpactEvadeMinimumTime = 0.8f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.1"))
+	float ImpactEvadeMaximumTime = 6.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.0"))
+	float ImpactNoiseCooldown = 0.35f;
+
+	FVector LastImpactLocation = FVector::ZeroVector;
+	FVector LastImpactTravelDirection = FVector::ZeroVector;
+	FVector ImpactEvadeLocation = FVector::ZeroVector;
+	bool bHasImpactEvadeLocation = false;
+	float ImpactEvadeStartTime = 0.f;
+	float LastImpactTime = -BIG_NUMBER;
+	float LastImpactMoveTime = -BIG_NUMBER;
+	float LastImpactRepathTime = -BIG_NUMBER;
+	EEnemyStateType StateBeforeImpactEvade = EEnemyStateType::Patrol;
+
+	bool FindImpactEvadeLocation(FVector& OutLocation) const;
+	void MoveToImpactEvadeLocation();
+	void FinishImpactEvasion();
+
+	// <Damaged>
 public:
 	void NotifyDamageReceived(float DamageAmount, AActor* DamageInstigator);
 
-// <Flee>
+	// <Flee>
 private:
 	// 이 비율 이하로 체력이 내려가면 도망
 	UPROPERTY(EditAnywhere, Category = "Enemy|Flee")
@@ -248,7 +360,7 @@ private:
 	float AccumulatedBurstDamage = 0.f;
 	float BurstDamageWindowEndTime = 0.f;
 
-// <Hide and Heal>
+	// <Hide and Heal>
 	UPROPERTY(EditAnywhere, Category = "Enemy|Flee")
 	float FleeSearchRadius = 1800.f;
 
@@ -293,7 +405,7 @@ private:
 	// 도망치기 전 상태
 	EEnemyStateType StateBeforeFlee = EEnemyStateType::Patrol;
 
-// <Attack>
+	// <Attack>
 private:
 	void RotateToTarget(float DeltaTime);
 	void RotateToTargetDirection(float DeltaTime, FVector TargetLocation);

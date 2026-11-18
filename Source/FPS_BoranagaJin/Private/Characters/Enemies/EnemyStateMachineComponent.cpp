@@ -9,6 +9,7 @@
 
 #include "EngineUtils.h"
 #include "NavigationSystem.h"
+#include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 #include "UObject/EnumProperty.h"
@@ -51,6 +52,12 @@ void UEnemyStateMachineComponent::TickComponent(
 )
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// Controllers can possess the Enemy after BeginPlay.
+	if (Enemy && !IsValid(AIController))
+	{
+		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
+	}
 	UpdateState(DeltaTime);
 }
 
@@ -271,8 +278,21 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 
 		break;
 
+	case EEnemyStateType::EvadeImpact:
+	{
+		Task_StopMovement();
+		ImpactEvadeStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+		bHasImpactEvadeLocation = FindImpactEvadeLocation(ImpactEvadeLocation);
+		if (bHasImpactEvadeLocation)
+		{
+			MoveToImpactEvadeLocation();
+		}
+		break;
+	}
+
 	case EEnemyStateType::Investigate:
 		UE_LOG(LogTemp, Warning, TEXT("Enter Investigate"));
+		InvestigateStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 		bIsWaitingAtInvestigateLocation = false;
 		MoveToLastHeardLocation();
 		break;
@@ -378,6 +398,10 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 	case EEnemyStateType::Chase:
 		break;
 
+	case EEnemyStateType::EvadeImpact:
+		bHasImpactEvadeLocation = false;
+		break;
+
 	case EEnemyStateType::Investigate:
 		if (GetWorld())
 		{
@@ -425,6 +449,10 @@ void UEnemyStateMachineComponent::UpdateState(float DeltaTime)
 
 	case EEnemyStateType::Chase:
 		UpdateChase(DeltaTime);
+		break;
+
+	case EEnemyStateType::EvadeImpact:
+		UpdateEvadeImpact(DeltaTime);
 		break;
 
 	case EEnemyStateType::Investigate:
@@ -527,8 +555,7 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 {
 	if (!HasTarget() || ShouldLoseTarget())
 	{
-		ClearTarget();
-		SetState(EEnemyStateType::Patrol);
+		StopChase();
 		return;
 	}
 
@@ -1273,7 +1300,27 @@ void UEnemyStateMachineComponent::ReturnToPreviousBehavior()
 void UEnemyStateMachineComponent::StopChase()
 {
 	ClearTarget();
-	SetState(EEnemyStateType::Idle);
+
+	// The sight-loss timer must not cancel an ongoing impact dodge or flee.
+	if (CurrentState != EEnemyStateType::Chase &&
+		CurrentState != EEnemyStateType::Attack)
+	{
+		return;
+	}
+
+	if (HasRecentGunshotMemory())
+	{
+		SetLastHeardLocation(EstimatedGunshotLocation);
+		SetState(EEnemyStateType::Investigate);
+	}
+	else if (bHasHeardLocation)
+	{
+		SetState(EEnemyStateType::Investigate);
+	}
+	else
+	{
+		SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
+	}
 }
 
 void UEnemyStateMachineComponent::Task_MoveToTarget()
@@ -1408,7 +1455,18 @@ void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 
 	if (!bHasHeardLocation)
 	{
-		SetState(EEnemyStateType::Patrol);
+		bHasGunshotMemory = false;
+		SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
+		return;
+	}
+
+	// Fail-safe: don't keep requesting a route forever if a location is unreachable.
+	if (GetWorld() && GetWorld()->GetTimeSeconds() - InvestigateStartTime >
+		InvestigateMaximumTravelTime)
+	{
+		bHasGunshotMemory = false;
+		bHasHeardLocation = false;
+		SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
 		return;
 	}
 
@@ -1437,17 +1495,26 @@ void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 	FVector TargetLocation = Enemy->GetActorLocation() + Enemy->GetVelocity();
 	RotateToTargetDirection(DeltaTime, TargetLocation);
 
-	MoveToLastHeardLocation();
+	// Avoid issuing a new pathfinding request every single Tick.
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastInvestigateMoveTime >= 0.85f ||
+		FVector::DistSquared2D(LastRequestedInvestigateLocation, LastHeardLocation) >=
+		FMath::Square(GunshotRetargetDistance))
+	{
+		MoveToLastHeardLocation();
+	}
 }
 
 void UEnemyStateMachineComponent::MoveToLastHeardLocation()
 {
 	if (!AIController || !bHasHeardLocation) return;
 
-	AIController->MoveToLocationPoint(
+	AIController->MoveToLocationPoint_Upgrade(
 		LastHeardLocation,
 		InvestigateAcceptanceRadius
 	);
+	LastRequestedInvestigateLocation = LastHeardLocation;
+	LastInvestigateMoveTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 }
 
 bool UEnemyStateMachineComponent::IsAtLastHeardLocation() const
@@ -1469,7 +1536,9 @@ void UEnemyStateMachineComponent::OnInvestigateWaitFinished()
 
 	if (CurrentState == EEnemyStateType::Investigate)
 	{
-		SetState(EEnemyStateType::Patrol);
+		// This search is complete; do not restart it on a stale gunshot memory.
+		bHasGunshotMemory = false;
+		SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
 	}
 }
 
@@ -1562,6 +1631,460 @@ void UEnemyStateMachineComponent::RotateToTargetDirection(float DeltaTime, FVect
 	Enemy->SetActorRotation(NewRotation);
 }
 
+// -----------------------------------------------------------------------------
+// Perceived combat noise behavior (range first gated by UAISense_Hearing).
+// -----------------------------------------------------------------------------
+
+bool UEnemyStateMachineComponent::TryHearCombatNoise(
+	const FVector& NoiseLocation, float Loudness, float MaxRange,
+	float& OutAudibility) const
+{
+	OutAudibility = 0.f;
+	if (!IsValid(Enemy) || !GetWorld() || Enemy->IsDead() ||
+		CurrentState == EEnemyStateType::Dead ||
+		Loudness <= 0.f || MaxRange <= 0.f || CombatHearingRange <= 0.f)
+	{
+		return false;
+	}
+
+	// The enemy cannot hear infinitely far away, even if an event is very loud.
+	const float EffectiveRange = FMath::Min(CombatHearingRange, MaxRange * Loudness);
+	const FVector ListenerLocation = Enemy->GetActorLocation() + FVector(0.f, 0.f, 75.f);
+	const float Distance = FVector::Dist(ListenerLocation, NoiseLocation);
+	if (Distance > EffectiveRange)
+	{
+		return false;
+	}
+
+	OutAudibility = FMath::Clamp(1.f - Distance / FMath::Max(EffectiveRange, 1.f), 0.f, 1.f);
+
+	// A wall attenuates the perceived strength; the exact propagation system can
+	// later be replaced with portal/acoustic-propagation based attenuation.
+	FHitResult BlockingHit;
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(EnemyCombatSoundOcclusion), false);
+	QueryParams.AddIgnoredActor(Enemy);
+
+	if (GetWorld()->LineTraceSingleByChannel(
+		BlockingHit, ListenerLocation, NoiseLocation, ECC_Visibility, QueryParams))
+	{
+		// Ignore a blocking hit at the source itself (e.g. a bullet hits the wall).
+		if (FVector::DistSquared(BlockingHit.ImpactPoint, NoiseLocation) > FMath::Square(35.f))
+		{
+			OutAudibility *= FMath::Clamp(OccludedSoundMultiplier, 0.f, 1.f);
+		}
+	}
+
+	return OutAudibility >= MinimumAudibility;
+}
+
+FVector UEnemyStateMachineComponent::EstimateGunshotLocation(
+	const FVector& NoiseLocation, float Audibility) const
+{
+	if (!Enemy) { return NoiseLocation; }
+
+	// Hearing provides bearing + a rough distance, never a perfect actor location.
+	const FVector ListenerLocation = Enemy->GetActorLocation();
+	const FVector ToSource = NoiseLocation - ListenerLocation;
+	const float ApproxDistance = FMath::Max(ToSource.Size2D(), 1.f);
+	const float ErrorRadius = FMath::Lerp(
+		GunshotMaximumEstimateError,
+		GunshotMinimumEstimateError,
+		FMath::Clamp(Audibility, 0.f, 1.f));
+
+	const FVector Direction = FVector(ToSource.X, ToSource.Y, 0.f).GetSafeNormal();
+	if (Direction.IsNearlyZero())
+	{
+		const FVector2D Offset = FMath::RandPointInCircle(ErrorRadius);
+		return NoiseLocation + FVector(Offset.X, Offset.Y, 0.f);
+	}
+
+	// Both distance and bearing are perturbed. Gunshots occluded by walls will
+	// naturally have a larger error because their audibility is lower.
+	const float BearingErrorRadians = FMath::Atan2(ErrorRadius, ApproxDistance);
+	const float Angle = FMath::FRandRange(-BearingErrorRadians, BearingErrorRadians);
+	const FVector NoisyDirection = Direction.RotateAngleAxis(
+		FMath::RadiansToDegrees(Angle), FVector::UpVector);
+	const float NoisyDistance = FMath::Max(80.f,
+		ApproxDistance + FMath::FRandRange(-ErrorRadius, ErrorRadius));
+
+	FVector ApproxLocation = ListenerLocation + NoisyDirection * NoisyDistance;
+	ApproxLocation.Z = NoiseLocation.Z;
+
+	// Guns fire above the floor. Project the estimate onto NavMesh for MoveTo.
+	if (UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld()))
+	{
+		FNavLocation Projected;
+		if (NavSystem->ProjectPointToNavigation(
+			ApproxLocation, Projected, FVector(300.f, 300.f, 450.f)))
+		{
+			return Projected.Location;
+		}
+	}
+	// MoveToLocationPoint_Upgrade handles fallback projection if available.
+	return ApproxLocation;
+}
+
+bool UEnemyStateMachineComponent::HasRecentGunshotMemory() const
+{
+	return bHasGunshotMemory && GetWorld() &&
+		(GetWorld()->GetTimeSeconds() - LastGunshotTime <= GunshotMemoryDuration);
+}
+
+void UEnemyStateMachineComponent::NotifyGunshotHeard(
+	const FVector& SoundLocation, float Loudness, float MaxRange)
+{
+	float Audibility;
+	if (!TryHearCombatNoise(SoundLocation, Loudness, MaxRange, Audibility))
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	const FVector NewEstimate = EstimateGunshotLocation(SoundLocation, Audibility);
+
+	// Consecutive shots refine the current approximate hypothesis. They do not
+	// grant knowledge of Shooter or set TargetActor.
+	if (HasRecentGunshotMemory())
+	{
+		const float BlendAlpha = 0.35f;
+		EstimatedGunshotLocation = FMath::Lerp(EstimatedGunshotLocation, NewEstimate, BlendAlpha);
+	}
+	else
+	{
+		EstimatedGunshotLocation = NewEstimate;
+	}
+	bHasGunshotMemory = true;
+	LastGunshotTime = CurrentTime;
+
+	if (IsDefensiveState() || CurrentState == EEnemyStateType::EvadeImpact ||
+		CurrentState == EEnemyStateType::Dead ||
+		(HasTarget() && (CurrentState == EEnemyStateType::Chase ||
+			CurrentState == EEnemyStateType::Attack)))
+	{
+		return;
+	}
+
+	const FVector PreviousInvestigation = LastHeardLocation;
+	SetLastHeardLocation(EstimatedGunshotLocation);
+
+	if (CurrentState != EEnemyStateType::Investigate)
+	{
+		LastGunshotMoveTime = CurrentTime;
+		SetState(EEnemyStateType::Investigate);
+		return;
+	}
+
+	const bool bDestinationChanged = FVector::DistSquared2D(
+		PreviousInvestigation, LastHeardLocation) >= FMath::Square(GunshotRetargetDistance);
+	const bool bMayRetarget =
+		CurrentTime - LastGunshotMoveTime >= GunshotMoveRetargetInterval;
+
+	if (bIsWaitingAtInvestigateLocation || (bDestinationChanged && bMayRetarget))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(InvestigateWaitTimerHandle);
+		bIsWaitingAtInvestigateLocation = false;
+		LastGunshotMoveTime = CurrentTime;
+		InvestigateStartTime = CurrentTime;
+		MoveToLastHeardLocation();
+	}
+}
+
+void UEnemyStateMachineComponent::RefineGunshotEstimateFromImpact(
+	const FVector& ImpactLocation, const FVector& ProjectileTravelDirection)
+{
+	if (!HasRecentGunshotMemory() ||
+		ProjectileTravelDirection.IsNearlyZero() ||
+		GunshotImpactFusionWeight <= 0.f)
+	{
+		return;
+	}
+
+	// A bullet arriving at the impact point had approximately traveled along
+	// +FlightDirection. This is optional: do NOT supply a bogus direction for
+	// a grenade that has bounced several times, or for an inaudible bullet.
+	const FVector ReverseFlight = -ProjectileTravelDirection.GetSafeNormal2D();
+	const FVector ImpactToShot = EstimatedGunshotLocation - ImpactLocation;
+	const float ProjectionLength = FVector::DotProduct(ImpactToShot, ReverseFlight);
+	if (ProjectionLength <= 0.f) { return; }
+
+	FVector Candidate = ImpactLocation + ReverseFlight * ProjectionLength;
+	Candidate.Z = EstimatedGunshotLocation.Z;
+	const float Correction = FVector::Dist2D(Candidate, EstimatedGunshotLocation);
+	if (Correction > GunshotImpactFusionMaxCorrection) { return; }
+
+	// Only correct the lateral estimate; keep distance uncertainty. Never
+	// assign TargetActor or otherwise imply direct visual confirmation.
+	EstimatedGunshotLocation = FMath::Lerp(
+		EstimatedGunshotLocation, Candidate,
+		FMath::Clamp(GunshotImpactFusionWeight, 0.f, 1.f));
+}
+
+void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
+	const FVector& ImpactLocation,
+	const FVector& ProjectileTravelDirection,
+	float Loudness,
+	float MaxRange,
+	bool bMayInferShooterFromDirection)
+{
+	float Audibility = 0.f;
+	if (!TryHearCombatNoise(ImpactLocation, Loudness, MaxRange, Audibility) ||
+		!Enemy || IsDefensiveState())
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastImpactTime < ImpactNoiseCooldown &&
+		FVector::DistSquared2D(ImpactLocation, LastImpactLocation) < FMath::Square(300.f))
+	{
+		return; // Ignore repeated collision callbacks / same surface impact.
+	}
+
+	LastImpactLocation = ImpactLocation;
+	LastImpactTravelDirection = ProjectileTravelDirection.GetSafeNormal2D();
+	LastImpactTime = CurrentTime;
+
+	// Travel direction is useful ONLY for an unbounced bullet. In particular,
+	// grenade bounce direction is never used as the original thrower's bearing.
+	if (bMayInferShooterFromDirection && !LastImpactTravelDirection.IsNearlyZero())
+	{
+		if (HasRecentGunshotMemory())
+		{
+			RefineGunshotEstimateFromImpact(ImpactLocation, LastImpactTravelDirection);
+		}
+		else
+		{
+			// Hearing the hit alone cannot reveal distance to the shooter:
+			// choose an uncertain point along the reverse trajectory, not the
+			// exact owner actor position (which the stimulus might expose).
+			const float MinEstimate = FMath::Max(100.f, ImpactOnlyMinimumSourceEstimateDistance);
+			const float MaxEstimate = FMath::Max(MinEstimate, ImpactOnlyMaximumSourceEstimateDistance);
+			const float GuessDistance = FMath::FRandRange(MinEstimate, MaxEstimate);
+			const FVector GuessedSource = ImpactLocation - LastImpactTravelDirection * GuessDistance;
+			EstimatedGunshotLocation = EstimateGunshotLocation(GuessedSource, Audibility);
+			bHasGunshotMemory = true;
+		}
+		LastGunshotTime = CurrentTime;
+
+		if (CurrentState == EEnemyStateType::Investigate)
+		{
+			SetLastHeardLocation(EstimatedGunshotLocation);
+		}
+		else if (CurrentState == EEnemyStateType::Idle ||
+			CurrentState == EEnemyStateType::Patrol ||
+			CurrentState == EEnemyStateType::TrackBlood)
+		{
+			SetLastHeardLocation(EstimatedGunshotLocation);
+		}
+	}
+
+	// A distant impact may refine an investigation but is NOT a reason to dodge.
+	const float Distance = FVector::Dist2D(Enemy->GetActorLocation(), ImpactLocation);
+	if (Distance > ImpactReactionRadius)
+	{
+		if (bHasGunshotMemory &&
+			(CurrentState == EEnemyStateType::Idle ||
+				CurrentState == EEnemyStateType::Patrol ||
+				CurrentState == EEnemyStateType::TrackBlood))
+		{
+			SetState(EEnemyStateType::Investigate);
+		}
+		return;
+	}
+
+	if (CurrentState == EEnemyStateType::EvadeImpact)
+	{
+		ImpactEvadeStartTime = CurrentTime;
+		bHasImpactEvadeLocation = FindImpactEvadeLocation(ImpactEvadeLocation);
+		if (bHasImpactEvadeLocation) MoveToImpactEvadeLocation();
+		return;
+	}
+
+	StateBeforeImpactEvade = CurrentState;
+	SetState(EEnemyStateType::EvadeImpact);
+}
+
+bool UEnemyStateMachineComponent::FindImpactEvadeLocation(FVector& OutLocation) const
+{
+	if (!Enemy || !GetWorld()) { return false; }
+	UNavigationSystemV1* Navigation = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (!Navigation) { return false; }
+
+	const FVector EnemyLocation = Enemy->GetActorLocation();
+	const float CurrentDistanceFromImpact = FVector::Dist2D(EnemyLocation, LastImpactLocation);
+	FVector Away = EnemyLocation - LastImpactLocation;
+	Away.Z = 0.f;
+
+	if (!Away.Normalize())
+	{
+		// Enemy is virtually on the impact: dodge perpendicular to the
+		// incoming projectile direction if available.
+		Away = FVector::CrossProduct(LastImpactTravelDirection, FVector::UpVector);
+		if (Away.IsNearlyZero())
+		{
+			Away = Enemy->GetActorRightVector();
+		}
+		Away.Z = 0.f;
+		Away.Normalize();
+	}
+
+	bool bFound = false;
+	float BestScore = -BIG_NUMBER;
+	FVector BestCandidate = FVector::ZeroVector;
+
+	// Random reachable points are generated from the ENEMY's navmesh island,
+	// rather than merely projecting a potentially unreachable desired point.
+	for (int32 Index = 0; Index < FMath::Max(1, ImpactEvadeSampleCount); ++Index)
+	{
+		FNavLocation Candidate;
+		if (!Navigation->GetRandomReachablePointInRadius(
+			EnemyLocation, ImpactEvadeSearchRadius, Candidate))
+		{
+			continue;
+		}
+
+		const FVector Position = Candidate.Location;
+		const float DistanceFromImpact = FVector::Dist2D(Position, LastImpactLocation);
+		if (DistanceFromImpact <= CurrentDistanceFromImpact + 80.f)
+		{
+			continue;
+		}
+
+		const FVector ToCandidate = (Position - EnemyLocation).GetSafeNormal2D();
+		const float DirectionAlignment = FVector::DotProduct(ToCandidate, Away);
+		const float TravelDistance = FVector::Dist2D(Position, EnemyLocation);
+		const float SafetyBonus = DistanceFromImpact >= ImpactSafeDistance ? 500.f : 0.f;
+
+		const float Score = DistanceFromImpact * 1.5f
+			+ DirectionAlignment * 300.f
+			- TravelDistance * 0.2f + SafetyBonus;
+
+		if (Score > BestScore)
+		{
+			BestScore = Score;
+			BestCandidate = Position;
+			bFound = true;
+		}
+	}
+
+	if (bFound)
+	{
+		OutLocation = BestCandidate;
+	}
+	return bFound;
+}
+
+void UEnemyStateMachineComponent::MoveToImpactEvadeLocation()
+{
+	if (!Enemy || !bHasImpactEvadeLocation) { return; }
+	if (!IsValid(AIController))
+	{
+		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
+	}
+	if (!AIController) { return; }
+
+	// Reuse the project's existing ground-adjusting movement API.
+	AIController->MoveToLocationPoint_Upgrade(
+		ImpactEvadeLocation, ImpactEvadeAcceptanceRadius);
+	LastImpactMoveTime = GetWorld()->GetTimeSeconds();
+}
+
+void UEnemyStateMachineComponent::UpdateEvadeImpact(float DeltaTime)
+{
+	if (!Enemy || !GetWorld()) { return; }
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	const float ElapsedTime = CurrentTime - ImpactEvadeStartTime;
+	const float DistanceFromImpact = FVector::Dist2D(
+		Enemy->GetActorLocation(), LastImpactLocation);
+
+	if (ElapsedTime >= ImpactEvadeMaximumTime ||
+		(ElapsedTime >= ImpactEvadeMinimumTime &&
+			DistanceFromImpact >= ImpactSafeDistance))
+	{
+		FinishImpactEvasion();
+		return;
+	}
+
+	if (bHasImpactEvadeLocation)
+	{
+		const bool bAtDestination = FVector::DistSquared2D(
+			Enemy->GetActorLocation(), ImpactEvadeLocation) <=
+			FMath::Square(ImpactEvadeAcceptanceRadius);
+
+		if (bAtDestination && CurrentTime - LastImpactRepathTime >= 0.65f)
+		{
+			LastImpactRepathTime = CurrentTime;
+			bHasImpactEvadeLocation = FindImpactEvadeLocation(ImpactEvadeLocation);
+			if (bHasImpactEvadeLocation)
+			{
+				MoveToImpactEvadeLocation();
+			}
+		}
+		else if (!bAtDestination && CurrentTime - LastImpactMoveTime >= 1.0f)
+		{
+			MoveToImpactEvadeLocation();
+		}
+	}
+	else if (CurrentTime - LastImpactRepathTime >= 0.65f)
+	{
+		LastImpactRepathTime = CurrentTime;
+		bHasImpactEvadeLocation = FindImpactEvadeLocation(ImpactEvadeLocation);
+		if (bHasImpactEvadeLocation)
+		{
+			MoveToImpactEvadeLocation();
+		}
+	}
+
+	if (Enemy->GetVelocity().SizeSquared2D() > FMath::Square(15.f))
+	{
+		RotateToTargetDirection(DeltaTime,
+			Enemy->GetActorLocation() + Enemy->GetVelocity());
+	}
+}
+
+void UEnemyStateMachineComponent::FinishImpactEvasion()
+{
+	Task_StopMovement();
+	bHasImpactEvadeLocation = false;
+
+	if (HasTarget())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+
+	// Prefer a previously HEARD gunshot over the impact point; going to the
+	// impact point would directly contradict the requested evasive behavior.
+	if (HasRecentGunshotMemory() &&
+		FVector::Dist2D(EstimatedGunshotLocation, LastImpactLocation) >=
+		ImpactSafeDistance * 0.7f)
+	{
+		SetLastHeardLocation(EstimatedGunshotLocation);
+		SetState(EEnemyStateType::Investigate);
+		return;
+	}
+
+	if (StateBeforeImpactEvade == EEnemyStateType::TrackBlood &&
+		IsBloodStainValid(CurrentBloodStain))
+	{
+		SetState(EEnemyStateType::TrackBlood);
+		return;
+	}
+
+	if (StateBeforeImpactEvade == EEnemyStateType::Investigate &&
+		bHasHeardLocation &&
+		FVector::Dist2D(LastHeardLocation, LastImpactLocation) >=
+		ImpactSafeDistance * 0.7f)
+	{
+		SetState(EEnemyStateType::Investigate);
+		return;
+	}
+
+	bHasGunshotMemory = false;
+	bHasHeardLocation = false;
+	SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
+}
+
 void UEnemyStateMachineComponent::DrawDebug() const
 {
 	if (!Enemy)
@@ -1620,6 +2143,24 @@ void UEnemyStateMachineComponent::DrawDebug() const
 			true
 		);
 	}
+
+	if (HasRecentGunshotMemory())
+	{
+		DrawDebugSphere(GetWorld(), EstimatedGunshotLocation, 35.f, 10,
+			FColor::Cyan, false, 0.f);
+	}
+	if (CurrentState == EEnemyStateType::EvadeImpact)
+	{
+		DrawDebugSphere(GetWorld(), LastImpactLocation, 55.f, 12,
+			FColor::Red, false, 0.f);
+		if (bHasImpactEvadeLocation)
+		{
+			DrawDebugSphere(GetWorld(), ImpactEvadeLocation, 45.f, 10,
+				FColor::Green, false, 0.f);
+			DrawDebugLine(GetWorld(), Enemy->GetActorLocation(),
+				ImpactEvadeLocation, FColor::Green, false, 0.f);
+		}
+	}
 }
 
 void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
@@ -1664,7 +2205,7 @@ void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 
 		SetCurrentBloodStain(NextBloodStain);
 
-		AIController->MoveToLocationPoint_Upgrade(CurrentBloodStain->GetActorLocation(),BloodTrackAcceptanceRadius);
+		AIController->MoveToLocationPoint_Upgrade(CurrentBloodStain->GetActorLocation(), BloodTrackAcceptanceRadius);
 
 		return;
 	}

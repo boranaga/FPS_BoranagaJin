@@ -33,6 +33,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Perception/AISense_Hearing.h"
+#include "Characters/Enemies/EnemyCombatNoiseLibrary.h"
 
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
@@ -1754,14 +1755,24 @@ void AWeapon::ReportReloadingSoundToAI()
 
 void AWeapon::ReportFiringSoundToAI()
 {
-	UAISense_Hearing::ReportNoiseEvent(
-		GetWorld(),
-		GetActorLocation(),
-		FiringSoundLoudness,
-		this,
-		FiringSoundRange,
-		TEXT("Firing")
-	);
+	// All four successful fire modes already call this once per shot.
+	// Never report from the pellet loop: a shotgun produces ONE gunshot.
+	if (!GetWorld()) { return; }
+
+	FVector SourceLocation = GetActorLocation();
+	if (IsValid(WeaponMesh) && WeaponMesh->DoesSocketExist(FName(TEXT("Muzzle"))))
+	{
+		SourceLocation = WeaponMesh->GetSocketLocation(FName(TEXT("Muzzle")));
+	}
+	else if (IsValid(MuzzlePoint))
+	{
+		SourceLocation = MuzzlePoint->GetComponentLocation();
+	}
+
+	AActor* Shooter = IsValid(Character) ? static_cast<AActor*>(Character) : this;
+	UEnemyCombatNoiseLibrary::ReportGunshot(
+		this, SourceLocation, Shooter, FiringSoundLoudness, FiringSoundRange);
+
 }
 
 #pragma endregion
