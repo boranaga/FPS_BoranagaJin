@@ -61,6 +61,8 @@ protected:
 public:
     AEnemyBase* GetEnemyCharacter() const;
     void MoveToTarget(AActor* Target);
+    /** Single path request to a validated lateral waypoint (never per Tick). */
+    bool MoveToCombatDodgeLocation(const FVector& Location, float AcceptanceRadius = 95.f);
     void MoveToLocationPoint(const FVector& Location, float AcceptanceRadius = 50.f);
     void MoveToLocationPoint_Upgrade(const FVector& Location, float AcceptanceRadius = 50.f);
     void StopAIMovement();

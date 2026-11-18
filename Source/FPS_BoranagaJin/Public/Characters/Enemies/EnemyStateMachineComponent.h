@@ -48,6 +48,9 @@ private:
 	UPROPERTY()
 	TObjectPtr<AActor> TargetActor;
 
+	// Sight is authoritative. Heard sound never marks a target as visible.
+	bool bTargetCurrentlyVisible = false;
+
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|State")
 	EEnemyStateType CurrentState = EEnemyStateType::Idle;
 
@@ -154,13 +157,15 @@ public:
 	void NotifyThreatSeen(AActor* ThreatActor);
 
 	// Called by AIController after UAISense_Hearing detects the sound. Never assigns TargetActor.
-	void NotifyGunshotHeard(const FVector& SoundLocation, float Loudness, float MaxRange);
+	void NotifyGunshotHeard(const FVector& SoundLocation, float Loudness, float MaxRange,
+		const AActor* NoiseInstigator = nullptr);
 	void NotifyProjectileImpactHeard(
 		const FVector& ImpactLocation,
 		const FVector& ProjectileTravelDirection,
 		float Loudness,
 		float MaxRange,
-		bool bMayInferShooterFromDirection = true);
+		bool bMayInferShooterFromDirection = true,
+		const AActor* NoiseInstigator = nullptr);
 
 
 private:
@@ -338,6 +343,68 @@ private:
 	bool FindImpactEvadeLocation(FVector& OutLocation) const;
 	void MoveToImpactEvadeLocation();
 	void FinishImpactEvasion();
+
+	// <Combat Chase / Zigzag>
+private:
+	// Only used while a player is confirmed by sight AND recent combat sound exists.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge")
+	bool bEnableCombatZigzag = true;
+
+	// How long a gunshot or dangerous impact keeps the enemy maneuvering (seconds).
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.2"))
+	float CombatDodgeThreatMemory = 2.8f;
+
+	// Each sideways waypoint also advances toward the player (centimeters).
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "100.0"))
+	float CombatDodgeForwardStep = 430.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "50.0"))
+	float CombatDodgeLateralStep = 370.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.25"))
+	float CombatDodgeSideSwitchInterval = 0.95f;
+
+	// Prevent rebuilding paths on every Tick / every individual rifle shot.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.2"))
+	float CombatDodgeMinimumRepathInterval = 0.35f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.2"))
+	float CombatDodgeMaximumRepathInterval = 1.15f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "50.0"))
+	float CombatDodgeTargetMoveRepathDistance = 420.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "20.0"))
+	float CombatDodgeWaypointAcceptance = 95.f;
+
+	// At this distance from the last impact, survival has priority over progress.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "50.0"))
+	float CombatDodgeHazardRadius = 620.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.0"))
+	float CombatDodgeImpactAwayBias = 480.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge", meta = (ClampMin = "0.2"))
+	float CombatDodgeImpactMemory = 2.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Combat Dodge")
+	bool bDrawCombatDodgeDebug = true;
+
+	float LastCombatThreatTime = -BIG_NUMBER;
+	float LastCombatDodgePathTime = -BIG_NUMBER;
+	float LastCombatDodgeSideChangeTime = -BIG_NUMBER;
+	int32 CombatDodgeSide = 1;
+	bool bHasCombatDodgeWaypoint = false;
+	bool bForceCombatDodgeRepath = false;
+	FVector CombatDodgeWaypoint = FVector::ZeroVector;
+	FVector CombatDodgeTargetAtPathTime = FVector::ZeroVector;
+
+	void RegisterCombatThreat(bool bUrgent);
+	bool IsCombatDodgeActive() const;
+	bool IsRecentImpactForDodge() const;
+	bool TryFindCombatDodgeWaypoint(FVector& OutWaypoint) const;
+	bool UpdateCombatDodgeChase();
+	void ResetCombatDodgeMovement();
 
 	// <Damaged>
 public:

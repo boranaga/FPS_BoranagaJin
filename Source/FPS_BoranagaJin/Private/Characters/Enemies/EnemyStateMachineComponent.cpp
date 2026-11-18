@@ -9,6 +9,7 @@
 
 #include "EngineUtils.h"
 #include "NavigationSystem.h"
+#include "NavigationPath.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
@@ -182,11 +183,22 @@ void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
 void UEnemyStateMachineComponent::ClearTarget()
 {
 	TargetActor = nullptr;
+	bTargetCurrentlyVisible = false;
+	ResetCombatDodgeMovement();
 }
 
 
 void UEnemyStateMachineComponent::OnTargetFound()
 {
+	const bool bSightJustRegained = !bTargetCurrentlyVisible;
+	bTargetCurrentlyVisible = true;
+	// If sight was regained while escaping an impact, use the same sound
+	// memory to begin lateral movement immediately on resuming Chase.
+	if (bSightJustRegained && IsRecentImpactForDodge() && Enemy &&
+		FVector::Dist2D(Enemy->GetActorLocation(), LastImpactLocation) <= ImpactReactionRadius)
+	{
+		RegisterCombatThreat(true);
+	}
 	FTimerManager& TimerManager = GetWorld()->GetTimerManager();
 	if (TimerManager.IsTimerActive(TargetDurationTimerHandle))
 	{
@@ -196,6 +208,10 @@ void UEnemyStateMachineComponent::OnTargetFound()
 
 void UEnemyStateMachineComponent::OnTargetMissed()
 {
+	bTargetCurrentlyVisible = false;
+	// TargetMemoryDuration remains intact; do not use live Actor coordinates
+	// for new lateral waypoints after sight is lost.
+	bHasCombatDodgeWaypoint = false;
 	TWeakObjectPtr WeakThis = this;
 	GetWorld()->GetTimerManager().SetTimer(TargetDurationTimerHandle, FTimerDelegate::CreateWeakLambda(this, [WeakThis]()
 		{
@@ -235,6 +251,7 @@ void UEnemyStateMachineComponent::NotifyThreatSeen(AActor* ThreatActor)
 	if (ThreatActor)
 	{
 		TargetActor = ThreatActor;
+		bTargetCurrentlyVisible = true;
 	}
 }
 
@@ -263,6 +280,8 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		break;
 
 	case EEnemyStateType::Chase:
+		bHasCombatDodgeWaypoint = false;
+		bForceCombatDodgeRepath = true;
 		UE_LOG(LogTemp, Warning, TEXT("Enter Chase"));
 
 		//FTimerManager& TimerManager = GetWorld()->GetTimerManager();
@@ -396,6 +415,7 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 		break;
 
 	case EEnemyStateType::Chase:
+		ResetCombatDodgeMovement();
 		break;
 
 	case EEnemyStateType::EvadeImpact:
@@ -578,15 +598,26 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 		}
 	}
 
-	if (IsTargetInAttackRange())
+	// Movement plan: first honor the existing melee range, then use
+	// time-limited, navmesh-based lateral waypoints while under fire.
+	const bool bImmediateImpactDanger = IsCombatDodgeActive() && IsRecentImpactForDodge() &&
+		FVector::Dist2D(Enemy->GetActorLocation(), LastImpactLocation) <= CombatDodgeHazardRadius;
+	if (IsTargetInAttackRange() && !bImmediateImpactDanger)
 	{
 		SetState(EEnemyStateType::Attack);
 		return;
 	}
 
-	FVector TargetLocation = Enemy->GetActorLocation() + Enemy->GetVelocity();
-	RotateToTargetDirection(DeltaTime, TargetLocation);
+	const FVector MovementLookPoint = Enemy->GetActorLocation() + Enemy->GetVelocity();
+	RotateToTargetDirection(DeltaTime, MovementLookPoint);
 
+	if (UpdateCombatDodgeChase())
+	{
+		return;
+	}
+
+	// Previous behavior when not seeing the target, when fire stopped, or
+	// if no complete navigable lateral path exists.
 	Task_MoveToTarget();
 }
 
@@ -1731,7 +1762,8 @@ bool UEnemyStateMachineComponent::HasRecentGunshotMemory() const
 }
 
 void UEnemyStateMachineComponent::NotifyGunshotHeard(
-	const FVector& SoundLocation, float Loudness, float MaxRange)
+	const FVector& SoundLocation, float Loudness, float MaxRange,
+	const AActor* NoiseInstigator)
 {
 	float Audibility;
 	if (!TryHearCombatNoise(SoundLocation, Loudness, MaxRange, Audibility))
@@ -1755,6 +1787,13 @@ void UEnemyStateMachineComponent::NotifyGunshotHeard(
 	}
 	bHasGunshotMemory = true;
 	LastGunshotTime = CurrentTime;
+
+	// Hearing alone does not reveal player position. But if sight already
+	// identified the same actor, the heard gunshot signals incoming fire.
+	if (bTargetCurrentlyVisible && HasTarget() && NoiseInstigator == TargetActor.Get())
+	{
+		RegisterCombatThreat(false);
+	}
 
 	if (IsDefensiveState() || CurrentState == EEnemyStateType::EvadeImpact ||
 		CurrentState == EEnemyStateType::Dead ||
@@ -1824,7 +1863,8 @@ void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
 	const FVector& ProjectileTravelDirection,
 	float Loudness,
 	float MaxRange,
-	bool bMayInferShooterFromDirection)
+	bool bMayInferShooterFromDirection,
+	const AActor* NoiseInstigator)
 {
 	float Audibility = 0.f;
 	if (!TryHearCombatNoise(ImpactLocation, Loudness, MaxRange, Audibility) ||
@@ -1880,6 +1920,29 @@ void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
 
 	// A distant impact may refine an investigation but is NOT a reason to dodge.
 	const float Distance = FVector::Dist2D(Enemy->GetActorLocation(), ImpactLocation);
+
+	// Sight-confirmed target: stay in Chase, dodge AWAY from the fresh impact,
+	// and approach the player in a zigzag. Health-based Flee remains higher
+	// priority and is already filtered at the start of this function.
+	if (bTargetCurrentlyVisible && HasTarget() &&
+		NoiseInstigator != Enemy.Get() && Distance <= ImpactReactionRadius &&
+		(CurrentState == EEnemyStateType::Chase ||
+			CurrentState == EEnemyStateType::Attack ||
+			CurrentState == EEnemyStateType::Investigate ||
+			CurrentState == EEnemyStateType::EvadeImpact))
+	{
+		// When the source is identifiable, do not treat a different player's
+		// non-threatening gunshot as the current target's aim. A nearby impact
+		// is nevertheless an immediate positional hazard, whoever fired it.
+		RegisterCombatThreat(true);
+		if (CurrentState != EEnemyStateType::Chase &&
+			(!IsTargetInAttackRange() || Distance <= CombatDodgeHazardRadius))
+		{
+			SetState(EEnemyStateType::Chase);
+		}
+		return;
+	}
+
 	if (Distance > ImpactReactionRadius)
 	{
 		if (bHasGunshotMemory &&
@@ -2085,6 +2148,248 @@ void UEnemyStateMachineComponent::FinishImpactEvasion()
 	SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
 }
 
+// -----------------------------------------------------------------------------
+// Combat movement: zigzag while CHASING a visually confirmed Player.
+// All expensive navigation work happens on a bounded, time-based cadence.
+// -----------------------------------------------------------------------------
+
+void UEnemyStateMachineComponent::RegisterCombatThreat(bool bUrgent)
+{
+	if (!GetWorld() || IsDefensiveState() || CurrentState == EEnemyStateType::Dead)
+	{
+		return;
+	}
+
+	const bool bWasActive = IsCombatDodgeActive();
+	LastCombatThreatTime = GetWorld()->GetTimeSeconds();
+
+	// New attack or nearby impact gets a fresh waypoint; automatic rifle fire
+	// only refreshes memory, it does not force navigation 10+ times per second.
+	if (bUrgent || !bWasActive)
+	{
+		bForceCombatDodgeRepath = true;
+	}
+
+	if (bUrgent && Enemy && HasTarget() && IsRecentImpactForDodge())
+	{
+		const FVector ToTarget = (TargetActor->GetActorLocation() - Enemy->GetActorLocation()).GetSafeNormal2D();
+		const FVector Right(-ToTarget.Y, ToTarget.X, 0.f);
+		const FVector Away = (Enemy->GetActorLocation() - LastImpactLocation).GetSafeNormal2D();
+		const float SideDot = FVector::DotProduct(Away, Right);
+		if (FMath::Abs(SideDot) > 0.15f)
+		{
+			CombatDodgeSide = SideDot >= 0.f ? +1 : -1;
+		}
+		else if (!LastImpactTravelDirection.IsNearlyZero())
+		{
+			// For a near-center impact, move perpendicular to incoming bullets.
+			const FVector Perpendicular(-LastImpactTravelDirection.Y, LastImpactTravelDirection.X, 0.f);
+			CombatDodgeSide = FVector::DotProduct(Perpendicular, Right) >= 0.f ? +1 : -1;
+		}
+		LastCombatDodgeSideChangeTime = GetWorld()->GetTimeSeconds();
+	}
+}
+
+bool UEnemyStateMachineComponent::IsRecentImpactForDodge() const
+{
+	return GetWorld() && (GetWorld()->GetTimeSeconds() - LastImpactTime <= CombatDodgeImpactMemory);
+}
+
+bool UEnemyStateMachineComponent::IsCombatDodgeActive() const
+{
+	return bEnableCombatZigzag && GetWorld() && Enemy && HasTarget() &&
+		bTargetCurrentlyVisible && !IsDefensiveState() &&
+		GetWorld()->GetTimeSeconds() - LastCombatThreatTime <= CombatDodgeThreatMemory;
+}
+
+void UEnemyStateMachineComponent::ResetCombatDodgeMovement()
+{
+	bHasCombatDodgeWaypoint = false;
+	bForceCombatDodgeRepath = false;
+	CombatDodgeWaypoint = FVector::ZeroVector;
+}
+
+bool UEnemyStateMachineComponent::TryFindCombatDodgeWaypoint(FVector& OutWaypoint) const
+{
+	if (!IsValid(Enemy) || !HasTarget() || !GetWorld()) return false;
+	UNavigationSystemV1* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (!Nav) return false;
+
+	const FVector Start = Enemy->GetActorLocation();
+	const FVector TargetLocation = TargetActor->GetActorLocation();
+	const FVector Forward = (TargetLocation - Start).GetSafeNormal2D();
+	if (Forward.IsNearlyZero()) return false;
+	const FVector Right(-Forward.Y, Forward.X, 0.f);
+
+	const float DistanceToTarget = FVector::Dist2D(Start, TargetLocation);
+	const float Advance = FMath::Clamp(
+		DistanceToTarget - Enemy->AttackRange * 0.8f,
+		100.f, CombatDodgeForwardStep);
+	const bool bImpactRecent = IsRecentImpactForDodge();
+	const float ImpactDistance = bImpactRecent
+		? FVector::Dist2D(Start, LastImpactLocation) : BIG_NUMBER;
+	const bool bInsideDanger = bImpactRecent && ImpactDistance < CombatDodgeHazardRadius;
+	const FVector AwayFromImpact = bImpactRecent
+		? (Start - LastImpactLocation).GetSafeNormal2D() : FVector::ZeroVector;
+
+	// Two lateral distances per side; prefer the alternating side, but permit
+	// the other one if the preferred side is blocked or close to an impact.
+	constexpr float WidthScales[] = { 1.0f, 0.65f, 1.30f };
+	float BestScore = -BIG_NUMBER;
+	bool bFound = false;
+
+	for (int32 SideAttempt = 0; SideAttempt < 2; ++SideAttempt)
+	{
+		const int32 Side = SideAttempt == 0 ? CombatDodgeSide : -CombatDodgeSide;
+		for (float WidthScale : WidthScales)
+		{
+			FVector Desired = Start + Forward * Advance +
+				Right * (Side * CombatDodgeLateralStep * WidthScale);
+
+			if (bImpactRecent)
+			{
+				const float ImpactAlpha = FMath::Clamp(
+					1.f - ImpactDistance / FMath::Max(ImpactReactionRadius, 1.f), 0.f, 1.f);
+				Desired += AwayFromImpact * CombatDodgeImpactAwayBias * ImpactAlpha;
+			}
+
+			FNavLocation NavLocation;
+			if (!Nav->ProjectPointToNavigation(Desired, NavLocation, FVector(220.f, 220.f, 350.f)))
+			{
+				continue;
+			}
+
+			const FVector Candidate = NavLocation.Location;
+			const float TravelDistance = FVector::Dist2D(Start, Candidate);
+			if (TravelDistance < CombatDodgeWaypointAcceptance * 1.3f) continue;
+
+			const float CandidateTargetDistance = FVector::Dist2D(Candidate, TargetLocation);
+			const float Progress = DistanceToTarget - CandidateTargetDistance;
+			// Keep approaching the player. The exception is an emergency
+			// dodge when the Enemy is already within the impact danger radius.
+			if (!bInsideDanger && Progress < 55.f) continue;
+			if (bInsideDanger && Progress < -220.f) continue;
+
+			// Projection alone does not guarantee reachable destinations.
+			// Check an actual non-partial NavMesh route before issuing MoveTo.
+			UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(
+				GetWorld(), Start, Candidate, Enemy);
+			if (!IsValid(Path) || !Path->IsValid() || Path->IsPartial()) continue;
+
+			float Score = Progress * 1.5f + (Side == CombatDodgeSide ? 180.f : 0.f)
+				- TravelDistance * 0.1f;
+
+			if (bImpactRecent)
+			{
+				const float CandidateDistanceFromImpact = FVector::Dist2D(Candidate, LastImpactLocation);
+				Score += (CandidateDistanceFromImpact - ImpactDistance) * 1.45f;
+
+				// Inspect all actual nav path segments; a destination that is
+				// safe but whose path walks through impact is NOT desirable.
+				float ClosestPathDistance = BIG_NUMBER;
+				const TArray<FVector>& Points = Path->PathPoints;
+				for (int32 Index = 1; Index < Points.Num(); ++Index)
+				{
+					const FVector Segment = Points[Index] - Points[Index - 1];
+					const FVector ImpactOffset = LastImpactLocation - Points[Index - 1];
+					const FVector2D SegmentXY(Segment.X, Segment.Y);
+					const FVector2D OffsetXY(ImpactOffset.X, ImpactOffset.Y);
+					const float SegLengthSquared = SegmentXY.SizeSquared();
+					const float T = SegLengthSquared > KINDA_SMALL_NUMBER
+						? FMath::Clamp(static_cast<float>(FVector2D::DotProduct(OffsetXY, SegmentXY) / SegLengthSquared), 0.f, 1.f)
+						: 0.f;
+					const FVector Closest = Points[Index - 1] + Segment * T;
+					ClosestPathDistance = FMath::Min(ClosestPathDistance,
+						static_cast<float>(FVector::Dist2D(Closest, LastImpactLocation)));
+				}
+				if (ClosestPathDistance < CombatDodgeHazardRadius)
+				{
+					// When starting inside the hazard every route includes a
+					// dangerous initial segment; penalize instead of rejecting.
+					Score -= (CombatDodgeHazardRadius - ClosestPathDistance) *
+						(bInsideDanger ? 0.45f : 2.0f);
+				}
+
+				// An unbounced bullet's line suggests a likely firing lane.
+				// It is a soft cue, not a perfect/clairvoyant bullet predictor.
+				if (!LastImpactTravelDirection.IsNearlyZero())
+				{
+					const FVector LaneDirection = LastImpactTravelDirection.GetSafeNormal2D();
+					const FVector ImpactToCandidate = Candidate - LastImpactLocation;
+					const float LateralDist = FMath::Abs(
+						FVector::CrossProduct(LaneDirection, ImpactToCandidate).Z);
+					Score += FMath::Min(LateralDist, 700.f) * 0.15f;
+				}
+			}
+
+			if (!bFound || Score > BestScore)
+			{
+				BestScore = Score;
+				OutWaypoint = Candidate;
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
+bool UEnemyStateMachineComponent::UpdateCombatDodgeChase()
+{
+	if (!IsCombatDodgeActive() || !IsValid(AIController))
+	{
+		// If the threat expired, let normal Chase refresh the MoveToActor path.
+		ResetCombatDodgeMovement();
+		return false;
+	}
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	const FVector CurrentLocation = Enemy->GetActorLocation();
+	const bool bReachedWaypoint = bHasCombatDodgeWaypoint &&
+		FVector::DistSquared2D(CurrentLocation, CombatDodgeWaypoint) <=
+		FMath::Square(CombatDodgeWaypointAcceptance);
+	const bool bPlayerMoved = bHasCombatDodgeWaypoint &&
+		FVector::DistSquared2D(TargetActor->GetActorLocation(), CombatDodgeTargetAtPathTime) >=
+		FMath::Square(CombatDodgeTargetMoveRepathDistance);
+	const bool bSideDue = (Now - LastCombatDodgeSideChangeTime >= CombatDodgeSideSwitchInterval);
+	const bool bPathTooOld = Now - LastCombatDodgePathTime >= CombatDodgeMaximumRepathInterval;
+	const bool bNeedWaypoint = !bHasCombatDodgeWaypoint || bReachedWaypoint ||
+		bPlayerMoved || bSideDue || bPathTooOld || bForceCombatDodgeRepath;
+
+	if (bNeedWaypoint &&
+		(Now - LastCombatDodgePathTime >= CombatDodgeMinimumRepathInterval))
+	{
+		if (LastCombatDodgeSideChangeTime < -100000.f)
+		{
+			LastCombatDodgeSideChangeTime = Now; // Keep preferred side on first move.
+		}
+		else if (bSideDue || bReachedWaypoint)
+		{
+			CombatDodgeSide *= -1;
+			LastCombatDodgeSideChangeTime = Now;
+		}
+
+		LastCombatDodgePathTime = Now;
+		bForceCombatDodgeRepath = false;
+
+		FVector NewWaypoint;
+		if (TryFindCombatDodgeWaypoint(NewWaypoint))
+		{
+			CombatDodgeWaypoint = NewWaypoint;
+			CombatDodgeTargetAtPathTime = TargetActor->GetActorLocation();
+			bHasCombatDodgeWaypoint = AIController->MoveToCombatDodgeLocation(
+				CombatDodgeWaypoint, CombatDodgeWaypointAcceptance);
+		}
+		else
+		{
+			bHasCombatDodgeWaypoint = false;
+		}
+	}
+
+	// When we have a valid route, do NOT call MoveToActor every frame;
+	// it would overwrite our lateral waypoint path.
+	return bHasCombatDodgeWaypoint;
+}
+
 void UEnemyStateMachineComponent::DrawDebug() const
 {
 	if (!Enemy)
@@ -2161,6 +2466,22 @@ void UEnemyStateMachineComponent::DrawDebug() const
 				ImpactEvadeLocation, FColor::Green, false, 0.f);
 		}
 	}
+#if ENABLE_DRAW_DEBUG
+	if (bDrawCombatDodgeDebug && GetWorld() && bHasCombatDodgeWaypoint &&
+		CurrentState == EEnemyStateType::Chase && IsCombatDodgeActive())
+	{
+		const FVector From = Enemy->GetActorLocation() + FVector(0.f, 0.f, 35.f);
+		const FVector To = CombatDodgeWaypoint + FVector(0.f, 0.f, 35.f);
+		DrawDebugLine(GetWorld(), From, To, FColor::Cyan, false, 0.f, 0, 3.f);
+		DrawDebugSphere(GetWorld(), To, 32.f, 8, FColor::Cyan, false, 0.f);
+		if (IsRecentImpactForDodge())
+		{
+			DrawDebugSphere(GetWorld(), LastImpactLocation, CombatDodgeHazardRadius,
+				16, FColor::Orange, false, 0.f, 0, 1.f);
+		}
+	}
+#endif
+
 }
 
 void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)

@@ -90,10 +90,9 @@ void AEnemyBaseAIController::HandleSightStimulus(AActor* Actor, const FAIStimulu
         SM->SetTarget(Actor);
         SM->OnTargetFound(); // Cancels any previously scheduled loss-of-sight timer.
 
-        // While dodging a nearby impact, remember the newly seen threat but
-        // finish the immediate safety movement before starting direct chase.
-        if (SM->IsInDefensiveState() ||
-            SM->GetCurrentState() == EEnemyStateType::EvadeImpact)
+        // Health-based Flee/Hide/Recover still takes priority. A recent
+        // impact is handled by zigzag Chase when the player is visible.
+        if (SM->IsInDefensiveState())
         {
             SM->NotifyThreatSeen(Actor);
             return;
@@ -140,19 +139,21 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
         {
         case EEnemyCombatNoiseType::Gunshot:
             // No SetTarget/Chase. We know only an approximate bearing.
-            SM->NotifyGunshotHeard(Event.Location, Event.Loudness, Event.MaxRange);
+            SM->NotifyGunshotHeard(Event.Location, Event.Loudness, Event.MaxRange,
+                Event.Instigator.Get());
             return;
 
         case EEnemyCombatNoiseType::ProjectileImpact:
             SM->NotifyProjectileImpactHeard(
                 Event.Location, Event.TravelDirection, Event.Loudness, Event.MaxRange,
-                Event.bMayInferSourceFromTravel);
+                Event.bMayInferSourceFromTravel, Event.Instigator.Get());
             return;
 
         case EEnemyCombatNoiseType::PayloadActivation:
             // Grenade/flash/smoke activation is a danger cue without a known trajectory.
             SM->NotifyProjectileImpactHeard(
-                Event.Location, FVector::ZeroVector, Event.Loudness, Event.MaxRange, false);
+                Event.Location, FVector::ZeroVector, Event.Loudness, Event.MaxRange,
+                false, Event.Instigator.Get());
             return;
         }
         return;
@@ -162,13 +163,14 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
     // Still NEVER set TargetActor based on a hearing-only stimulus.
     if (Stimulus.Tag == TEXT("Firing"))
     {
-        SM->NotifyGunshotHeard(HeardLocation, Stimulus.Strength, HearingConfig->HearingRange);
+        SM->NotifyGunshotHeard(HeardLocation, Stimulus.Strength, HearingConfig->HearingRange, Actor);
         return;
     }
     if (Stimulus.Tag == TEXT("ProjectileHit"))
     {
         SM->NotifyProjectileImpactHeard(
-            HeardLocation, FVector::ZeroVector, Stimulus.Strength, HearingConfig->HearingRange, false);
+            HeardLocation, FVector::ZeroVector, Stimulus.Strength, HearingConfig->HearingRange,
+            false, Actor);
         return;
     }
 
@@ -188,8 +190,7 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
     }
 }
 
-bool AEnemyBaseAIController::FindGroundNavLocation(
-    const FVector& InputLocation, FVector& OutLocation) const
+bool AEnemyBaseAIController::FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const
 {
     UWorld* World = GetWorld();
     if (!World) return false;
@@ -234,6 +235,23 @@ void AEnemyBaseAIController::MoveToTarget(AActor* Target)
     Request.SetUsePathfinding(true);
     FNavPathSharedPtr Path;
     MoveTo(Request, &Path);
+}
+
+bool AEnemyBaseAIController::MoveToCombatDodgeLocation(
+    const FVector& Location, float AcceptanceRadius)
+{
+    if (!IsValid(GetPawn()) || !GetWorld()) return false;
+
+    FAIMoveRequest Request;
+    Request.SetGoalLocation(Location);
+    Request.SetAcceptanceRadius(FMath::Max(20.f, AcceptanceRadius));
+    Request.SetUsePathfinding(true);
+    Request.SetProjectGoalLocation(false); // StateMachine already projected it.
+    Request.SetAllowPartialPath(false);
+
+    FNavPathSharedPtr Path;
+    const FPathFollowingRequestResult Result = MoveTo(Request, &Path);
+    return Result.Code != EPathFollowingRequestResult::Failed;
 }
 
 void AEnemyBaseAIController::MoveToLocationPoint(const FVector& Location, float AcceptanceRadius)
