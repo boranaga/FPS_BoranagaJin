@@ -178,6 +178,95 @@ bool UEnemyStateMachineComponent::HasReachedIdleLookRotation() const
 //	Enemy->bUseControllerRotationYaw = false;
 //}
 
+bool UEnemyStateMachineComponent::HasRecentLightCue() const
+{
+	return bHasLightCue && GetWorld() &&
+		GetWorld()->GetTimeSeconds() - LastLightCueTime <= LightCueMemoryDuration;
+}
+
+void UEnemyStateMachineComponent::NotifyPlayerLightObserved(
+	const FVector& EstimatedPosition, bool bEmitterDirectlyVisible,
+	const AActor* SourceActor)
+{
+	if (!IsValid(Enemy) || Enemy->IsDead() || !GetWorld() ||
+		IsDefensiveState() || CurrentState == EEnemyStateType::Dead)
+	{
+		return;
+	}
+
+	// A light cue is NOT direct vision of the player: never SetTarget(),
+	// OnTargetFound() or set bTargetCurrentlyVisible from this method.
+	const float Now = GetWorld()->GetTimeSeconds();
+	const FVector PreviousEstimate = LastEstimatedLightSource;
+	const bool bPreviousCueValid = HasRecentLightCue();
+
+	FVector NewEstimate = EstimatedPosition;
+	if (UNavigationSystemV1* Nav = UNavigationSystemV1::GetCurrent(GetWorld()))
+	{
+		FNavLocation Projected;
+		if (Nav->ProjectPointToNavigation(NewEstimate, Projected, FVector(350.f, 350.f, 450.f)))
+		{
+			NewEstimate = Projected.Location;
+		}
+	}
+
+	if (bPreviousCueValid)
+	{
+		// Smooth frequent samples; no knowledge of the player's precise actor position.
+		LastEstimatedLightSource = FMath::Lerp(LastEstimatedLightSource, NewEstimate,
+			bEmitterDirectlyVisible ? 0.5f : 0.25f);
+	}
+	else
+	{
+		LastEstimatedLightSource = NewEstimate;
+	}
+
+	bHasLightCue = true;
+	LastLightCueTime = Now;
+
+	// Combat sound has precedence over a speculative light patch; direct
+	// observation of the emitter is stronger and may refine the search.
+	if (HasRecentGunshotMemory() && !bEmitterDirectlyVisible) return;
+
+	// An active combat, breach, evasion or tracked visual target must not be
+	// interrupted by a light cue. Save the cue for StopChase() if needed.
+	if (HasTarget() || CurrentState == EEnemyStateType::BreachDoor ||
+		CurrentState == EEnemyStateType::EvadeImpact ||
+		CurrentState == EEnemyStateType::Attack ||
+		CurrentState == EEnemyStateType::Chase)
+	{
+		return;
+	}
+
+	if (FVector::Dist2D(Enemy->GetActorLocation(), LastEstimatedLightSource) <=
+		LightCueMinimumMoveDistance)
+	{
+		return;
+	}
+
+	if (CurrentState != EEnemyStateType::Investigate)
+	{
+		SetLastHeardLocation(LastEstimatedLightSource);
+		LastLightCueMoveTime = Now;
+		SetState(EEnemyStateType::Investigate);
+		return;
+	}
+
+	const bool bEstimateMoved = !bPreviousCueValid ||
+		FVector::DistSquared2D(PreviousEstimate, LastEstimatedLightSource) >=
+		FMath::Square(LightCueRetargetDistance);
+
+	if (bEstimateMoved && Now - LastLightCueMoveTime >= LightCueRetargetInterval)
+	{
+		SetLastHeardLocation(LastEstimatedLightSource);
+		LastLightCueMoveTime = Now;
+		InvestigateStartTime = Now;
+		bIsWaitingAtInvestigateLocation = false;
+		GetWorld()->GetTimerManager().ClearTimer(InvestigateWaitTimerHandle);
+		MoveToLastHeardLocation();
+	}
+}
+
 void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
 {
 	// Never transfer the previous target's exact sight memory to a new actor.
@@ -1692,6 +1781,11 @@ void UEnemyStateMachineComponent::StopChase()
 		SetLastHeardLocation(EstimatedGunshotLocation);
 		SetState(EEnemyStateType::Investigate);
 	}
+	else if (HasRecentLightCue())
+	{
+		SetLastHeardLocation(LastEstimatedLightSource);
+		SetState(EEnemyStateType::Investigate);
+	}
 	else if (bHasHeardLocation)
 	{
 		SetState(EEnemyStateType::Investigate);
@@ -1839,9 +1933,12 @@ void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 		return;
 	}
 
-	// An estimated gunshot location may be behind a visibly blocking weak door.
-	// Never open/breach one for an arbitrary footstep or stale memory.
-	if (bAllowGunshotInvestigationDoorBreach && HasRecentGunshotMemory() &&
+	// Only recent combat or visual-light clues authorize an investigation
+	// breach. Ordinary footsteps or stale locations do not.
+	const bool bStrongClueForDoor =
+		(bAllowGunshotInvestigationDoorBreach && HasRecentGunshotMemory()) ||
+		(bAllowLightInvestigationDoorBreach && HasRecentLightCue());
+	if (bStrongClueForDoor &&
 		TryBeginDoorBreach(LastHeardLocation, EEnemyStateType::Investigate)) return;
 
 	// Fail-safe: don't keep requesting a route forever if a location is unreachable.

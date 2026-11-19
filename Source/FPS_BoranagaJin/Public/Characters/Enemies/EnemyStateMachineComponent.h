@@ -149,6 +149,8 @@ public:
 	void SetTarget(AActor* NewTarget);
 	void ClearTarget();
 	AActor* GetTrackedTarget() const { return TargetActor.Get(); }
+	/** Confirmed by UAISense_Sight only; a light cue never sets this flag. */
+	bool IsTargetCurrentlyVisible() const { return bTargetCurrentlyVisible; }
 
 	void OnTargetFound();
 	void OnTargetMissed();
@@ -162,6 +164,12 @@ public:
 	// Called by AIController after UAISense_Hearing detects the sound. Never assigns TargetActor.
 	void NotifyGunshotHeard(const FVector& SoundLocation, float Loudness, float MaxRange,
 		const AActor* NoiseInstigator = nullptr);
+	/** Called by AIController after it has visually observed a player-operated light.
+	 * SourceActor is intentionally not a chase target. */
+	void NotifyPlayerLightObserved(
+		const FVector& EstimatedPosition, bool bEmitterDirectlyVisible,
+		const AActor* SourceActor = nullptr);
+
 	void NotifyProjectileImpactHeard(
 		const FVector& ImpactLocation,
 		const FVector& ProjectileTravelDirection,
@@ -224,6 +232,10 @@ private:
 	// Optional: only when a recent gunshot points to the destination.
 	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
 	bool bAllowGunshotInvestigationDoorBreach = true;
+
+	// An observed illuminated patch can also point toward a weak blocking door.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
+	bool bAllowLightInvestigationDoorBreach = true;
 
 	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "100.0"))
 	float DoorBreachDetectionRadius = 750.f;
@@ -375,6 +387,23 @@ private:
 	bool HasRecentGunshotMemory() const;
 	void RefineGunshotEstimateFromImpact(const FVector& ImpactLocation,
 		const FVector& ProjectileTravelDirection);
+
+	// <Player light perception>: independent of gunshot memory.
+private:
+	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "0.0"))
+	float LightCueMemoryDuration = 7.f;
+	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "0.1"))
+	float LightCueRetargetInterval = 1.0f;
+	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "20.0"))
+	float LightCueRetargetDistance = 160.f;
+	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "0.0"))
+	float LightCueMinimumMoveDistance = 80.f;
+
+	FVector LastEstimatedLightSource = FVector::ZeroVector;
+	bool bHasLightCue = false;
+	float LastLightCueTime = -BIG_NUMBER;
+	float LastLightCueMoveTime = -BIG_NUMBER;
+	bool HasRecentLightCue() const;
 
 	// <Impact Evasion> -- independent of health-based Flee/Hide/Recover.
 private:

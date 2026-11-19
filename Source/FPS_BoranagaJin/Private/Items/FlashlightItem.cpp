@@ -3,6 +3,7 @@
 #include "Items/InventorySystemComponent.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/PlayerCameraComponent.h"
+#include "Characters/Enemies/EnemyLightSourceSubsystem.h"
 
 #include "Components/SpotLightComponent.h"
 #include "EnhancedInputComponent.h"
@@ -56,6 +57,7 @@ void AFlashlightItem::BeginPlay()
 
 void AFlashlightItem::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UnregisterLightForEnemyAI();
 	ResetInputActionBinding();
 	StopZoom();
 
@@ -72,6 +74,7 @@ void AFlashlightItem::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pick
 	//Super::InitItem(NewCharacter, PickUpActor);
 
 	Character = NewCharacter;
+	RegisterLightForEnemyAI();
 	if (bWasInitialized) { return; }
 	bWasInitialized = true;
 	ItemPickUp = PickUpActor;
@@ -127,6 +130,7 @@ void AFlashlightItem::Unequip(ACharacterPlayer* TargetCharacter)
 {
 	// Unequip 시작과 동시에 손전등 전용 입력 및 Zoom을 해제한다.
 	bIsEquipped = false;
+	UnregisterLightForEnemyAI();
 	ResetInputActionBinding();
 	StopZoom();
 
@@ -160,6 +164,7 @@ void AFlashlightItem::OnEquipEnded(ACharacterPlayer* UsingCharacter)
 
 	Character = UsingCharacter;
 	bIsEquipped = true;
+	RegisterLightForEnemyAI();
 
 	// 장착과 전원 상태는 서로 독립적이다.
 	// 장착 완료 시 자동으로 켜지 않고, 좌클릭에서만 ToggleFlashlight()를 호출한다.
@@ -466,6 +471,7 @@ bool AFlashlightItem::TurnOnFlashlight()
 		return false;
 	}
 	bIsFlashlightOn = true;
+	RegisterLightForEnemyAI();
 	StartBatteryDrain();
 
 	if (bIsBroken)
@@ -754,4 +760,28 @@ void AFlashlightItem::UpdateFlicker()
 	SetLightEnabled(bShouldLightBeOn);
 
 	ScheduleNextFlicker();
+}
+// ---- AI Light Perception: no additional Tick or fake sound -------------------
+void AFlashlightItem::RegisterLightForEnemyAI()
+{
+	if (!IsValid(Character) || !IsValid(FlashlightLight)) return;
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyLightSourceSubsystem* Registry = World->GetSubsystem<UEnemyLightSourceSubsystem>())
+		{
+			Registry->RegisterPlayerSpotLight(FlashlightLight, this, Character);
+		}
+	}
+}
+
+void AFlashlightItem::UnregisterLightForEnemyAI()
+{
+	if (!IsValid(FlashlightLight)) return;
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyLightSourceSubsystem* Registry = World->GetSubsystem<UEnemyLightSourceSubsystem>())
+		{
+			Registry->UnregisterPlayerSpotLight(FlashlightLight);
+		}
+	}
 }

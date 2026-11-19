@@ -25,6 +25,8 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void OnPossess(APawn* InPawn) override;
+    virtual void OnUnPossess() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "AI|Perception")
@@ -43,6 +45,48 @@ private:
     void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
 
     bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
+
+    void StartLightObservation();
+    void StopLightObservation();
+    void PollVisiblePlayerLights();
+    bool CanObserveLightPoint(const FVector& EyeLocation,
+        const FVector& Point, const AActor* Emitter, const AActor* Player,
+        const AActor* SurfaceActor = nullptr,
+        const FVector& LitSurfaceNormal = FVector::ZeroVector) const;
+    bool TryObserveSpotLight(const class USpotLightComponent* Light,
+        const AActor* Emitter, const AActor* Player,
+        FVector& OutEstimatedPosition, bool& bOutEmitterDirectlyVisible,
+        float& OutScore) const;
+
+    FTimerHandle LightObservationTimerHandle;
+    TWeakObjectPtr<USpotLightComponent> LastObservedSpotLight;
+    FVector LastSubmittedLightEstimate = FVector::ZeroVector;
+    float LastLightSubmissionTime = -BIG_NUMBER;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.1"))
+    float LightObservationInterval = 0.3f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    float LightSourceDetectionRange = 2400.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    float LightPatchDetectionRange = 2400.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0", ClampMax = "179.0"))
+    float LightObservationHalfFOV = 100.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0"))
+    float MinimumVisibleLightIntensity = 1.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    float LightMaxBeamTraceLength = 2500.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "1", ClampMax = "5"))
+    int32 LightBeamTraceCount = 5;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0"))
+    float LightEstimateLocationError = 130.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.1"))
+    float LightObservationReportCooldown = 0.85f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "20.0"))
+    float LightObservationRetargetDistance = 200.f;
+    UPROPERTY(EditAnywhere, Category = "AI|Light")
+    bool bDetectLightOnSurfaces = true;
+    UPROPERTY(EditAnywhere, Category = "AI|Light")
+    bool bDrawLightObservationDebug = false;
 
 protected:
     UPROPERTY(EditAnywhere, Category = "AI|Movement")

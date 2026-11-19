@@ -80,6 +80,10 @@ public:
 
 private:
 	void SetLightEnabled(bool bEnabled);
+
+	// Registers the actual SpotLightComponent, not a fake hearing cue.
+	void RegisterLightForEnemyAI();
+	void UnregisterLightForEnemyAI();
 #pragma endregion
 
 #pragma region Zoom
