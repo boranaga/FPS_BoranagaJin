@@ -17,7 +17,8 @@ enum class EEnemyStateType : uint8
 	Hide UMETA(DisplayName = "Hide"),
 	Recover UMETA(DisplayName = "Recover"),
 	Dead	UMETA(DisplayName = "Dead"),
-	EvadeImpact UMETA(DisplayName = "EvadeImpact")
+	EvadeImpact UMETA(DisplayName = "EvadeImpact"),
+	BreachDoor UMETA(DisplayName = "BreachDoor")
 };
 
 UCLASS()

@@ -6,6 +6,9 @@
 #include "Characters/StaminaComponent.h"
 #include "Characters/BloodStainActor.h"
 #include "SoundSystem/EnemyAudioComponent.h"
+#include "Objects/DestructibleDoor.h"
+#include "Objects/DestructibleObject.h"
+#include "Components/StaticMeshComponent.h"
 
 #include "EngineUtils.h"
 #include "NavigationSystem.h"
@@ -177,6 +180,12 @@ bool UEnemyStateMachineComponent::HasReachedIdleLookRotation() const
 
 void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
 {
+	// Never transfer the previous target's exact sight memory to a new actor.
+	if (TargetActor.Get() != NewTarget)
+	{
+		bHasLastSeenTargetLocation = false;
+		LastSeenTargetLocation = FVector::ZeroVector;
+	}
 	TargetActor = NewTarget;
 }
 
@@ -192,6 +201,11 @@ void UEnemyStateMachineComponent::OnTargetFound()
 {
 	const bool bSightJustRegained = !bTargetCurrentlyVisible;
 	bTargetCurrentlyVisible = true;
+	if (HasTarget())
+	{
+		LastSeenTargetLocation = TargetActor->GetActorLocation();
+		bHasLastSeenTargetLocation = true;
+	}
 	// If sight was regained while escaping an impact, use the same sound
 	// memory to begin lateral movement immediately on resuming Chase.
 	if (bSightJustRegained && IsRecentImpactForDodge() && Enemy &&
@@ -280,6 +294,7 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		break;
 
 	case EEnemyStateType::Chase:
+		ResetDoorBreachProgress();
 		bHasCombatDodgeWaypoint = false;
 		bForceCombatDodgeRepath = true;
 		UE_LOG(LogTemp, Warning, TEXT("Enter Chase"));
@@ -296,6 +311,15 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		}
 
 		break;
+
+	case EEnemyStateType::BreachDoor:
+	{
+		Task_StopMovement();
+		DoorBreachStartedAt = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+		LastDoorApproachMoveAt = -BIG_NUMBER;
+		bHasDoorBreachApproachPosition = false;
+		break;
+	}
 
 	case EEnemyStateType::EvadeImpact:
 	{
@@ -418,6 +442,11 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 		ResetCombatDodgeMovement();
 		break;
 
+	case EEnemyStateType::BreachDoor:
+		BreachDoorTarget.Reset();
+		bHasDoorBreachApproachPosition = false;
+		break;
+
 	case EEnemyStateType::EvadeImpact:
 		bHasImpactEvadeLocation = false;
 		break;
@@ -469,6 +498,10 @@ void UEnemyStateMachineComponent::UpdateState(float DeltaTime)
 
 	case EEnemyStateType::Chase:
 		UpdateChase(DeltaTime);
+		break;
+
+	case EEnemyStateType::BreachDoor:
+		UpdateBreachDoor(DeltaTime);
 		break;
 
 	case EEnemyStateType::EvadeImpact:
@@ -571,6 +604,292 @@ void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
 	}
 }
 
+
+// -----------------------------------------------------------------------------
+// Door breach (AI knows an obstructing door, NOT the player position through it)
+// -----------------------------------------------------------------------------
+void UEnemyStateMachineComponent::ResetDoorBreachProgress()
+{
+	if (!GetWorld() || !Enemy) return;
+	LastDoorChaseProgressLocation = Enemy->GetActorLocation();
+	LastDoorChaseProgressAt = GetWorld()->GetTimeSeconds();
+}
+
+void UEnemyStateMachineComponent::UpdateDoorChaseMovementProgress()
+{
+	if (!Enemy || !GetWorld()) return;
+	const FVector Here = Enemy->GetActorLocation();
+	if (LastDoorChaseProgressAt < -100000.f ||
+		FVector::DistSquared2D(Here, LastDoorChaseProgressLocation) >=
+		FMath::Square(DoorBreachStallProgressDistance))
+	{
+		LastDoorChaseProgressLocation = Here;
+		LastDoorChaseProgressAt = GetWorld()->GetTimeSeconds();
+	}
+}
+
+bool UEnemyStateMachineComponent::IsDoorChaseMovementStalled() const
+{
+	return IsValid(Enemy) && GetWorld() &&
+		Enemy->GetVelocity().SizeSquared2D() < FMath::Square(35.f) &&
+		GetWorld()->GetTimeSeconds() - LastDoorChaseProgressAt >= DoorBreachStallDuration;
+}
+
+bool UEnemyStateMachineComponent::IsDoorBlockingLineTo(
+	const ADestructibleDoor* Door, const FVector& Goal) const
+{
+	if (!IsValid(Door) || !IsValid(Enemy) || !GetWorld()) return false;
+	FVector Start = Enemy->GetActorLocation() + FVector(0.f, 0.f, 80.f);
+	FVector End = Goal + FVector(0.f, 0.f, 80.f);
+	if (FVector::DistSquared2D(Start, End) < FMath::Square(40.f)) return false;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(EnemyDoorBlockingTrace), false);
+	Params.AddIgnoredActor(Enemy);
+	if (HasTarget()) Params.AddIgnoredActor(TargetActor.Get());
+
+	FHitResult Result;
+	return GetWorld()->LineTraceSingleByChannel(Result, Start, End, ECC_Visibility, Params)
+		&& Result.GetActor() == Door;
+}
+
+bool UEnemyStateMachineComponent::FindDoorBlockingDestination(
+	const FVector& Goal, ADestructibleDoor*& OutDoor) const
+{
+	OutDoor = nullptr;
+	if (!IsValid(Enemy) || !GetWorld()) return false;
+	const FVector Start = Enemy->GetActorLocation() + FVector(0.f, 0.f, 80.f);
+	const FVector End = Goal + FVector(0.f, 0.f, 80.f);
+	if (FVector::DistSquared2D(Start, End) <= FMath::Square(80.f)) return false;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(EnemyDoorCandidateTrace), false);
+	Params.AddIgnoredActor(Enemy);
+	if (HasTarget()) Params.AddIgnoredActor(TargetActor.Get());
+	FHitResult Hit;
+	if (!GetWorld()->LineTraceSingleByChannel(
+		Hit, Start, End, ECC_Visibility, Params)) return false;
+
+	// ADestructibleDoor derives from ADestructibleObject. Recognize the
+	// damageable object first, then apply door-specific breach policy.
+	ADestructibleObject* Obstacle = Cast<ADestructibleObject>(Hit.GetActor());
+	if (!IsValid(Obstacle) || !Obstacle->CanBeDamagedByAI()) return false;
+	ADestructibleDoor* Candidate = Cast<ADestructibleDoor>(Obstacle);
+	if (!IsValid(Candidate) || !Candidate->CanEnemyBreachDoor()) return false;
+	const FVector Surface = Candidate->GetEnemyBreachSurfacePoint(Enemy->GetActorLocation());
+	if (FVector::DistSquared2D(Enemy->GetActorLocation(), Surface) >
+		FMath::Square(DoorBreachDetectionRadius)) return false;
+
+	OutDoor = Candidate;
+	return true;
+}
+
+bool UEnemyStateMachineComponent::IsDoorSignificantObstacle(const FVector& Goal) const
+{
+	if (!IsValid(Enemy) || !GetWorld()) return false;
+	// Prefer a reasonable walking detour over needlessly attacking a door.
+	const FVector Start = Enemy->GetActorLocation();
+	const float Direct = FVector::Dist2D(Start, Goal);
+	if (Direct < 80.f) return false;
+	UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(
+		GetWorld(), Start, Goal, Enemy);
+	if (!IsValid(Path) || !Path->IsValid() || Path->IsPartial() ||
+		Path->PathPoints.Num() < 2)
+	{
+		return true; // no complete NavMesh route to a tracked/investigated goal
+	}
+
+	float RouteLength = 0.f;
+	for (int32 Index = 1; Index < Path->PathPoints.Num(); ++Index)
+	{
+		RouteLength += FVector::Dist2D(Path->PathPoints[Index - 1], Path->PathPoints[Index]);
+	}
+	return RouteLength > Direct * DoorBreachDetourRatio || IsDoorChaseMovementStalled();
+}
+
+bool UEnemyStateMachineComponent::TryBeginDoorBreach(
+	const FVector& Goal, EEnemyStateType ReturnState)
+{
+	if (!bEnableDoorBreach || !Enemy || !GetWorld() ||
+		CurrentState == EEnemyStateType::BreachDoor || IsDefensiveState()) return false;
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastDoorBreachCheckAt < DoorBreachSearchInterval ||
+		Now - LastDoorBreachAbortAt < DoorBreachFailureCooldown) return false;
+	LastDoorBreachCheckAt = Now;
+
+	ADestructibleDoor* Found = nullptr;
+	if (!FindDoorBlockingDestination(Goal, Found) ||
+		!IsDoorSignificantObstacle(Goal)) return false;
+
+	BreachDoorTarget = Found;
+	DoorBreachReturnState = ReturnState;
+	SetState(EEnemyStateType::BreachDoor);
+	return true;
+}
+
+bool UEnemyStateMachineComponent::FindDoorBreachApproachPosition(
+	const ADestructibleDoor* Door, FVector& OutLocation) const
+{
+	if (!IsValid(Door) || !Enemy || !GetWorld()) return false;
+	UNavigationSystemV1* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (!Nav) return false;
+	const FVector Start = Enemy->GetActorLocation();
+	const FVector Surface = Door->GetEnemyBreachSurfacePoint(Start);
+	FVector Away = (Start - Surface).GetSafeNormal2D();
+	if (Away.IsNearlyZero()) Away = (Start - Door->GetActorLocation()).GetSafeNormal2D();
+	if (Away.IsNearlyZero()) Away = Enemy->GetActorForwardVector() * -1.f;
+
+	const float Reach = FMath::Min(DoorBreachAttackReach,
+		FMath::Max(35.f, Enemy->AttackRange));
+	// Try progressively nearer approach points on THIS side of the door.
+	// Only choose a NavMesh location from which melee can actually reach it.
+	const float OffsetScales[] = { 1.f, 0.68f, 0.45f };
+	for (const float Scale : OffsetScales)
+	{
+		const FVector Candidate = Surface + Away * DoorBreachApproachOffset * Scale;
+		FNavLocation Projected;
+		if (!Nav->ProjectPointToNavigation(Candidate, Projected,
+			FVector(140.f, 140.f, 280.f))) continue;
+		// Rejected projections that landed on the far side of the doorway.
+		if (FVector::DotProduct(Projected.Location - Surface, Away) < 5.f) continue;
+		if (FVector::Dist2D(Projected.Location,
+			Door->GetEnemyBreachSurfacePoint(Projected.Location)) > Reach - 10.f)
+			continue;
+
+		UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(
+			GetWorld(), Start, Projected.Location, Enemy);
+		if (!IsValid(Path) || !Path->IsValid() || Path->IsPartial()) continue;
+
+		OutLocation = Projected.Location;
+		return true;
+	}
+	return false;
+}
+
+void UEnemyStateMachineComponent::UpdateBreachDoor(float DeltaTime)
+{
+	if (!Enemy || !GetWorld()) return;
+	ADestructibleDoor* Door = BreachDoorTarget.Get();
+	if (!IsValid(Door) || Door->IsDead() || Door->IsDoorOpen() ||
+		!Door->CanEnemyBreachDoor())
+	{
+		FinishDoorBreach(false);
+		return;
+	}
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - DoorBreachStartedAt >= DoorBreachMaximumDuration)
+	{
+		FinishDoorBreach(true);
+		return;
+	}
+
+	// The door must STILL be the first obstruction toward our last-known
+	// sight position (or the approximate gunshot investigation destination).
+	// Never allow raw interface damage on a door behind some other wall.
+	FVector IntendedGoal = DoorBreachReturnState == EEnemyStateType::Investigate
+		? LastHeardLocation : LastSeenTargetLocation;
+	const bool bHaveIntendedGoal = DoorBreachReturnState == EEnemyStateType::Investigate
+		? bHasHeardLocation : bHasLastSeenTargetLocation;
+	if (bHaveIntendedGoal &&
+		!IsDoorBlockingLineTo(Door,
+			bTargetCurrentlyVisible && HasTarget()
+			? TargetActor->GetActorLocation() : IntendedGoal))
+	{
+		FinishDoorBreach(false);
+		return;
+	}
+
+	const FVector Here = Enemy->GetActorLocation();
+	const FVector Surface = Door->GetEnemyBreachSurfacePoint(Here);
+	const float Distance = FVector::Dist2D(Here, Surface);
+	const float AttackReach = FMath::Min(DoorBreachAttackReach,
+		FMath::Max(35.f, Enemy->AttackRange));
+
+	if (Distance <= AttackReach)
+	{
+		Task_StopMovement();
+		RotateToTargetDirection(DeltaTime, Surface);
+		// CanAttack() requires a Player target in the original implementation;
+		// door damage must use the same cooldown even after sight memory expires.
+		const bool bCooldownReady = Now - LastAttackTime >= Enemy->AttackCooldown;
+		if (bCooldownReady)
+		{
+			if (StaminaComponent && !StaminaComponent->CanConsume(AttackStaminaCost))
+			{
+				FinishDoorBreach(true); // no endless empty attack animation
+				return;
+			}
+			if (StaminaComponent) StaminaComponent->ConsumeStamina(AttackStaminaCost);
+			LastAttackTime = Now;
+			// Uses AEnemyBase's existing montage, melee damage and DamageInterface.
+			Enemy->AttackTarget(Door);
+		}
+		return;
+	}
+
+	// Door remains ahead; move only to a point on our side of the intact mesh.
+	if (Now - LastDoorApproachMoveAt >= DoorBreachMoveRequestInterval)
+	{
+		LastDoorApproachMoveAt = Now;
+		FVector Approach;
+		if (!FindDoorBreachApproachPosition(Door, Approach))
+		{
+			FinishDoorBreach(true);
+			return;
+		}
+		DoorBreachApproachPosition = Approach;
+		bHasDoorBreachApproachPosition = true;
+		if (!IsValid(AIController))
+			AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
+		if (!IsValid(AIController) ||
+			!AIController->MoveToDoorBreachPosition(Approach, DoorBreachApproachAcceptance))
+		{
+			FinishDoorBreach(true);
+			return;
+		}
+	}
+	const FVector FacingPoint = Enemy->GetActorLocation() + Enemy->GetVelocity();
+	RotateToTargetDirection(DeltaTime, FacingPoint);
+
+#if ENABLE_DRAW_DEBUG
+	if (bDrawDoorBreachDebug)
+	{
+		DrawDebugSphere(GetWorld(), Surface, 18.f, 10, FColor::Orange, false, 0.15f);
+		if (bHasDoorBreachApproachPosition)
+			DrawDebugLine(GetWorld(), Here, DoorBreachApproachPosition, FColor::Orange, false, 0.15f, 0, 2.f);
+	}
+#endif
+}
+
+void UEnemyStateMachineComponent::FinishDoorBreach(bool bFailed)
+{
+	if (!GetWorld()) return;
+	if (bFailed) LastDoorBreachAbortAt = GetWorld()->GetTimeSeconds();
+	Task_StopMovement();
+
+	// ExitState(BreachDoor) clears the weak pointer.
+	if (DoorBreachReturnState == EEnemyStateType::Chase && HasTarget())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+
+	// Hearing is not equivalent to an exact player location. If sight has
+	// expired, investigate the last known sight position or earlier sound.
+	if (bHasLastSeenTargetLocation)
+	{
+		SetLastHeardLocation(LastSeenTargetLocation);
+		SetState(EEnemyStateType::Investigate);
+	}
+	else if (bHasHeardLocation)
+	{
+		SetState(EEnemyStateType::Investigate);
+	}
+	else
+	{
+		SetState(PatrolPoints.Num() ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
+	}
+}
+
 void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 {
 	if (!HasTarget() || ShouldLoseTarget())
@@ -596,6 +915,22 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 			SetState(EEnemyStateType::Patrol);
 			return;
 		}
+	}
+
+	// A closed, weakened door may be blocking the chase even when NavMesh
+	// suggests a direct path through it. Detect only the FIRST visible blocker.
+	// Zigzag / attack target only after this obstacle priority is resolved.
+	if (bTargetCurrentlyVisible && HasTarget())
+	{
+		LastSeenTargetLocation = TargetActor->GetActorLocation();
+		bHasLastSeenTargetLocation = true;
+	}
+	UpdateDoorChaseMovementProgress();
+	if (bTargetCurrentlyVisible || bHasLastSeenTargetLocation)
+	{
+		const FVector ObstacleGoal = bTargetCurrentlyVisible
+			? TargetActor->GetActorLocation() : LastSeenTargetLocation;
+		if (TryBeginDoorBreach(ObstacleGoal, EEnemyStateType::Chase)) return;
 	}
 
 	// Movement plan: first honor the existing melee range, then use
@@ -641,6 +976,12 @@ void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 		SetState(EEnemyStateType::Chase);
 		return;
 	}
+
+	// The player can be in melee range but behind a closed door.
+	UpdateDoorChaseMovementProgress();
+	if ((bTargetCurrentlyVisible || bHasLastSeenTargetLocation) && TryBeginDoorBreach(
+		bTargetCurrentlyVisible ? TargetActor->GetActorLocation() : LastSeenTargetLocation,
+		EEnemyStateType::Chase)) return;
 
 	Task_StopMovement();
 	RotateToTarget(DeltaTime);
@@ -1330,6 +1671,13 @@ void UEnemyStateMachineComponent::ReturnToPreviousBehavior()
 
 void UEnemyStateMachineComponent::StopChase()
 {
+	if (CurrentState == EEnemyStateType::BreachDoor)
+	{
+		// Sight memory timed out; stop treating the actor as a live target,
+		// but allow the already-committed door strike to finish.
+		ClearTarget();
+		return;
+	}
 	ClearTarget();
 
 	// The sight-loss timer must not cancel an ongoing impact dodge or flee.
@@ -1490,6 +1838,11 @@ void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 		SetState(PatrolPoints.Num() > 0 ? EEnemyStateType::Patrol : EEnemyStateType::Idle);
 		return;
 	}
+
+	// An estimated gunshot location may be behind a visibly blocking weak door.
+	// Never open/breach one for an arbitrary footstep or stale memory.
+	if (bAllowGunshotInvestigationDoorBreach && HasRecentGunshotMemory() &&
+		TryBeginDoorBreach(LastHeardLocation, EEnemyStateType::Investigate)) return;
 
 	// Fail-safe: don't keep requesting a route forever if a location is unreachable.
 	if (GetWorld() && GetWorld()->GetTimeSeconds() - InvestigateStartTime >
@@ -1796,6 +2149,7 @@ void UEnemyStateMachineComponent::NotifyGunshotHeard(
 	}
 
 	if (IsDefensiveState() || CurrentState == EEnemyStateType::EvadeImpact ||
+		CurrentState == EEnemyStateType::BreachDoor ||
 		CurrentState == EEnemyStateType::Dead ||
 		(HasTarget() && (CurrentState == EEnemyStateType::Chase ||
 			CurrentState == EEnemyStateType::Attack)))
@@ -1920,6 +2274,18 @@ void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
 
 	// A distant impact may refine an investigation but is NOT a reason to dodge.
 	const float Distance = FVector::Dist2D(Enemy->GetActorLocation(), ImpactLocation);
+
+	// Protect door breaching from frequent noise interruptions. Exception:
+	// a dangerous nearby impact still requires immediate evasion.
+	if (CurrentState == EEnemyStateType::BreachDoor)
+	{
+		if (Distance <= FMath::Min(ImpactReactionRadius, CombatDodgeHazardRadius))
+		{
+			StateBeforeImpactEvade = EEnemyStateType::BreachDoor;
+			SetState(EEnemyStateType::EvadeImpact);
+		}
+		return;
+	}
 
 	// Sight-confirmed target: stay in Chase, dodge AWAY from the fresh impact,
 	// and approach the player in a zigzag. Health-based Flee remains higher

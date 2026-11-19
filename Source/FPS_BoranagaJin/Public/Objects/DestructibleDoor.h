@@ -44,6 +44,37 @@ public:
 	bool IsDoorOpen() const;
 	UFUNCTION(BlueprintPure, Category = "Door")
 	bool IsDoorMoving() const;
+
+	/** Only closed, intact, weakened doors can be breached by Enemy AI. */
+	UFUNCTION(BlueprintPure, Category = "Door|Enemy AI")
+	bool CanEnemyBreachDoor() const;
+
+	virtual void RestoreDestructibleObject() override;
+	virtual void OnAfterLoad() override;
+
+	/** Closest surface point of intact mesh, useful with off-center door pivots. */
+	UFUNCTION(BlueprintPure, Category = "Door|Enemy AI")
+	FVector GetEnemyBreachSurfacePoint(const FVector& FromLocation) const;
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Enemy AI")
+	bool bAllowEnemyBreach = true;
+
+	// Absolute remaining durability threshold (health points). Negative disables.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Enemy AI", meta = (ClampMin = "-1.0"))
+	float EnemyBreachMaximumDurability = -1.f;
+
+	// With absolute threshold disabled, fraction of maximum health controls it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Enemy AI", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EnemyBreachMaximumDurabilityFraction = 0.5f;
+
+	// Debris no longer obstructs Pawns or dynamic navigation once door breaks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Enemy AI")
+	bool bClearBrokenDoorPath = true;
+
+	// Preserve Blueprint navigation settings when a destroyed door is restored.
+	bool bInitialIntactNavigationRelevant = true;
+
 protected:
 	virtual void BreakObject(const FVector& HitLocation, const FVector& HitDirection) override;
 

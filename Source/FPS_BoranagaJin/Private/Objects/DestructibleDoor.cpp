@@ -2,6 +2,7 @@
 
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GeometryCollection/GeometryCollectionComponent.h"
 
 ADestructibleDoor::ADestructibleDoor()
 {
@@ -25,6 +26,10 @@ ADestructibleDoor::ADestructibleDoor()
 void ADestructibleDoor::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsValid(IntactMesh))
+	{
+		bInitialIntactNavigationRelevant = IntactMesh->CanEverAffectNavigation();
+	}
 
 	if (!DoorPivot)
 	{
@@ -132,6 +137,60 @@ bool ADestructibleDoor::IsDoorMoving() const
 	return bIsMoving;
 }
 
+bool ADestructibleDoor::CanEnemyBreachDoor() const
+{
+	if (!bAllowEnemyBreach || !CanBeDamagedByAI() || bIsOpen || bIsMoving ||
+		!IsValid(IntactMesh) || !IntactMesh->IsVisible() ||
+		IntactMesh->GetCollisionEnabled() == ECollisionEnabled::NoCollision ||
+		IntactMesh->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Block)
+	{
+		return false;
+	}
+
+	const float Remaining = GetRemainingDurability();
+	const float Maximum = GetMaximumDurability();
+	if (Maximum <= KINDA_SMALL_NUMBER) return false;
+	const float Threshold = EnemyBreachMaximumDurability >= 0.f
+		? EnemyBreachMaximumDurability
+		: Maximum * EnemyBreachMaximumDurabilityFraction;
+	return Remaining <= Threshold;
+}
+
+void ADestructibleDoor::OnAfterLoad()
+{
+	Super::OnAfterLoad();
+	if (bClearBrokenDoorPath && bDestroyed)
+	{
+		if (IsValid(IntactMesh)) IntactMesh->SetCanEverAffectNavigation(false);
+		if (IsValid(BrokenMesh))
+		{
+			BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			BrokenMesh->SetCanEverAffectNavigation(false);
+		}
+		if (IsValid(FracturedMesh))
+		{
+			FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			FracturedMesh->SetCanEverAffectNavigation(false);
+		}
+	}
+}
+
+void ADestructibleDoor::RestoreDestructibleObject()
+{
+	Super::RestoreDestructibleObject();
+	if (bClearBrokenDoorPath && IsValid(IntactMesh))
+		IntactMesh->SetCanEverAffectNavigation(bInitialIntactNavigationRelevant);
+	if (IsValid(BrokenMesh)) BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	if (IsValid(FracturedMesh)) FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+}
+
+FVector ADestructibleDoor::GetEnemyBreachSurfacePoint(const FVector& FromLocation) const
+{
+	return IsValid(IntactMesh)
+		? IntactMesh->Bounds.GetBox().GetClosestPointTo(FromLocation)
+		: GetActorLocation();
+}
+
 void ADestructibleDoor::BreakObject(
 	const FVector& HitLocation,
 	const FVector& HitDirection
@@ -167,6 +226,25 @@ void ADestructibleDoor::BreakObject(
 		HitLocation,
 		HitDirection
 	);
+
+	if (bClearBrokenDoorPath)
+	{
+		// DestructibleObject enables physics on debris after the break.
+		// Allow the character capsule to pass through the doorway, while
+		// fragments may still interact with the environment and each other.
+		if (IsValid(BrokenMesh))
+		{
+			BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			BrokenMesh->SetCanEverAffectNavigation(false);
+		}
+		if (IsValid(FracturedMesh))
+		{
+			FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			FracturedMesh->SetCanEverAffectNavigation(false);
+		}
+		// Dynamic Navigation runtime generation can then update the opening.
+		if (IsValid(IntactMesh)) IntactMesh->SetCanEverAffectNavigation(false);
+	}
 
 
 

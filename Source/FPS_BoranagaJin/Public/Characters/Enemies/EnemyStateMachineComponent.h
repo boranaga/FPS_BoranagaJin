@@ -13,6 +13,7 @@ class UHealthComponent;
 class UStaminaComponent;
 class UEnemyAudioComponent;
 class ABloodStainActor;
+class ADestructibleDoor;
 
 enum class EEnemyIdleLookPhase : uint8
 {
@@ -50,6 +51,8 @@ private:
 
 	// Sight is authoritative. Heard sound never marks a target as visible.
 	bool bTargetCurrentlyVisible = false;
+	FVector LastSeenTargetLocation = FVector::ZeroVector;
+	bool bHasLastSeenTargetLocation = false;
 
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|State")
 	EEnemyStateType CurrentState = EEnemyStateType::Idle;
@@ -178,6 +181,7 @@ private:
 	void UpdatePatrol(float DeltaTime);
 	void UpdateChase(float DeltaTime);
 	void UpdateAttack(float DeltaTime);
+	void UpdateBreachDoor(float DeltaTime);
 	void UpdateFlee(float DeltaTime);
 	void UpdateHide(float DeltaTime);
 	void UpdateRecover(float DeltaTime);
@@ -211,6 +215,74 @@ private:
 	void Task_AttackTarget();
 	void Task_MoveToHideLocation();
 	void Task_StopMovement();
+
+	// <Door Breach: player path obstruction>
+private:
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
+	bool bEnableDoorBreach = true;
+
+	// Optional: only when a recent gunshot points to the destination.
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
+	bool bAllowGunshotInvestigationDoorBreach = true;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "100.0"))
+	float DoorBreachDetectionRadius = 750.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "0.1"))
+	float DoorBreachSearchInterval = 0.45f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "0.1"))
+	float DoorBreachStallDuration = 0.85f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "10.0"))
+	float DoorBreachStallProgressDistance = 45.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "1.0"))
+	float DoorBreachDetourRatio = 1.85f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "20.0"))
+	float DoorBreachAttackReach = 170.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "10.0"))
+	float DoorBreachApproachOffset = 105.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "10.0"))
+	float DoorBreachApproachAcceptance = 65.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "0.1"))
+	float DoorBreachMoveRequestInterval = 0.85f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "1.0"))
+	float DoorBreachMaximumDuration = 12.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "0.0"))
+	float DoorBreachFailureCooldown = 5.f;
+
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
+	bool bDrawDoorBreachDebug = false;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<ADestructibleDoor> BreachDoorTarget;
+
+	EEnemyStateType DoorBreachReturnState = EEnemyStateType::Chase;
+	float DoorBreachStartedAt = -BIG_NUMBER;
+	float LastDoorBreachCheckAt = -BIG_NUMBER;
+	float LastDoorApproachMoveAt = -BIG_NUMBER;
+	float LastDoorBreachAbortAt = -BIG_NUMBER;
+	float LastDoorChaseProgressAt = -BIG_NUMBER;
+	FVector LastDoorChaseProgressLocation = FVector::ZeroVector;
+	FVector DoorBreachApproachPosition = FVector::ZeroVector;
+	bool bHasDoorBreachApproachPosition = false;
+
+	void UpdateDoorChaseMovementProgress();
+	bool IsDoorChaseMovementStalled() const;
+	bool IsDoorBlockingLineTo(const ADestructibleDoor* Door, const FVector& Goal) const;
+	bool FindDoorBlockingDestination(const FVector& Goal, ADestructibleDoor*& OutDoor) const;
+	bool IsDoorSignificantObstacle(const FVector& Goal) const;
+	bool TryBeginDoorBreach(const FVector& Goal, EEnemyStateType ReturnState);
+	bool FindDoorBreachApproachPosition(const ADestructibleDoor* Door, FVector& OutLocation) const;
+	void FinishDoorBreach(bool bFailed);
+	void ResetDoorBreachProgress();
 
 	// <Patrol Point>
 private:

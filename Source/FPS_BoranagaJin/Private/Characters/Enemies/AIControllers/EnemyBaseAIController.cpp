@@ -97,7 +97,12 @@ void AEnemyBaseAIController::HandleSightStimulus(AActor* Actor, const FAIStimulu
             SM->NotifyThreatSeen(Actor);
             return;
         }
-        SM->SetState(EEnemyStateType::Chase);
+        // A visually reacquired target does not interrupt a door breach;
+        // the door state itself checks whether the obstacle is still relevant.
+        if (SM->GetCurrentState() != EEnemyStateType::BreachDoor)
+        {
+            SM->SetState(EEnemyStateType::Chase);
+        }
     }
     else if (SM->GetTrackedTarget() == Actor)
     {
@@ -177,6 +182,7 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
     const EEnemyStateType State = SM->GetCurrentState();
     if (SM->IsInDefensiveState() || State == EEnemyStateType::Dead ||
         State == EEnemyStateType::EvadeImpact ||
+        State == EEnemyStateType::BreachDoor ||
         State == EEnemyStateType::Chase || State == EEnemyStateType::Attack)
     {
         return;
@@ -190,7 +196,8 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
     }
 }
 
-bool AEnemyBaseAIController::FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const
+bool AEnemyBaseAIController::FindGroundNavLocation(
+    const FVector& InputLocation, FVector& OutLocation) const
 {
     UWorld* World = GetWorld();
     if (!World) return false;
@@ -248,6 +255,21 @@ bool AEnemyBaseAIController::MoveToCombatDodgeLocation(
     Request.SetUsePathfinding(true);
     Request.SetProjectGoalLocation(false); // StateMachine already projected it.
     Request.SetAllowPartialPath(false);
+
+    FNavPathSharedPtr Path;
+    const FPathFollowingRequestResult Result = MoveTo(Request, &Path);
+    return Result.Code != EPathFollowingRequestResult::Failed;
+}
+
+bool AEnemyBaseAIController::MoveToDoorBreachPosition(const FVector& Location, float AcceptanceRadius)
+{
+    if (!IsValid(GetPawn()) || !GetWorld()) return false;
+    FAIMoveRequest Request;
+    Request.SetGoalLocation(Location);
+    Request.SetUsePathfinding(true);
+    Request.SetProjectGoalLocation(false); // projected by state machine
+    Request.SetAllowPartialPath(false);
+    Request.SetAcceptanceRadius(FMath::Max(20.f, AcceptanceRadius));
 
     FNavPathSharedPtr Path;
     const FPathFollowingRequestResult Result = MoveTo(Request, &Path);

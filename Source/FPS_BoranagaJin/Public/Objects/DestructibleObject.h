@@ -49,6 +49,8 @@ protected:
 	UPROPERTY(Transient)
 	bool bRuntimeSpawned = false;
 	UPROPERTY(EditAnywhere, SaveGame, Category = "Destructible")
+	// Legacy SaveGame field retained for compatibility. Mirrored to the live
+	// health-based durability after load, damage and restoration.
 	float CurrentDurability = 100.0f;
 #pragma endregion
 protected:
@@ -56,6 +58,20 @@ protected:
 public:
 	virtual float ReceiveDamage(const FDamageParams& DamageData) override;
 	virtual bool IsDead() const;
+
+	// The original damage pipeline reduces CurrentHealth, not CurrentDurability.
+	// Gameplay AI therefore queries this authoritative value.
+	UFUNCTION(BlueprintPure, Category = "Destruction|AI")
+	float GetRemainingDurability() const { return FMath::Max(0.f, CurrentHealth); }
+
+	UFUNCTION(BlueprintPure, Category = "Destruction|AI")
+	float GetMaximumDurability() const { return FMath::Max(0.f, MaxHealth); }
+
+	UFUNCTION(BlueprintPure, Category = "Destruction|AI")
+	bool CanBeDamagedByAI() const
+	{
+		return bIsDestructible && !bDestroyed && CurrentHealth > 0.f;
+	}
 
 	UFUNCTION(BlueprintCallable, Category = "Fire")
 	void Ignite(AActor* FireCauser = nullptr);

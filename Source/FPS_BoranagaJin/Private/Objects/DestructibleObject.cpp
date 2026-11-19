@@ -71,6 +71,7 @@ void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 
 void ADestructibleObject::OnAfterLoad()
 {
+	CurrentDurability = FMath::Max(0.f, CurrentHealth);
 	StopZeroGravityFracture();
 	GetWorldTimerManager().ClearTimer(HideBrokenMeshTimerHandle);
 
@@ -138,6 +139,7 @@ void ADestructibleObject::BeginPlay()
 	Super::BeginPlay();
 
 	CurrentHealth = MaxHealth;
+	CurrentDurability = CurrentHealth;
 
 	if (BrokenMesh)
 	{
@@ -159,7 +161,8 @@ float ADestructibleObject::ReceiveDamage(const FDamageParams& DamageData)
 	if (bDestroyed || !bIsDestructible) return 0.f;
 	if (DamageData.DamageAmount <= 0.f) return 0.f;
 
-	CurrentHealth -= DamageData.DamageAmount;
+	CurrentHealth = FMath::Max(0.f, CurrentHealth - DamageData.DamageAmount);
+	CurrentDurability = CurrentHealth;
 
 	if (CurrentHealth <= 0.f)
 	{
@@ -260,6 +263,7 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 	bDestroyed = true;
 	bBrokenMeshHidden = false;
 	CurrentHealth = 0.f;
+	CurrentDurability = 0.f;
 
 	if (BreakEffect)
 	{
@@ -632,6 +636,7 @@ void ADestructibleObject::RestoreDestructibleObject()
 	}
 
 	CurrentHealth = MaxHealth;
+	CurrentDurability = CurrentHealth;
 	bDestroyed = false;
 	bBrokenMeshHidden = false;
 	SetActorHiddenInGame(false);
