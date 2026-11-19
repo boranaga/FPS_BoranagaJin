@@ -16,6 +16,8 @@
 #include "Engine/World.h"
 #include "Components/SpotLightComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
 
@@ -66,12 +68,14 @@ void AEnemyBaseAIController::OnPossess(APawn* InPawn)
 
 void AEnemyBaseAIController::OnUnPossess()
 {
+    ResetChaseMoveCache();
     StopLightObservation();
     Super::OnUnPossess();
 }
 
 void AEnemyBaseAIController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    ResetChaseMoveCache();
     StopLightObservation();
     Super::EndPlay(EndPlayReason);
 }
@@ -251,20 +255,236 @@ AEnemyBase* AEnemyBaseAIController::GetEnemyCharacter() const
     return Cast<AEnemyBase>(GetPawn());
 }
 
+void AEnemyBaseAIController::ResetChaseMoveCache()
+{
+    ChaseMoveTarget.Reset();
+    ChaseMoveRequestID = FAIRequestID::InvalidRequest;
+    bChaseMoveUsesFallback = false;
+    bChaseMoveReachedGoal = false;
+    bPreferChaseNavFallback = false;
+    ChaseTargetLocationAtRequest = FVector::ZeroVector;
+    ChasePawnLocationAtProgress = FVector::ZeroVector;
+    LastChaseMoveRequestTime = -BIG_NUMBER;
+    LastChaseProgressTime = -BIG_NUMBER;
+}
+
+void AEnemyBaseAIController::LogChaseMoveFailure(
+    const TCHAR* Reason, AActor* Target) const
+{
+    if (!bLogChaseMoveDiagnostics || !GetWorld()) return;
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (Now - LastChaseFailureLogTime < 1.5f) return;
+    LastChaseFailureLogTime = Now;
+
+    const APawn* pawn = GetPawn();
+    const ACharacter* CharacterPawn = Cast<ACharacter>(pawn);
+    const UCharacterMovementComponent* Movement =
+        CharacterPawn ? CharacterPawn->GetCharacterMovement() : nullptr;
+    UNavigationSystemV1* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
+
+    bool bAgentOnNav = false;
+    bool bTargetOnNav = false;
+    if (Nav && pawn && IsValid(Target))
+    {
+        FNavLocation Projected;
+        bAgentOnNav = Nav->ProjectPointToNavigation(
+            pawn->GetActorLocation(), Projected, ChaseNavProjectionExtent);
+        bTargetOnNav = Nav->ProjectPointToNavigation(
+            Target->GetActorLocation(), Projected, ChaseNavProjectionExtent);
+    }
+
+    UE_LOG(LogTemp, Warning,
+        TEXT("[EnemyChase][%s] %s Target=%s Pawn=%s TargetLoc=%s "
+            "Nav=%d PawnOnNav=%d TargetOnNav=%d Following=%d "
+            "MovementMode=%d MaxSpeed=%.1f Velocity=%.1f"),
+        *GetName(), Reason, *GetNameSafe(Target),
+        pawn ? *pawn->GetActorLocation().ToString() : TEXT("None"),
+        IsValid(Target) ? *Target->GetActorLocation().ToString() : TEXT("None"),
+        Nav != nullptr, bAgentOnNav, bTargetOnNav, IsFollowingAPath(),
+        Movement ? static_cast<int32>(Movement->MovementMode) : -1,
+        Movement ? Movement->MaxWalkSpeed : -1.f,
+        pawn ? pawn->GetVelocity().Size2D() : -1.f);
+}
+
+bool AEnemyBaseAIController::TryChaseNavmeshFallback(
+    AActor* Target, const FVector& TargetLocation)
+{
+    UNavigationSystemV1* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
+    if (!Nav)
+    {
+        LogChaseMoveFailure(TEXT("NavigationSystem missing"), Target);
+        return false;
+    }
+
+    FNavLocation ProjectedGoal;
+    if (!Nav->ProjectPointToNavigation(
+        TargetLocation, ProjectedGoal, ChaseNavProjectionExtent))
+    {
+        LogChaseMoveFailure(TEXT("Target cannot be projected onto NavMesh"), Target);
+        return false;
+    }
+
+    // Reject a floor on the other side of a large gap or very distant island.
+    if (FVector::Dist2D(TargetLocation, ProjectedGoal.Location) >
+        FMath::Max(ChaseNavProjectionExtent.X, ChaseNavProjectionExtent.Y))
+    {
+        LogChaseMoveFailure(TEXT("Projected goal is too far from player"), Target);
+        return false;
+    }
+
+    FAIMoveRequest Request;
+    Request.SetGoalLocation(ProjectedGoal.Location);
+    Request.SetUsePathfinding(true);
+    Request.SetProjectGoalLocation(false); // Already projected by NavSystem.
+    Request.SetAllowPartialPath(false);
+    Request.SetAcceptanceRadius(ChaseMoveAcceptanceRadius);
+
+    FNavPathSharedPtr Path;
+    const FPathFollowingRequestResult MoveResult = MoveTo(Request, &Path);
+    if (MoveResult.Code == EPathFollowingRequestResult::Failed)
+    {
+        LogChaseMoveFailure(TEXT("Projected-position MoveTo failed"), Target);
+        return false;
+    }
+
+    ChaseMoveRequestID = MoveResult.MoveId;
+    bChaseMoveUsesFallback = true;
+    bChaseMoveReachedGoal = (MoveResult.Code == EPathFollowingRequestResult::AlreadyAtGoal);
+
+    if (bLogChaseMoveDiagnostics)
+    {
+        UE_LOG(LogTemp, Log,
+            TEXT("[EnemyChase][%s] NavMesh fallback accepted: %s Result=%d"),
+            *GetName(), *ProjectedGoal.Location.ToString(),
+            static_cast<int32>(MoveResult.Code));
+    }
+    return true;
+}
+
 void AEnemyBaseAIController::MoveToTarget(AActor* Target)
 {
-    if (!IsValid(Target)) return;
-    FAIMoveRequest Request;
-    Request.SetGoalActor(Target);
-    Request.SetAcceptanceRadius(50.f);
-    Request.SetUsePathfinding(true);
-    FNavPathSharedPtr Path;
-    MoveTo(Request, &Path);
+    if (!IsValid(Target) || !IsValid(GetPawn()) || !GetWorld()) return;
+
+    const float Now = GetWorld()->GetTimeSeconds();
+    const FVector TargetLocation = Target->GetActorLocation();
+    const FVector PawnLocation = GetPawn()->GetActorLocation();
+    const bool bTargetChanged = ChaseMoveTarget.Get() != Target;
+
+    if (bTargetChanged)
+    {
+        ResetChaseMoveCache();
+        ChaseMoveTarget = Target;
+    }
+
+    const bool bTargetMoved = FVector::DistSquared2D(
+        TargetLocation, ChaseTargetLocationAtRequest) >=
+        FMath::Square(ChaseFallbackRetargetDistance);
+
+    if (!bTargetChanged && IsFollowingAPath())
+    {
+        // An Actor goal is followed by the engine as it moves; do not
+        // cancel the current chase path by reissuing MoveTo every Tick.
+        if (!bChaseMoveUsesFallback || !bTargetMoved)
+        {
+            // Detect a path that is technically running but produces no motion.
+            if (FVector::DistSquared2D(PawnLocation, ChasePawnLocationAtProgress) >=
+                FMath::Square(ChaseProgressThreshold))
+            {
+                ChasePawnLocationAtProgress = PawnLocation;
+                LastChaseProgressTime = Now;
+            }
+            else if (Now - LastChaseProgressTime >= ChaseStuckTime &&
+                FVector::Dist2D(PawnLocation, TargetLocation) >
+                ChaseMoveAcceptanceRadius + 100.f)
+            {
+                LogChaseMoveFailure(TEXT("Stalled while following chase path"), Target);
+                // Abandon only the stuck path. Next attempt uses projected Nav goal.
+                ChaseMoveRequestID = FAIRequestID::InvalidRequest;
+                StopMovement();
+                bPreferChaseNavFallback = true;
+                LastChaseMoveRequestTime = Now - ChaseMoveRetryInterval;
+                LastChaseProgressTime = Now;
+            }
+            else
+            {
+                return;
+            }
+
+            if (IsFollowingAPath()) return;
+        }
+    }
+
+    // No per-Tick path requests, even when navigation fails.
+    if (Now - LastChaseMoveRequestTime < ChaseMoveRetryInterval) return;
+
+    // At goal: wait until player moves away; otherwise unnecessary MoveTo
+    // requests repeat while we stand in melee distance.
+    if (bChaseMoveReachedGoal && !bTargetMoved &&
+        FVector::Dist2D(PawnLocation, TargetLocation) <=
+        ChaseMoveAcceptanceRadius + 100.f)
+    {
+        return;
+    }
+
+    LastChaseMoveRequestTime = Now;
+    ChaseTargetLocationAtRequest = TargetLocation;
+    ChasePawnLocationAtProgress = PawnLocation;
+    LastChaseProgressTime = Now;
+    ChaseMoveRequestID = FAIRequestID::InvalidRequest;
+    bChaseMoveReachedGoal = false;
+
+    // If the actor-target request failed previously, try the on-NavMesh goal.
+    // After player movement during projected fallback, retry Actor mode.
+    // Do not immediately retry Actor if an Actor path just stalled/failed.
+    if (bTargetMoved && bChaseMoveUsesFallback) bPreferChaseNavFallback = false;
+
+    if (!bPreferChaseNavFallback)
+    {
+        FAIMoveRequest Request;
+        Request.SetGoalActor(Target);
+        Request.SetUsePathfinding(true);
+        Request.SetAllowPartialPath(false);
+        Request.SetAcceptanceRadius(ChaseMoveAcceptanceRadius);
+
+        FNavPathSharedPtr Path;
+        const FPathFollowingRequestResult MoveResult = MoveTo(Request, &Path);
+        if (MoveResult.Code != EPathFollowingRequestResult::Failed)
+        {
+            ChaseMoveRequestID = MoveResult.MoveId;
+            bChaseMoveUsesFallback = false;
+            bChaseMoveReachedGoal =
+                MoveResult.Code == EPathFollowingRequestResult::AlreadyAtGoal;
+            return;
+        }
+
+        LogChaseMoveFailure(TEXT("Actor MoveTo FAILED; trying NavMesh fallback"), Target);
+        bPreferChaseNavFallback = true;
+    }
+
+    TryChaseNavmeshFallback(Target, TargetLocation);
+}
+
+void AEnemyBaseAIController::OnMoveCompleted(
+    FAIRequestID RequestID, const FPathFollowingResult& Result)
+{
+    Super::OnMoveCompleted(RequestID, Result);
+
+    if (RequestID != ChaseMoveRequestID) return;
+
+    ChaseMoveRequestID = FAIRequestID::InvalidRequest;
+    bChaseMoveReachedGoal = Result.Code == EPathFollowingResult::Success;
+
+    if (Result.Code != EPathFollowingResult::Success)
+    {
+        bPreferChaseNavFallback = true;
+        LogChaseMoveFailure(TEXT("Chase path finished unsuccessfully"), ChaseMoveTarget.Get());
+    }
 }
 
 bool AEnemyBaseAIController::MoveToCombatDodgeLocation(
     const FVector& Location, float AcceptanceRadius)
 {
+    ResetChaseMoveCache();
     if (!IsValid(GetPawn()) || !GetWorld()) return false;
 
     FAIMoveRequest Request;
@@ -281,6 +501,7 @@ bool AEnemyBaseAIController::MoveToCombatDodgeLocation(
 
 bool AEnemyBaseAIController::MoveToDoorBreachPosition(const FVector& Location, float AcceptanceRadius)
 {
+    ResetChaseMoveCache();
     if (!IsValid(GetPawn()) || !GetWorld()) return false;
     FAIMoveRequest Request;
     Request.SetGoalLocation(Location);
@@ -296,6 +517,7 @@ bool AEnemyBaseAIController::MoveToDoorBreachPosition(const FVector& Location, f
 
 void AEnemyBaseAIController::MoveToLocationPoint(const FVector& Location, float AcceptanceRadius)
 {
+    ResetChaseMoveCache();
     FAIMoveRequest Request;
     Request.SetGoalLocation(Location);
     Request.SetProjectGoalLocation(true);
@@ -308,6 +530,7 @@ void AEnemyBaseAIController::MoveToLocationPoint(const FVector& Location, float 
 void AEnemyBaseAIController::MoveToLocationPoint_Upgrade(
     const FVector& Location, float AcceptanceRadius)
 {
+    ResetChaseMoveCache();
     FVector GroundLocation;
     if (!FindGroundNavLocation(Location, GroundLocation))
     {
@@ -329,6 +552,7 @@ void AEnemyBaseAIController::MoveToLocationPoint_Upgrade(
 
 void AEnemyBaseAIController::StopAIMovement()
 {
+    ResetChaseMoveCache();
     StopMovement();
 }
 
@@ -513,7 +737,8 @@ void AEnemyBaseAIController::PollVisiblePlayerLights()
     AEnemyBase* Enemy = GetEnemyCharacter();
     if (!IsValid(Enemy) || Enemy->IsDead() || !GetWorld()) return;
     UEnemyStateMachineComponent* SM = Enemy->GetStateMachineComponent();
-    if (!IsValid(SM) || SM->IsTargetCurrentlyVisible() || SM->IsInDefensiveState() || SM->GetCurrentState() == EEnemyStateType::Dead) return;
+    if (!IsValid(SM) || SM->IsTargetCurrentlyVisible() || SM->IsInDefensiveState() ||
+        SM->GetCurrentState() == EEnemyStateType::Dead) return;
 
     UEnemyLightSourceSubsystem* Registry = GetWorld()->GetSubsystem<UEnemyLightSourceSubsystem>();
     if (!Registry) return;
@@ -536,12 +761,14 @@ void AEnemyBaseAIController::PollVisiblePlayerLights()
 
         // Limit event origin to the player's own light sources, never an
         // ambient/world spotlight or a hostile enemy's equipment.
-        if (!Player->IsA(ACharacterPlayer::StaticClass()) && !Player->ActorHasTag(TEXT("Player"))) continue;
+        if (!Player->IsA(ACharacterPlayer::StaticClass()) &&
+            !Player->ActorHasTag(TEXT("Player"))) continue;
 
         FVector Candidate;
         bool bDirect = false;
         float Score = -BIG_NUMBER;
-        if (TryObserveSpotLight(Light, Emitter, Player, Candidate, bDirect, Score) && (!bFound || Score > BestScore))
+        if (TryObserveSpotLight(Light, Emitter, Player, Candidate, bDirect, Score) &&
+            (!bFound || Score > BestScore))
         {
             bFound = true;
             BestScore = Score;

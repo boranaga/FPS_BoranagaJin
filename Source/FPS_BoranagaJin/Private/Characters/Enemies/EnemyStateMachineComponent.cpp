@@ -1278,6 +1278,13 @@ bool UEnemyStateMachineComponent::ShouldLoseTarget() const
 {
 	if (!Enemy || !HasTarget()) return true;
 
+	// A visually confirmed player remains chaseable even outside the soft
+	// memory distance. Sight/lose-sight perception controls visibility; this
+	// distance is only a fallback once the player has disappeared.
+	// NOTE: SightRadius (2000) was greater than EnemyBase::LoseTargetDistance
+	// (1500), which could cancel Chase immediately after seeing the player.
+	if (bTargetCurrentlyVisible) return false;
+
 	const float Distance = FVector::Dist(
 		Enemy->GetActorLocation(),
 		TargetActor->GetActorLocation()

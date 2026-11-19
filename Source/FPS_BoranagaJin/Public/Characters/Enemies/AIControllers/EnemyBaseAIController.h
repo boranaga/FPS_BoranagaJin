@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "AIController.h"
 #include "Perception/AIPerceptionTypes.h"
+#include "Navigation/PathFollowingComponent.h" // FAIRequestID, FPathFollowingResult
 #include "EnemyBaseAIController.generated.h"
 
 class AEnemyBase;
@@ -27,6 +28,7 @@ protected:
     virtual void OnPossess(APawn* InPawn) override;
     virtual void OnUnPossess() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "AI|Perception")
@@ -45,6 +47,23 @@ private:
     void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
 
     bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
+
+    // An Actor MoveTo is a persistent, moving-goal request. Never re-issue it
+    // every Tick; it would restart/cancel the current path.
+    void ResetChaseMoveCache();
+    bool TryChaseNavmeshFallback(AActor* Target, const FVector& TargetLocation);
+    void LogChaseMoveFailure(const TCHAR* Reason, AActor* Target) const;
+
+    TWeakObjectPtr<AActor> ChaseMoveTarget;
+    FAIRequestID ChaseMoveRequestID = FAIRequestID::InvalidRequest;
+    bool bChaseMoveUsesFallback = false;
+    bool bChaseMoveReachedGoal = false;
+    bool bPreferChaseNavFallback = false;
+    FVector ChaseTargetLocationAtRequest = FVector::ZeroVector;
+    FVector ChasePawnLocationAtProgress = FVector::ZeroVector;
+    float LastChaseMoveRequestTime = -BIG_NUMBER;
+    float LastChaseProgressTime = -BIG_NUMBER;
+    mutable float LastChaseFailureLogTime = -BIG_NUMBER;
 
     void StartLightObservation();
     void StopLightObservation();
@@ -97,6 +116,27 @@ protected:
 
     UPROPERTY(EditAnywhere, Category = "AI|Movement")
     FVector NavProjectionExtent = FVector(100.f, 100.f, 300.f);
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "30.0"))
+    float ChaseMoveAcceptanceRadius = 75.f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "0.1"))
+    float ChaseMoveRetryInterval = 0.65f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "20.0"))
+    float ChaseFallbackRetargetDistance = 170.f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "0.5"))
+    float ChaseStuckTime = 2.25f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "1.0"))
+    float ChaseProgressThreshold = 10.f;
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase")
+    FVector ChaseNavProjectionExtent = FVector(250.f, 250.f, 400.f);
+
+    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase")
+    bool bLogChaseMoveDiagnostics = true;
 
     /** Skip AI-owned sources (enemy firearms / enemy thrown projectiles). */
     UPROPERTY(EditAnywhere, Category = "AI|Perception")

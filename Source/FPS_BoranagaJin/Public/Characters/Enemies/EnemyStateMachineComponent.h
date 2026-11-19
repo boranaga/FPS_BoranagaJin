@@ -237,7 +237,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach")
 	bool bAllowLightInvestigationDoorBreach = true;
 
-	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "100.0"))
+	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "500.0"))
 	float DoorBreachDetectionRadius = 750.f;
 
 	UPROPERTY(EditAnywhere, Category = "Enemy|Door Breach", meta = (ClampMin = "0.1"))
