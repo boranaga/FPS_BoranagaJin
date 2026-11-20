@@ -15,6 +15,7 @@ class UExitDoorWidget;
 class UShapeComponent;
 class UStaticMeshComponent;
 class UTexture2D;
+struct FInventorySlot;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnExitDoorUnlocked, AExitDoor*, ExitDoor);
 
@@ -89,9 +90,16 @@ protected:
 	void OnExitUnlocked();
 
 private:
-	/** 플레이어와의 거리를 재서 UI를 켜고 끈다. */
-	void UpdateProximity();
-	float GetDistanceToDoor(const FVector& WorldLocation) const;
+	/** 틱/타이머 없이, 접근 감지 박스(ProximityVolume)의 오버랩 이벤트로 UI를 켜고 끈다. */
+	UFUNCTION()
+	void HandleProximityBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void HandleProximityEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	void SetNearbyPlayer(ACharacterPlayer* Player);
+	void ClearNearbyPlayer();
+	/** 인벤토리가 바뀌면 UI를 갱신한다. (가까이 있는 동안만 연결) */
+	void HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySlots);
 
 	void SetWidgetShown(bool bShown);
 	void RefreshWidget();
@@ -124,6 +132,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UBoxComponent> DoorVolume;
 
+	/** DoorVolume을 ShowDistance만큼 키운 영역. 플레이어가 겹치면 UI가 뜹니다. (BeginPlay에서 자동으로 맞춤) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
+	TObjectPtr<UBoxComponent> ProximityVolume;
+
 	/** 탈출구 번호 (1~4). 바꾸면 RequiredSlots가 자동으로 다시 채워집니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Exit", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 ExitNumber = 1;
@@ -149,10 +161,6 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|UI")
 	TSubclassOf<UExitDoorWidget> WidgetClass;
-
-	/** 거리 검사와 UI 갱신 주기 */
-	UPROPERTY(EditAnywhere, Category = "Exit|UI", meta = (ClampMin = "0.02", Units = "s"))
-	float ProximityCheckInterval = 0.1f;
 
 	/**
 	 * 잠가 두었다가 3개가 모두 들어가면 여는 문.
@@ -218,7 +226,7 @@ private:
 	TArray<TWeakObjectPtr<UShapeComponent>> LockedTriggers;
 	TArray<TEnumAsByte<ECollisionEnabled::Type>> LockedTriggerCollision;
 
-	FTimerHandle ProximityTimerHandle;
+	FDelegateHandle InventoryUpdatedHandle;
 
 #pragma region InteractableInterface
 public:

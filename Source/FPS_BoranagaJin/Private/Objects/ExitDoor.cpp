@@ -118,6 +118,13 @@ AExitDoor::AExitDoor()
 	DoorVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	DoorVolume->SetGenerateOverlapEvents(false);
 
+	// 플레이어 접근 감지용 박스. 틱이나 타이머 없이 오버랩 이벤트만 사용한다.
+	ProximityVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("ProximityVolume"));
+	ProximityVolume->SetupAttachment(SceneRoot);
+	// BeginPlay에서 DoorVolume 위치로 옮기므로 Movable이어야 한다.
+	ProximityVolume->SetMobility(EComponentMobility::Movable);
+	ProximityVolume->SetCanEverAffectNavigation(false);
+
 	WidgetClass = UExitDoorWidget::StaticClass();
 	AutoLinkDoorClasses.Add(ADestructibleDoor::StaticClass());
 
@@ -150,20 +157,49 @@ void AExitDoor::BeginPlay()
 	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: BeginPlay (Exit %d, LinkedDoor=%s, LinkedEscapeTrigger=%s, ShowDistance=%.0f)"),
 		*GetName(), ExitNumber, *GetNameSafe(LinkedDoor), *GetNameSafe(LinkedEscapeTrigger), ShowDistance);
 
-	GetWorldTimerManager().SetTimer(ProximityTimerHandle, this, &AExitDoor::UpdateProximity, ProximityCheckInterval, true);
+	// 충돌 설정은 블루프린트에 저장된 값에 덮어써지지 않도록 여기서 한 번 더 확정한다.
+	// 캡슐(Pawn 프로필)은 WorldDynamic을 Block하므로, 이 박스가 Pawn에 Overlap이면 오버랩이 성립한다.
+	ProximityVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	ProximityVolume->SetCollisionObjectType(ECC_WorldDynamic);
+	ProximityVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
+	ProximityVolume->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	ProximityVolume->SetGenerateOverlapEvents(true);
+
+	// DoorVolume을 ShowDistance만큼 키운 영역으로 맞춘다. (스케일은 박스 크기에 반영)
+	FTransform VolumeTransform = DoorVolume->GetComponentTransform();
+	VolumeTransform.SetScale3D(FVector::OneVector);
+	ProximityVolume->SetWorldTransform(VolumeTransform);
+	ProximityVolume->SetBoxExtent(DoorVolume->GetScaledBoxExtent() + FVector(ShowDistance));
+
+	ProximityVolume->OnComponentBeginOverlap.AddUniqueDynamic(this, &AExitDoor::HandleProximityBeginOverlap);
+	ProximityVolume->OnComponentEndOverlap.AddUniqueDynamic(this, &AExitDoor::HandleProximityEndOverlap);
+	ProximityVolume->UpdateOverlaps();
+
+	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: ProximityVolume loc=%s extent=%s"),
+		*GetName(), *ProximityVolume->GetComponentLocation().ToString(), *ProximityVolume->GetUnscaledBoxExtent().ToString());
+
+	// 시작할 때 이미 박스 안에 있는 플레이어
+	TArray<AActor*> OverlappingActors;
+	ProximityVolume->GetOverlappingActors(OverlappingActors, ACharacterPlayer::StaticClass());
+	for (AActor* Actor : OverlappingActors)
+	{
+		ACharacterPlayer* Player = Cast<ACharacterPlayer>(Actor);
+		if (IsValid(Player) && Player->IsLocallyControlled())
+		{
+			SetNearbyPlayer(Player);
+			break;
+		}
+	}
 }
 
 void AExitDoor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	GetWorldTimerManager().ClearTimer(ProximityTimerHandle);
-
-	SetWidgetShown(false);
+	ClearNearbyPlayer();
 	if (ExitWidget)
 	{
 		ExitWidget->RemoveFromParent();
 		ExitWidget = nullptr;
 	}
-	NearbyPlayer = nullptr;
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -315,24 +351,34 @@ AActor* AExitDoor::FindNearestDoorActor() const
 	return Nearest;
 }
 
-float AExitDoor::GetDistanceToDoor(const FVector& WorldLocation) const
+void AExitDoor::HandleProximityBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	// DoorVolume(회전된 박스) 표면까지의 거리. 박스 안에 있으면 0.
-	const FTransform& BoxTransform = DoorVolume->GetComponentTransform();
-	const FVector Extent = DoorVolume->GetUnscaledBoxExtent();
+	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: proximity begin overlap with %s"), *GetName(), *GetNameSafe(OtherActor));
 
-	const FVector Local = BoxTransform.InverseTransformPosition(WorldLocation);
-	const FVector ClosestLocal(
-		FMath::Clamp(Local.X, -Extent.X, Extent.X),
-		FMath::Clamp(Local.Y, -Extent.Y, Extent.Y),
-		FMath::Clamp(Local.Z, -Extent.Z, Extent.Z));
-
-	return FVector::Dist(BoxTransform.TransformPosition(ClosestLocal), WorldLocation);
+	ACharacterPlayer* Player = Cast<ACharacterPlayer>(OtherActor);
+	if (IsValid(Player) && Player->IsLocallyControlled())
+	{
+		SetNearbyPlayer(Player);
+	}
 }
 
-void AExitDoor::UpdateProximity()
+void AExitDoor::HandleProximityEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	// DoorVolume이 덮지 못한 부분으로 문을 열었을 때를 대비해, 잠긴 동안에는 다시 닫는다.
+	if (OtherActor && OtherActor == NearbyPlayer)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: proximity end overlap"), *GetName());
+		ClearNearbyPlayer();
+	}
+}
+
+void AExitDoor::SetNearbyPlayer(ACharacterPlayer* Player)
+{
+	if (NearbyPlayer == Player) { return; }
+
+	ClearNearbyPlayer();
+	NearbyPlayer = Player;
+
+	// 잠긴 동안 DoorVolume이 덮지 못한 부분으로 문이 열려 있으면 다시 닫는다.
 	if (!bUnlocked)
 	{
 		ADestructibleDoor* DestructibleDoor = Cast<ADestructibleDoor>(LinkedDoor);
@@ -342,25 +388,32 @@ void AExitDoor::UpdateProximity()
 		}
 	}
 
-	ACharacterPlayer* Player = Cast<ACharacterPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	// 가까이 있는 동안 인벤토리 변화를 UI에 반영한다.
+	InventoryUpdatedHandle = NearbyPlayer->OnInventoryUpdatedDelegate.AddUObject(this, &AExitDoor::HandleInventoryUpdated);
 
-	bool bInRange = false;
-	if (IsValid(Player) && Player->IsLocallyControlled())
+	SetWidgetShown(true);
+}
+
+void AExitDoor::ClearNearbyPlayer()
+{
+	if (IsValid(NearbyPlayer) && InventoryUpdatedHandle.IsValid())
 	{
-		// 캡슐 중심이 아니라 캡슐 표면 기준으로 잰다.
-		const float Distance = GetDistanceToDoor(Player->GetActorLocation()) - Player->GetSimpleCollisionRadius();
-		bInRange = Distance <= ShowDistance;
+		NearbyPlayer->OnInventoryUpdatedDelegate.Remove(InventoryUpdatedHandle);
 	}
+	InventoryUpdatedHandle.Reset();
 
-	NearbyPlayer = bInRange ? Player : nullptr;
-
-	if (bInRange != bWidgetShown)
+	const bool bWasShown = bWidgetShown;
+	NearbyPlayer = nullptr;
+	if (bWasShown)
 	{
-		SetWidgetShown(bInRange);
+		SetWidgetShown(false);
 	}
-	else if (bWidgetShown)
+}
+
+void AExitDoor::HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySlots)
+{
+	if (bWidgetShown)
 	{
-		// 가까이 있는 동안 인벤토리 변화를 UI에 반영한다.
 		RefreshWidget();
 	}
 }
