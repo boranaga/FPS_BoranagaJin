@@ -1,4 +1,5 @@
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
+#include "Characters/Enemies/EnemyStateMachineSettings.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
 #include "Characters/Enemies/EnemyPatrolPoint.h"
@@ -23,9 +24,176 @@ UEnemyStateMachineComponent::UEnemyStateMachineComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
+bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
+{
+	const UDataTable* Table = StateMachineSettingsRow.DataTable.Get();
+	if (!IsValid(Table) || StateMachineSettingsRow.RowName.IsNone())
+	{
+		// With no row assigned, preserve the class / Blueprint instance defaults.
+		return false;
+	}
+
+	if (Table->GetRowStruct() != FEnemyStateMachineSettings::StaticStruct())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[EnemyStateMachine] Wrong DataTable row struct for %s: %s"),
+			*GetNameSafe(GetOwner()), *GetNameSafe(Table));
+		return false;
+	}
+
+	const FEnemyStateMachineSettings* Row = Table->FindRow<FEnemyStateMachineSettings>(
+		StateMachineSettingsRow.RowName, TEXT("EnemyStateMachine.Settings"), true);
+	if (!Row)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[EnemyStateMachine] Missing row %s in %s for %s"),
+			*StateMachineSettingsRow.RowName.ToString(), *GetNameSafe(Table),
+			*GetNameSafe(GetOwner()));
+		return false;
+	}
+
+	// Copy ALL editable configuration fields; never copy runtime state/timers.
+	TargetMemoryDuration = Row->TargetMemoryDuration;
+	AttackStaminaCost = Row->AttackStaminaCost;
+	ChaseStaminaCostPerSecond = Row->ChaseStaminaCostPerSecond;
+	IdleToPatrolTime = Row->IdleToPatrolTime;
+	IdleLookYawOffsets = Row->IdleLookYawOffsets;
+	IdleLookRotationRate = Row->IdleLookRotationRate;
+	IdleLookAcceptanceAngle = Row->IdleLookAcceptanceAngle;
+	IdleLookWaitTimeMin = Row->IdleLookWaitTimeMin;
+	IdleLookWaitTimeMax = Row->IdleLookWaitTimeMax;
+	PatrolWaitTime = Row->PatrolWaitTime;
+	PatrolAcceptanceRadius = Row->PatrolAcceptanceRadius;
+	bEnableDoorBreach = Row->bEnableDoorBreach;
+	bAllowGunshotInvestigationDoorBreach = Row->bAllowGunshotInvestigationDoorBreach;
+	bAllowLightInvestigationDoorBreach = Row->bAllowLightInvestigationDoorBreach;
+	DoorBreachDetectionRadius = Row->DoorBreachDetectionRadius;
+	DoorBreachSearchInterval = Row->DoorBreachSearchInterval;
+	DoorBreachStallDuration = Row->DoorBreachStallDuration;
+	DoorBreachStallProgressDistance = Row->DoorBreachStallProgressDistance;
+	DoorBreachDetourRatio = Row->DoorBreachDetourRatio;
+	DoorBreachAttackReach = Row->DoorBreachAttackReach;
+	DoorBreachApproachOffset = Row->DoorBreachApproachOffset;
+	DoorBreachApproachAcceptance = Row->DoorBreachApproachAcceptance;
+	DoorBreachMoveRequestInterval = Row->DoorBreachMoveRequestInterval;
+	DoorBreachMaximumDuration = Row->DoorBreachMaximumDuration;
+	DoorBreachFailureCooldown = Row->DoorBreachFailureCooldown;
+	bDrawDoorBreachDebug = Row->bDrawDoorBreachDebug;
+	InvestigateAcceptanceRadius = Row->InvestigateAcceptanceRadius;
+	InvestigateWaitTime = Row->InvestigateWaitTime;
+	InvestigateMaximumTravelTime = Row->InvestigateMaximumTravelTime;
+	CombatHearingRange = Row->CombatHearingRange;
+	OccludedSoundMultiplier = Row->OccludedSoundMultiplier;
+	MinimumAudibility = Row->MinimumAudibility;
+	GunshotMinimumEstimateError = Row->GunshotMinimumEstimateError;
+	GunshotMaximumEstimateError = Row->GunshotMaximumEstimateError;
+	GunshotMemoryDuration = Row->GunshotMemoryDuration;
+	GunshotMoveRetargetInterval = Row->GunshotMoveRetargetInterval;
+	GunshotRetargetDistance = Row->GunshotRetargetDistance;
+	GunshotImpactFusionWeight = Row->GunshotImpactFusionWeight;
+	GunshotImpactFusionMaxCorrection = Row->GunshotImpactFusionMaxCorrection;
+	ImpactOnlyMinimumSourceEstimateDistance = Row->ImpactOnlyMinimumSourceEstimateDistance;
+	ImpactOnlyMaximumSourceEstimateDistance = Row->ImpactOnlyMaximumSourceEstimateDistance;
+	LightCueMemoryDuration = Row->LightCueMemoryDuration;
+	LightCueRetargetInterval = Row->LightCueRetargetInterval;
+	LightCueRetargetDistance = Row->LightCueRetargetDistance;
+	LightCueMinimumMoveDistance = Row->LightCueMinimumMoveDistance;
+	ImpactReactionRadius = Row->ImpactReactionRadius;
+	ImpactSafeDistance = Row->ImpactSafeDistance;
+	ImpactEvadeSearchRadius = Row->ImpactEvadeSearchRadius;
+	ImpactEvadeSampleCount = Row->ImpactEvadeSampleCount;
+	ImpactEvadeAcceptanceRadius = Row->ImpactEvadeAcceptanceRadius;
+	ImpactEvadeMinimumTime = Row->ImpactEvadeMinimumTime;
+	ImpactEvadeMaximumTime = Row->ImpactEvadeMaximumTime;
+	ImpactNoiseCooldown = Row->ImpactNoiseCooldown;
+	bEnableCombatZigzag = Row->bEnableCombatZigzag;
+	CombatDodgeThreatMemory = Row->CombatDodgeThreatMemory;
+	CombatDodgeForwardStep = Row->CombatDodgeForwardStep;
+	CombatDodgeLateralStep = Row->CombatDodgeLateralStep;
+	CombatDodgeSideSwitchInterval = Row->CombatDodgeSideSwitchInterval;
+	CombatDodgeMinimumRepathInterval = Row->CombatDodgeMinimumRepathInterval;
+	CombatDodgeMaximumRepathInterval = Row->CombatDodgeMaximumRepathInterval;
+	CombatDodgeTargetMoveRepathDistance = Row->CombatDodgeTargetMoveRepathDistance;
+	CombatDodgeWaypointAcceptance = Row->CombatDodgeWaypointAcceptance;
+	CombatDodgeHazardRadius = Row->CombatDodgeHazardRadius;
+	CombatDodgeImpactAwayBias = Row->CombatDodgeImpactAwayBias;
+	CombatDodgeImpactMemory = Row->CombatDodgeImpactMemory;
+	bDrawCombatDodgeDebug = Row->bDrawCombatDodgeDebug;
+	FleeHealthThresholdPercent = Row->FleeHealthThresholdPercent;
+	BurstDamageThreshold = Row->BurstDamageThreshold;
+	BurstDamageWindow = Row->BurstDamageWindow;
+	FleeSearchRadius = Row->FleeSearchRadius;
+	FleeSearchRadii = Row->FleeSearchRadii;
+	MinimumFleeDistanceFromPlayer = Row->MinimumFleeDistanceFromPlayer;
+	HideAcceptanceRadius = Row->HideAcceptanceRadius;
+	HideLocationSampleCount = Row->HideLocationSampleCount;
+	MinimumHideTime = Row->MinimumHideTime;
+	MaximumHideTime = Row->MaximumHideTime;
+	RecoveryHealthPerSecond = Row->RecoveryHealthPerSecond;
+	RecoveryHealthCapPercent = Row->RecoveryHealthCapPercent;
+	BloodDetectionRadius = Row->BloodDetectionRadius;
+	BloodTrackAcceptanceRadius = Row->BloodTrackAcceptanceRadius;
+	BloodTrailLinkRadius = Row->BloodTrailLinkRadius;
+	MaximumTrackableBloodAge = Row->MaximumTrackableBloodAge;
+	BloodSearchInterval = Row->BloodSearchInterval;
+	BloodTrailLostWaitTime = Row->BloodTrailLostWaitTime;
+
+	ResolvePatrolPointsFromDataTableTags(Row->PatrolPointTags);
+
+	UE_LOG(LogTemp, Log, TEXT("[EnemyStateMachine] Applied %s / %s to %s"),
+		*GetNameSafe(Table), *StateMachineSettingsRow.RowName.ToString(),
+		*GetNameSafe(GetOwner()));
+	return true;
+}
+
+void UEnemyStateMachineComponent::ResolvePatrolPointsFromDataTableTags(
+	const TArray<FName>& PointTags)
+{
+	if (PointTags.IsEmpty() || !GetWorld())
+	{
+		// Keep hand-picked per-level patrol points for backwards compatibility.
+		return;
+	}
+
+	TArray<AEnemyPatrolPoint*> Resolved;
+	for (const FName Tag : PointTags)
+	{
+		if (Tag.IsNone()) continue;
+		AEnemyPatrolPoint* Match = nullptr;
+		int32 MatchCount = 0;
+		for (TActorIterator<AEnemyPatrolPoint> It(GetWorld()); It; ++It)
+		{
+			AEnemyPatrolPoint* Candidate = *It;
+			if (IsValid(Candidate) && Candidate->ActorHasTag(Tag))
+			{
+				++MatchCount;
+				if (!Match) Match = Candidate;
+			}
+		}
+		if (Match && !Resolved.Contains(Match))
+		{
+			Resolved.Add(Match);
+		}
+		if (MatchCount != 1)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[EnemyStateMachine] Patrol tag %s matched %d points in %s (expected 1)."),
+				*Tag.ToString(), MatchCount, *GetNameSafe(GetOwner()));
+		}
+	}
+
+	// If all tags fail, do not erase valid, previously assigned level patrols.
+	if (!Resolved.IsEmpty())
+	{
+		PatrolPoints = MoveTemp(Resolved);
+		CurrentPatrolIndex = 0;
+	}
+}
+
 void UEnemyStateMachineComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Load tunables before entering Idle or Patrol, so timers use DT values.
+	ReloadSettingsFromDataTable();
 
 	Enemy = Cast<AEnemyBase>(GetOwner());
 

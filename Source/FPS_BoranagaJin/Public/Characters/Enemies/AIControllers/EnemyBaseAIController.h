@@ -4,6 +4,7 @@
 #include "AIController.h"
 #include "Perception/AIPerceptionTypes.h"
 #include "Navigation/PathFollowingComponent.h" // FAIRequestID, FPathFollowingResult
+#include "Engine/DataTable.h" // FDataTableRowHandle
 #include "EnemyBaseAIController.generated.h"
 
 class AEnemyBase;
@@ -23,6 +24,14 @@ class FPS_BORANAGAJIN_API AEnemyBaseAIController : public AAIController
 public:
     AEnemyBaseAIController();
 
+    /** Load a DataTable profile. If no row is selected, keep C++/Blueprint defaults. */
+    UFUNCTION(BlueprintCallable, Category = "AI - Configuration")
+    bool ReloadSettingsFromDataTable();
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI - Configuration",
+        meta = (RowType = "/Script/FPS_BORANAGAJIN.EnemyAIControllerSettings"))
+    FDataTableRowHandle AIControllerSettingsRow;
+
 protected:
     virtual void BeginPlay() override;
     virtual void OnPossess(APawn* InPawn) override;
@@ -31,7 +40,7 @@ protected:
     virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
 
 private:
-    UPROPERTY(VisibleAnywhere, Category = "AI|Perception")
+    UPROPERTY(VisibleAnywhere, Category = "AI - Components")
     TObjectPtr<UAIPerceptionComponent> AIPerceptionComponent;
 
     UPROPERTY()
@@ -45,6 +54,9 @@ private:
 
     void HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus);
     void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
+
+    /** Push sight/hearing config changes to UAIPerceptionComponent. */
+    void ApplyPerceptionSettings(const struct FEnemyAIControllerSettings& Settings);
 
     bool FindGroundNavLocation(const FVector& InputLocation, FVector& OutLocation) const;
 
@@ -82,64 +94,64 @@ private:
     FVector LastSubmittedLightEstimate = FVector::ZeroVector;
     float LastLightSubmissionTime = -BIG_NUMBER;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "0.1"))
     float LightObservationInterval = 0.3f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "100.0"))
     float LightSourceDetectionRange = 2400.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "100.0"))
     float LightPatchDetectionRange = 2400.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0", ClampMax = "179.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "0.0", ClampMax = "179.0"))
     float LightObservationHalfFOV = 100.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "0.0"))
     float MinimumVisibleLightIntensity = 1.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "100.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "100.0"))
     float LightMaxBeamTraceLength = 2500.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "1", ClampMax = "5"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "1", ClampMax = "5"))
     int32 LightBeamTraceCount = 5;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "0.0"))
     float LightEstimateLocationError = 130.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "0.1"))
     float LightObservationReportCooldown = 0.85f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light", meta = (ClampMin = "20.0"))
+    UPROPERTY(EditAnywhere, Category = "Perception - Light", meta = (ClampMin = "20.0"))
     float LightObservationRetargetDistance = 200.f;
-    UPROPERTY(EditAnywhere, Category = "AI|Light")
+    UPROPERTY(EditAnywhere, Category = "Perception - Light")
     bool bDetectLightOnSurfaces = true;
-    UPROPERTY(EditAnywhere, Category = "AI|Light")
+    UPROPERTY(EditAnywhere, Category = "Perception - Light")
     bool bDrawLightObservationDebug = false;
 
 protected:
-    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    UPROPERTY(EditAnywhere, Category = "Movement - Ground")
     float GroundTraceHeight = 300.f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    UPROPERTY(EditAnywhere, Category = "Movement - Ground")
     float GroundTraceDepth = 500.f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement")
+    UPROPERTY(EditAnywhere, Category = "Movement - Ground")
     FVector NavProjectionExtent = FVector(100.f, 100.f, 300.f);
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "30.0"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "30.0"))
     float ChaseMoveAcceptanceRadius = 75.f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "0.1"))
     float ChaseMoveRetryInterval = 0.65f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "20.0"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "20.0"))
     float ChaseFallbackRetargetDistance = 170.f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "0.5"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "0.5"))
     float ChaseStuckTime = 2.25f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase", meta = (ClampMin = "1.0"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "1.0"))
     float ChaseProgressThreshold = 10.f;
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase")
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase")
     FVector ChaseNavProjectionExtent = FVector(250.f, 250.f, 400.f);
 
-    UPROPERTY(EditAnywhere, Category = "AI|Movement|Chase")
+    UPROPERTY(EditAnywhere, Category = "Movement - Diagnostics")
     bool bLogChaseMoveDiagnostics = true;
 
     /** Skip AI-owned sources (enemy firearms / enemy thrown projectiles). */
-    UPROPERTY(EditAnywhere, Category = "AI|Perception")
+    UPROPERTY(EditAnywhere, Category = "Perception - Hearing")
     bool bIgnoreEnemyGeneratedNoise = true;
 
 public:

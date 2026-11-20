@@ -1,4 +1,5 @@
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
+#include "Characters/Enemies/AIControllers/EnemyAIControllerSettings.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/EnemyStateMachineComponent.h"
 #include "Characters/Enemies/EnemyCombatNoiseSubsystem.h"
@@ -25,34 +26,136 @@ AEnemyBaseAIController::AEnemyBaseAIController()
 {
     PrimaryActorTick.bCanEverTick = false;
     AIPerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerceptionComponent"));
-
     SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-    SightConfig->SightRadius = 2000.f;
-    SightConfig->LoseSightRadius = 5000.f;
-    SightConfig->PeripheralVisionAngleDegrees = 120.f;
-    SightConfig->SetMaxAge(10.f);
-    SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-    SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
-    SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
-
     HearingConfig = CreateDefaultSubobject<UAISenseConfig_Hearing>(TEXT("HearingConfig"));
-    // Listener limit. Weapon MaxRange * Loudness may be larger, but this still caps it.
-    HearingConfig->HearingRange = 3500.f;
-    HearingConfig->LoSHearingRange = 3500.f;
-    HearingConfig->SetMaxAge(5.f);
-    HearingConfig->DetectionByAffiliation.bDetectEnemies = true;
-    HearingConfig->DetectionByAffiliation.bDetectFriendlies = true;
-    HearingConfig->DetectionByAffiliation.bDetectNeutrals = true;
+
+    // Class defaults exist even without a DataTable assignment. Do not fetch
+    // the asset here: Blueprint/instance row selection is applied at BeginPlay.
+    const FEnemyAIControllerSettings Defaults;
+    ApplyPerceptionSettings(Defaults);
+    SetPerceptionComponent(*AIPerceptionComponent);
+}
+
+bool AEnemyBaseAIController::ReloadSettingsFromDataTable()
+{
+    const UDataTable* Table = AIControllerSettingsRow.DataTable;
+    if (!Table)
+    {
+        // No DataTable row assigned: preserve C++/Blueprint instance settings.
+        return false;
+    }
+    if (AIControllerSettingsRow.RowName.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EnemyAIController] DataTable set but RowName is empty: %s"), *GetName());
+        return false;
+    }
+    if (Table->GetRowStruct() != FEnemyAIControllerSettings::StaticStruct())
+    {
+        UE_LOG(LogTemp, Error, TEXT("[EnemyAIController] Wrong row struct in %s (AI=%s)"),
+            *GetNameSafe(Table), *GetName());
+        return false;
+    }
+
+    const FEnemyAIControllerSettings* Row = Table->FindRow<FEnemyAIControllerSettings>(
+        AIControllerSettingsRow.RowName, TEXT("EnemyAIController.Settings"), true);
+    if (!Row)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EnemyAIController] Row %s not found in %s (AI=%s)"),
+            *AIControllerSettingsRow.RowName.ToString(), *GetNameSafe(Table), *GetName());
+        return false;
+    }
+
+    // All editable values declared in the original AIController (except the
+    // UAISenseConfig objects, which ApplyPerceptionSettings updates directly).
+    bIgnoreEnemyGeneratedNoise = Row->bIgnoreEnemyGeneratedNoise;
+    LightObservationInterval = FMath::Max(0.1f, Row->LightObservationInterval);
+    LightSourceDetectionRange = FMath::Max(100.0f, Row->LightSourceDetectionRange);
+    LightPatchDetectionRange = FMath::Max(100.0f, Row->LightPatchDetectionRange);
+    LightObservationHalfFOV = FMath::Clamp(Row->LightObservationHalfFOV, 0.0f, 179.0f);
+    MinimumVisibleLightIntensity = FMath::Max(0.0f, Row->MinimumVisibleLightIntensity);
+    LightMaxBeamTraceLength = FMath::Max(100.0f, Row->LightMaxBeamTraceLength);
+    LightBeamTraceCount = FMath::Clamp(Row->LightBeamTraceCount, 1, 5);
+    LightEstimateLocationError = FMath::Max(0.0f, Row->LightEstimateLocationError);
+    LightObservationReportCooldown = FMath::Max(0.1f, Row->LightObservationReportCooldown);
+    LightObservationRetargetDistance = FMath::Max(20.0f, Row->LightObservationRetargetDistance);
+    bDetectLightOnSurfaces = Row->bDetectLightOnSurfaces;
+    bDrawLightObservationDebug = Row->bDrawLightObservationDebug;
+    GroundTraceHeight = FMath::Max(0.0f, Row->GroundTraceHeight);
+    GroundTraceDepth = FMath::Max(0.0f, Row->GroundTraceDepth);
+    NavProjectionExtent = FVector(FMath::Max(1.f, Row->NavProjectionExtent.X), FMath::Max(1.f, Row->NavProjectionExtent.Y), FMath::Max(1.f, Row->NavProjectionExtent.Z));
+    ChaseMoveAcceptanceRadius = FMath::Max(30.0f, Row->ChaseMoveAcceptanceRadius);
+    ChaseMoveRetryInterval = FMath::Max(0.1f, Row->ChaseMoveRetryInterval);
+    ChaseFallbackRetargetDistance = FMath::Max(20.0f, Row->ChaseFallbackRetargetDistance);
+    ChaseStuckTime = FMath::Max(0.5f, Row->ChaseStuckTime);
+    ChaseProgressThreshold = FMath::Max(1.0f, Row->ChaseProgressThreshold);
+    ChaseNavProjectionExtent = FVector(FMath::Max(1.f, Row->ChaseNavProjectionExtent.X), FMath::Max(1.f, Row->ChaseNavProjectionExtent.Y), FMath::Max(1.f, Row->ChaseNavProjectionExtent.Z));
+    bLogChaseMoveDiagnostics = Row->bLogChaseMoveDiagnostics;
+
+    ApplyPerceptionSettings(*Row);
+
+    // A live reload must also reschedule the sampling timer with the new rate.
+    if (HasActorBegunPlay() && IsValid(GetPawn()))
+    {
+        StartLightObservation();
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("[EnemyAIController] Applied %s / %s to %s"),
+        *GetNameSafe(Table), *AIControllerSettingsRow.RowName.ToString(), *GetName());
+    return true;
+}
+
+void AEnemyBaseAIController::ApplyPerceptionSettings(const FEnemyAIControllerSettings& Settings)
+{
+    if (!SightConfig || !HearingConfig || !AIPerceptionComponent)
+    {
+        return;
+    }
+
+    // Sight: keep LoseSightRadius at least as large as SightRadius.
+    SightConfig->SightRadius = FMath::Max(0.f, Settings.SightRadius);
+    SightConfig->LoseSightRadius = FMath::Max(
+        SightConfig->SightRadius, Settings.LoseSightRadius);
+    SightConfig->PeripheralVisionAngleDegrees = FMath::Clamp(
+        Settings.PeripheralVisionAngleDegrees, 0.f, 180.f);
+    SightConfig->SetMaxAge(FMath::Max(0.f, Settings.SightStimulusMaxAge));
+    SightConfig->DetectionByAffiliation.bDetectEnemies = Settings.bSightDetectEnemies;
+    SightConfig->DetectionByAffiliation.bDetectFriendlies = Settings.bSightDetectFriendlies;
+    SightConfig->DetectionByAffiliation.bDetectNeutrals = Settings.bSightDetectNeutrals;
+
+    // Hearing: remains the SINGLE hearing sense. Combat event type resolution
+    // is still handled in HandleHearingStimulus / EnemyCombatNoiseSubsystem.
+    HearingConfig->HearingRange = FMath::Max(0.f, Settings.HearingRange);
+    HearingConfig->LoSHearingRange = FMath::Max(0.f, Settings.LoSHearingRange);
+    HearingConfig->SetMaxAge(FMath::Max(0.f, Settings.HearingStimulusMaxAge));
+    HearingConfig->DetectionByAffiliation.bDetectEnemies = Settings.bHearingDetectEnemies;
+    HearingConfig->DetectionByAffiliation.bDetectFriendlies = Settings.bHearingDetectFriendlies;
+    HearingConfig->DetectionByAffiliation.bDetectNeutrals = Settings.bHearingDetectNeutrals;
 
     AIPerceptionComponent->ConfigureSense(*SightConfig);
     AIPerceptionComponent->ConfigureSense(*HearingConfig);
     AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
-    SetPerceptionComponent(*AIPerceptionComponent);
+
+    // UAIPerceptionSystem caches listener ranges. Push updated settings at
+    // runtime instead of only changing config object properties.
+    if (HasActorBegunPlay())
+    {
+        AIPerceptionComponent->RequestStimuliListenerUpdate();
+    }
 }
 
 void AEnemyBaseAIController::BeginPlay()
 {
     Super::BeginPlay();
+
+    ReloadSettingsFromDataTable();
+    // OnPossess may precede BeginPlay. Start observation exactly once,
+    // after the selected row has been applied to this controller.
+    if (IsValid(GetPawn()) && GetWorld() &&
+        !GetWorld()->GetTimerManager().IsTimerActive(LightObservationTimerHandle))
+    {
+        StartLightObservation();
+    }
+
     if (AIPerceptionComponent)
     {
         AIPerceptionComponent->OnTargetPerceptionUpdated.AddUniqueDynamic(
@@ -63,7 +166,11 @@ void AEnemyBaseAIController::BeginPlay()
 void AEnemyBaseAIController::OnPossess(APawn* InPawn)
 {
     Super::OnPossess(InPawn);
-    StartLightObservation();
+    // Do not start the observation timer until BeginPlay has loaded the DT row.
+    if (HasActorBegunPlay())
+    {
+        StartLightObservation();
+    }
 }
 
 void AEnemyBaseAIController::OnUnPossess()
@@ -573,6 +680,9 @@ void AEnemyBaseAIController::DisablePerception()
 void AEnemyBaseAIController::StartLightObservation()
 {
     if (!GetWorld() || !HasAuthority() || !GetPawn()) return;
+    // Restarting the timer after loading a different row must not leave the
+    // previous sampling cadence active.
+    GetWorld()->GetTimerManager().ClearTimer(LightObservationTimerHandle);
     const float Interval = FMath::Max(0.1f, LightObservationInterval);
     GetWorld()->GetTimerManager().SetTimer(
         LightObservationTimerHandle, this,

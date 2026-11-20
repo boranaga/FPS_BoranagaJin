@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "EnemyStateType.h"
+#include "Engine/DataTable.h"
 #include "EnemyStateMachineComponent.generated.h"
 
 class AEnemyBase;
@@ -14,6 +15,7 @@ class UStaminaComponent;
 class UEnemyAudioComponent;
 class ABloodStainActor;
 class ADestructibleDoor;
+struct FEnemyStateMachineSettings;
 
 enum class EEnemyIdleLookPhase : uint8
 {
@@ -28,6 +30,18 @@ class FPS_BORANAGAJIN_API UEnemyStateMachineComponent : public UActorComponent
 
 public:
 	UEnemyStateMachineComponent();
+
+	/** Select a DataTable and RowName (e.g. DT_EnemyStateMachine / Grunt). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Configuration",
+		meta = (RowType = "/Script/FPS_BORANAGAJIN.EnemyStateMachineSettings"))
+	FDataTableRowHandle StateMachineSettingsRow;
+
+	/** Reapply values from the selected row (usually called only in BeginPlay). */
+	UFUNCTION(BlueprintCallable, Category = "Enemy|Configuration")
+	bool ReloadSettingsFromDataTable();
+
+private:
+	void ResolvePatrolPointsFromDataTableTags(const TArray<FName>& PointTags);
 
 protected:
 	virtual void BeginPlay() override;
@@ -86,6 +100,7 @@ private:
 #pragma region Idle
 private:
 	FTimerHandle IdleToPatrolTimerHandle;
+	UPROPERTY(EditAnywhere, Category = "Enemy|Idle", meta = (ClampMin = "0.0"))
 	float IdleToPatrolTime = 4.f;
 
 	FRotator IdleBaseRotation = FRotator::ZeroRotator;
