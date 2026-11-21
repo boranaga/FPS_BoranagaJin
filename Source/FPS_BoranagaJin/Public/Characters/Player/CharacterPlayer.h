@@ -83,6 +83,16 @@ public:
 	{
 		return CharacterComponentSettingsRow;
 	}
+	// Disable this Pawn and ALL its owned components (including BP components)
+	// from contributing obstacles/modifiers to NavMesh generation.
+	// This does NOT disable collision or physics.
+	UFUNCTION(BlueprintCallable, Category = "Player|Navigation")
+	void DisablePlayerNavigationInfluence();
+
+	// Apply in the editor and after Blueprint-created components register.
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
+
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

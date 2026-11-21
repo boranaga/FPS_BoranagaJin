@@ -20,6 +20,7 @@
 #include "NiagaraComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/ActorComponent.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -39,6 +40,10 @@ ACharacterPlayer::ACharacterPlayer()
 	CapsuleComponent->SetCollisionProfileName(TEXT("Player"));
 	CapsuleComponent->SetNotifyRigidBodyCollision(true);
 
+	// The capsule must still block actors and the world, but must not
+	// carve/rebuild the NavMesh as the player moves.
+	CapsuleComponent->SetCanEverAffectNavigation(false);
+
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(CapsuleComponent);
 	Camera->SetRelativeLocation(FVector(0.f, 0.f, 70.f));
@@ -52,6 +57,10 @@ ACharacterPlayer::ACharacterPlayer()
 	HandsMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Hands Mesh"));
 	HandsMesh->SetupAttachment(ArmMesh);
 	HandsMesh->SetLeaderPoseComponent(ArmMesh);
+
+	// Rendering meshes must not contribute navigation geometry either.
+	ArmMesh->SetCanEverAffectNavigation(false);
+	HandsMesh->SetCanEverAffectNavigation(false);
 
 	MovementComponent = CreateDefaultSubobject<UPlayerMovementComponent>(TEXT("Movement Component"));
 	MovementComponent->UpdatedComponent = RootComponent;
@@ -112,12 +121,63 @@ ACharacterPlayer::ACharacterPlayer()
 	SlideAudioComponent->SetupAttachment(RootComponent);
 	SlideAudioComponent->bAutoActivate = false;
 
+	// Explicitly opt the Pawn itself out of navigation generation.
+	// Components require their own SetCanEverAffectNavigation(false),
+	// which is enforced for Blueprint components in lifecycle callbacks.
+	SetCanAffectNavigationGeneration(false, false);
+
 	Tags.AddUnique(TEXT("Player"));
+}
+
+void ACharacterPlayer::DisablePlayerNavigationInfluence()
+{
+	// APawn's navigation generation switch alone is not sufficient:
+	// individual components can still be navigation-relevant.
+	SetCanAffectNavigationGeneration(false, false);
+
+	TArray<UActorComponent*> ownedComponents;
+	GetComponents(ownedComponents);
+
+	int32 DisabledCount = 0;
+	for (UActorComponent* Component : ownedComponents)
+	{
+		if (IsValid(Component) && Component->CanEverAffectNavigation())
+		{
+			// This updates the navigation octree when required.
+			// Does not touch collision profile, overlaps or movement.
+			Component->SetCanEverAffectNavigation(false);
+			++DisabledCount;
+		}
+	}
+
+	if (DisabledCount > 0)
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("[PlayerNavigation] Disabled nav influence on %d components of %s"),
+			DisabledCount, *GetName());
+	}
+}
+
+void ACharacterPlayer::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	// Includes components added by the Blueprint construction script.
+	DisablePlayerNavigationInfluence();
+}
+
+void ACharacterPlayer::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+	// Ensures components registered in editor / PIE are nav-neutral.
+	DisablePlayerNavigationInfluence();
 }
 
 void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Final runtime pass in case a derived BP adjusted component settings.
+	DisablePlayerNavigationInfluence();
 
 	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::BeginPlay()"));
 

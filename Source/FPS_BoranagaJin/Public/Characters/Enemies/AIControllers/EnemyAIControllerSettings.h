@@ -136,12 +136,12 @@ public:
     float ChaseMoveAcceptanceRadius = 75.f;
 
     // ChaseMoveRetryInterval
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - Chase", meta = (ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - Chase", meta = (ClampMin = "0.03"))
     float ChaseMoveRetryInterval = 0.65f;
 
     // ChaseFallbackRetargetDistance
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - Chase", meta = (ClampMin = "20.0"))
-    float ChaseFallbackRetargetDistance = 170.f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - Chase", meta = (ClampMin = "5.0"))
+    float ChaseFallbackRetargetDistance = 10.f;
 
     // ChaseStuckTime
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - Chase", meta = (ClampMin = "0.5"))

@@ -375,8 +375,7 @@ void AEnemyBaseAIController::ResetChaseMoveCache()
     LastChaseProgressTime = -BIG_NUMBER;
 }
 
-void AEnemyBaseAIController::LogChaseMoveFailure(
-    const TCHAR* Reason, AActor* Target) const
+void AEnemyBaseAIController::LogChaseMoveFailure(const TCHAR* Reason, AActor* Target) const
 {
     if (!bLogChaseMoveDiagnostics || !GetWorld()) return;
     const float Now = GetWorld()->GetTimeSeconds();
@@ -483,8 +482,7 @@ void AEnemyBaseAIController::MoveToTarget(AActor* Target)
         ChaseMoveTarget = Target;
     }
 
-    const bool bTargetMoved = FVector::DistSquared2D(
-        TargetLocation, ChaseTargetLocationAtRequest) >=
+    const bool bTargetMoved = FVector::DistSquared2D(TargetLocation, ChaseTargetLocationAtRequest) >=
         FMath::Square(ChaseFallbackRetargetDistance);
 
     if (!bTargetChanged && IsFollowingAPath())
@@ -559,8 +557,7 @@ void AEnemyBaseAIController::MoveToTarget(AActor* Target)
         {
             ChaseMoveRequestID = MoveResult.MoveId;
             bChaseMoveUsesFallback = false;
-            bChaseMoveReachedGoal =
-                MoveResult.Code == EPathFollowingRequestResult::AlreadyAtGoal;
+            bChaseMoveReachedGoal = MoveResult.Code == EPathFollowingRequestResult::AlreadyAtGoal;
             return;
         }
 
@@ -571,8 +568,7 @@ void AEnemyBaseAIController::MoveToTarget(AActor* Target)
     TryChaseNavmeshFallback(Target, TargetLocation);
 }
 
-void AEnemyBaseAIController::OnMoveCompleted(
-    FAIRequestID RequestID, const FPathFollowingResult& Result)
+void AEnemyBaseAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
 {
     Super::OnMoveCompleted(RequestID, Result);
 

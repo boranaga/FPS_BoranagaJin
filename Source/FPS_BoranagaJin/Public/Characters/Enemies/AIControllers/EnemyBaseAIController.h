@@ -132,11 +132,11 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "30.0"))
     float ChaseMoveAcceptanceRadius = 75.f;
 
-    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "0.03"))
     float ChaseMoveRetryInterval = 0.65f;
 
-    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "20.0"))
-    float ChaseFallbackRetargetDistance = 170.f;
+    UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "5.0"))
+    float ChaseFallbackRetargetDistance = 10.f;
 
     UPROPERTY(EditAnywhere, Category = "Movement - Chase", meta = (ClampMin = "0.5"))
     float ChaseStuckTime = 2.25f;
