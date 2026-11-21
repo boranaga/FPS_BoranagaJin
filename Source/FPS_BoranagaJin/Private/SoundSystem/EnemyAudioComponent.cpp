@@ -305,7 +305,7 @@ void UEnemyAudioComponent::ScheduleNextAmbientVocal()
 	//---------------------
 	// <TODO: Interval ¼³Á¤>
 	const FEnemyAudioEventData* EventData = GetEventData(CurrentAmbientAudioEvent);
-
+	if (!EventData) return;
 	const float Interval = FMath::FRandRange(EventData->AmbientIntervalMin, EventData->AmbientIntervalMax);
 
 	//----------------------

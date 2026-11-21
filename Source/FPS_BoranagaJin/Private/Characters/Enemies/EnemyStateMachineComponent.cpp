@@ -10,6 +10,7 @@
 #include "Objects/DestructibleDoor.h"
 #include "Objects/DestructibleObject.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 #include "EngineUtils.h"
 #include "NavigationSystem.h"
@@ -51,6 +52,25 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 	}
 
 	// Copy ALL editable configuration fields; never copy runtime state/timers.
+	bEnableStateMovementSpeed = Row->bEnableStateMovementSpeed;
+	bInterpolateStateMovementSpeed = Row->bInterpolateStateMovementSpeed;
+	bInstantApplyStationarySpeed = Row->bInstantApplyStationarySpeed;
+	StateMovementSpeedInterpRate = Row->StateMovementSpeedInterpRate;
+	StateMovementSpeedScale = Row->StateMovementSpeedScale;
+	IdleMovementSpeed = Row->IdleMovementSpeed;
+	PatrolMovementSpeed = Row->PatrolMovementSpeed;
+	ChaseMovementSpeed = Row->ChaseMovementSpeed;
+	CombatDodgeMovementSpeed = Row->CombatDodgeMovementSpeed;
+	AttackMovementSpeed = Row->AttackMovementSpeed;
+	InvestigateMovementSpeed = Row->InvestigateMovementSpeed;
+	TrackBloodMovementSpeed = Row->TrackBloodMovementSpeed;
+	FleeMovementSpeed = Row->FleeMovementSpeed;
+	HideMovementSpeed = Row->HideMovementSpeed;
+	RecoverMovementSpeed = Row->RecoverMovementSpeed;
+	DeadMovementSpeed = Row->DeadMovementSpeed;
+	EvadeImpactMovementSpeed = Row->EvadeImpactMovementSpeed;
+	BreachDoorMovementSpeed = Row->BreachDoorMovementSpeed;
+
 	TargetMemoryDuration = Row->TargetMemoryDuration;
 	AttackStaminaCost = Row->AttackStaminaCost;
 	ChaseStaminaCostPerSecond = Row->ChaseStaminaCostPerSecond;
@@ -138,6 +158,12 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 
 	ResolvePatrolPointsFromDataTableTags(Row->PatrolPointTags);
 
+	// Safe for runtime reload: update speed even when the state is unchanged.
+	if (IsValid(Enemy))
+	{
+		ApplyStateMovementSpeed(0.f, true);
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[EnemyStateMachine] Applied %s / %s to %s"),
 		*GetNameSafe(Table), *StateMachineSettingsRow.RowName.ToString(),
 		*GetNameSafe(GetOwner()));
@@ -207,6 +233,13 @@ void UEnemyStateMachineComponent::BeginPlay()
 
 	TargetActor = nullptr;
 
+	// Store the Blueprint/class MaxWalkSpeed before changing it.
+	if (IsValid(Enemy) && IsValid(Enemy->GetCharacterMovement()))
+	{
+		InitialCharacterMaxWalkSpeed = Enemy->GetCharacterMovement()->MaxWalkSpeed;
+		bHasCapturedOriginalMovementSpeed = true;
+	}
+
 	if (PatrolPoints.Num() > 0)
 	{
 		SetState(EEnemyStateType::Patrol);
@@ -215,6 +248,9 @@ void UEnemyStateMachineComponent::BeginPlay()
 	{
 		SetState(EEnemyStateType::Idle);
 	}
+
+	// Apply even if SetState(Idle) returned without a state transition.
+	ApplyStateMovementSpeed(0.f, true);
 }
 
 void UEnemyStateMachineComponent::TickComponent(
@@ -231,6 +267,137 @@ void UEnemyStateMachineComponent::TickComponent(
 		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
 	}
 	UpdateState(DeltaTime);
+
+	// After behavior code: combat dodge waypoint selection can become active or
+	// expire without a ChangeState call, so Chase speed must be updated here.
+	ApplyStateMovementSpeed(DeltaTime);
+}
+
+// -----------------------------------------------------------------------------
+// State-based movement speed (one CharacterMovement MaxWalkSpeed source of truth).
+// Uses the existing StateMachine DataTable; no new AIController MoveTo requests.
+// -----------------------------------------------------------------------------
+float UEnemyStateMachineComponent::SelectBaseMovementSpeed(EEnemyStateType State) const
+{
+	switch (State)
+	{
+	case EEnemyStateType::Idle:        return IdleMovementSpeed;
+	case EEnemyStateType::Patrol:      return PatrolMovementSpeed;
+	case EEnemyStateType::Chase:
+		// Only boost speed when the zigzag waypoint move was actually accepted.
+		// A failed/unavailable dodge route should retain ordinary Chase speed.
+		return (bHasCombatDodgeWaypoint && IsCombatDodgeActive())
+			? CombatDodgeMovementSpeed : ChaseMovementSpeed;
+	case EEnemyStateType::Attack:      return AttackMovementSpeed;
+	case EEnemyStateType::Investigate: return InvestigateMovementSpeed;
+	case EEnemyStateType::TrackBlood:  return TrackBloodMovementSpeed;
+	case EEnemyStateType::Flee:        return FleeMovementSpeed;
+	case EEnemyStateType::Hide:        return HideMovementSpeed;
+	case EEnemyStateType::Recover:     return RecoverMovementSpeed;
+	case EEnemyStateType::Dead:        return DeadMovementSpeed;
+	case EEnemyStateType::EvadeImpact: return EvadeImpactMovementSpeed;
+	case EEnemyStateType::BreachDoor:  return BreachDoorMovementSpeed;
+	default:
+		return bHasCapturedOriginalMovementSpeed ? InitialCharacterMaxWalkSpeed : 0.f;
+	}
+}
+
+bool UEnemyStateMachineComponent::IsStationaryMovementState(EEnemyStateType State) const
+{
+	return State == EEnemyStateType::Idle || State == EEnemyStateType::Attack ||
+		State == EEnemyStateType::Hide || State == EEnemyStateType::Recover ||
+		State == EEnemyStateType::Dead;
+}
+
+float UEnemyStateMachineComponent::GetDesiredStateMovementSpeed() const
+{
+	if (!bEnableStateMovementSpeed)
+	{
+		return FMath::Max(0.f, InitialCharacterMaxWalkSpeed);
+	}
+
+	const float BaseSpeed = FMath::Max(0.f, SelectBaseMovementSpeed(CurrentState));
+	const float DefaultScale = FMath::Max(0.f, StateMovementSpeedScale);
+	const float RuntimeScale = FMath::Max(0.f, RuntimeMovementSpeedMultiplier);
+	return BaseSpeed * DefaultScale * RuntimeScale;
+}
+
+float UEnemyStateMachineComponent::GetAppliedMovementSpeed() const
+{
+	if (IsValid(Enemy))
+	{
+		if (const UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
+		{
+			return Movement->MaxWalkSpeed;
+		}
+	}
+	return 0.f;
+}
+
+void UEnemyStateMachineComponent::SetRuntimeMovementSpeedMultiplier(float NewMultiplier)
+{
+	if (!FMath::IsFinite(NewMultiplier))
+	{
+		return;
+	}
+	RuntimeMovementSpeedMultiplier = FMath::Max(0.f, NewMultiplier);
+	// React to damage/stamina debuffs promptly; this does not change state or path.
+	ApplyStateMovementSpeed(0.f, true);
+}
+
+void UEnemyStateMachineComponent::ApplyStateMovementSpeed(
+	float DeltaTime, bool bForceImmediate)
+{
+	if (!IsValid(Enemy))
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement();
+	if (!IsValid(Movement))
+	{
+		return;
+	}
+
+	// Allows this function to be called after BeginPlay even if Enemy's
+	// CharacterMovement was not valid on the first initialization attempt.
+	if (!bHasCapturedOriginalMovementSpeed)
+	{
+		InitialCharacterMaxWalkSpeed = Movement->MaxWalkSpeed;
+		bHasCapturedOriginalMovementSpeed = true;
+	}
+
+	const float DesiredSpeed = GetDesiredStateMovementSpeed();
+	if (!FMath::IsFinite(DesiredSpeed))
+	{
+		return; // Avoid propagating corrupt DT data into movement physics.
+	}
+
+	const bool bStationary = bInstantApplyStationarySpeed &&
+		IsStationaryMovementState(CurrentState);
+	const bool bSnap = bForceImmediate || !bEnableStateMovementSpeed ||
+		!bInterpolateStateMovementSpeed || bStationary;
+
+	float NewSpeed = DesiredSpeed;
+	if (!bSnap)
+	{
+		if (DeltaTime <= 0.f)
+		{
+			return; // Wait for next Tick; avoid overwriting the old speed.
+		}
+		NewSpeed = FMath::FInterpTo(Movement->MaxWalkSpeed,
+			DesiredSpeed, DeltaTime, FMath::Max(0.f, StateMovementSpeedInterpRate));
+		if (FMath::IsNearlyEqual(NewSpeed, DesiredSpeed, 0.1f))
+		{
+			NewSpeed = DesiredSpeed;
+		}
+	}
+
+	NewSpeed = FMath::Max(0.f, NewSpeed);
+	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, NewSpeed, 0.1f))
+	{
+		Movement->MaxWalkSpeed = NewSpeed;
+	}
 }
 
 void UEnemyStateMachineComponent::OnIdleFinished()
@@ -499,6 +666,11 @@ void UEnemyStateMachineComponent::SetState(EEnemyStateType NewState)
 
 	ExitState(CurrentState);
 	CurrentState = NewState;
+
+	// Apply immediately if interpolation is disabled; otherwise the new
+	// speed is reached over subsequent ticks. Stationary states may snap to 0.
+	ApplyStateMovementSpeed(0.f);
+
 	EnterState(CurrentState);
 
 	if (EnemyAudioComponent)

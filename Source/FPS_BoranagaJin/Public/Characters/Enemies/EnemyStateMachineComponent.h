@@ -44,6 +44,87 @@ private:
 	void ResolvePatrolPointsFromDataTableTags(const TArray<FName>& PointTags);
 
 protected:
+	// ==== State movement speed (cm/s) ====
+	// DataTable values are applied to these fields once at BeginPlay or on explicit reload.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds")
+	bool bEnableStateMovementSpeed = true; // Enable state-dependent movement speed
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds")
+	bool bInterpolateStateMovementSpeed = false; // Smooth transition between movement speeds
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds")
+	bool bInstantApplyStationarySpeed = true; // Instantly apply speed for idle/attack/hide/recover/dead
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float StateMovementSpeedInterpRate = 8.f; // FInterpTo speed for smooth transition
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float StateMovementSpeedScale = 1.f; // Global DataTable speed scale
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float IdleMovementSpeed = 0.f; // Idle
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float PatrolMovementSpeed = 260.f; // Patrol
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float ChaseMovementSpeed = 480.f; // Chase normal
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float CombatDodgeMovementSpeed = 520.f; // Chase + active zigzag waypoint
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float AttackMovementSpeed = 0.f; // Attack
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float InvestigateMovementSpeed = 320.f; // Investigate
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float TrackBloodMovementSpeed = 300.f; // TrackBlood
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float FleeMovementSpeed = 580.f; // Flee
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float HideMovementSpeed = 0.f; // Hide
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float RecoverMovementSpeed = 0.f; // Recover
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float DeadMovementSpeed = 0.f; // Dead
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float EvadeImpactMovementSpeed = 620.f; // EvadeImpact
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+	float BreachDoorMovementSpeed = 230.f; // BreachDoor approach
+
+private:
+	// This is runtime-only; initialize once from the pawn's CharacterMovement.
+	float InitialCharacterMaxWalkSpeed = 0.f;
+	bool bHasCapturedOriginalMovementSpeed = false;
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Movement - Runtime")
+	float RuntimeMovementSpeedMultiplier = 1.f;
+
+	float SelectBaseMovementSpeed(EEnemyStateType State) const;
+	bool IsStationaryMovementState(EEnemyStateType State) const;
+	void ApplyStateMovementSpeed(float DeltaTime, bool bForceImmediate = false);
+
+public:
+	/** State-specific target speed after DataTable and runtime multipliers. */
+	UFUNCTION(BlueprintPure, Category = "Enemy|Movement")
+	float GetDesiredStateMovementSpeed() const;
+
+	/** Actual CharacterMovement MaxWalkSpeed, which may still be interpolating. */
+	UFUNCTION(BlueprintPure, Category = "Enemy|Movement")
+	float GetAppliedMovementSpeed() const;
+
+	/** Optional modifier for stamina, damage debuffs or temporary buffs. Not saved in DT. */
+	UFUNCTION(BlueprintCallable, Category = "Enemy|Movement")
+	void SetRuntimeMovementSpeedMultiplier(float NewMultiplier);
+
+protected:
 	virtual void BeginPlay() override;
 
 public:

@@ -15,6 +15,80 @@ struct FPS_BORANAGAJIN_API FEnemyStateMachineSettings : public FTableRowBase
     GENERATED_BODY()
 public:
 
+    // State-dependent movement speeds (cm/s). One value per EEnemyStateType,
+    // with CombatDodgeMovementSpeed as a specialized Chase speed.
+    /** Enable state-dependent movement speed. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds")
+    bool bEnableStateMovementSpeed = true;
+
+    /** Smooth transition between movement speeds. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds")
+    bool bInterpolateStateMovementSpeed = false;
+
+    /** Instantly apply speed for idle/attack/hide/recover/dead. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds")
+    bool bInstantApplyStationarySpeed = true;
+
+    /** FInterpTo speed for smooth transition. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float StateMovementSpeedInterpRate = 8.f;
+
+    /** Global DataTable speed scale. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float StateMovementSpeedScale = 1.f;
+
+    /** Idle. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float IdleMovementSpeed = 0.f;
+
+    /** Patrol. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float PatrolMovementSpeed = 260.f;
+
+    /** Chase normal. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float ChaseMovementSpeed = 480.f;
+
+    /** Chase + active zigzag waypoint. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float CombatDodgeMovementSpeed = 520.f;
+
+    /** Attack. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float AttackMovementSpeed = 0.f;
+
+    /** Investigate. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float InvestigateMovementSpeed = 320.f;
+
+    /** TrackBlood. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float TrackBloodMovementSpeed = 300.f;
+
+    /** Flee. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float FleeMovementSpeed = 580.f;
+
+    /** Hide. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float HideMovementSpeed = 0.f;
+
+    /** Recover. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float RecoverMovementSpeed = 0.f;
+
+    /** Dead. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float DeadMovementSpeed = 0.f;
+
+    /** EvadeImpact. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float EvadeImpactMovementSpeed = 620.f;
+
+    /** BreachDoor approach. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
+    float BreachDoorMovementSpeed = 230.f;
+
     // Common - Target
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Common - Target")
     float TargetMemoryDuration = 3.f;

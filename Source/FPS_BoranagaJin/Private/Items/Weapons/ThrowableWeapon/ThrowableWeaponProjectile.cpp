@@ -1347,6 +1347,8 @@ void AThrowableWeaponProjectile::OnFuseExpired()
 
 void AThrowableWeaponProjectile::ActivatePayload()
 {
+	UE_LOG(LogTemp, Error, TEXT("void AThrowableWeaponProjectile::ActivatePayload()"));
+
 	if (bPayloadActivated || !bIsActivated)
 	{
 		return;

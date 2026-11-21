@@ -105,7 +105,7 @@ protected:
 	bool bIsExplosive = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Explosive")
-	bool bVisualizeExplosionRadius = false;
+	bool bVisualizeExplosionRadius = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Explosive")
 	float MaxExplosiveDamage = 100.f;
