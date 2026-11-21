@@ -42,6 +42,18 @@ struct FPS_BORANAGAJIN_API FCharacterStaminaSettings
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina", meta = (ClampMin = "0.0"))
     float RecoveryDelay = 1.f;
+
+    /** Points consumed per second while running; shared UStaminaComponent is the only pool. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina - Running", meta = (ClampMin = "0.0"))
+    float RunStaminaCostPerSecond = 50.f;
+
+    /** The minimum points required to start/maintain normal running. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina - Running", meta = (ClampMin = "0.0"))
+    float MinimumRunStamina = 50.f;
+
+    /** One-time positive cost whenever the player begins a dash, including from a slide. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina - Dash", meta = (ClampMin = "0.0"))
+    float DashStaminaCost = 100.f;
 };
 
 /** UBloodTrailComponent configuration. BloodStainClass may be left unset in the

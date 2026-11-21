@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -18,7 +18,7 @@ class UInputAction;
 class UInputMappingContext;
 class UNiagaraComponent;
 
-class UFootstepComponent; //TODO: Á¡°Ë
+class UFootstepComponent; //TODO: ï¿½ï¿½ï¿½ï¿½
 
 class UPlayerMovementComponent;
 class UHealthComponent;
@@ -134,6 +134,7 @@ public:
 #pragma endregion
 
 public:
+	// Legacy UI signature is (Max, Current); forwarded from StaminaComponent.
 	FOnStaminaUpdated OnStaminaUpdated;
 
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
@@ -201,7 +202,7 @@ protected:
 	TObjectPtr<UPlayerMovementComponent> MovementComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HealthComponent")
 	TObjectPtr<UHealthComponent> HealthComponent;
-	// New: CharacterPlayer originally did not create UStaminaComponent.
+	// The only gameplay stamina pool for this pawn.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StaminaComponent")
 	TObjectPtr<UStaminaComponent> StaminaComponent;
 	UPROPERTY(EditAnywhere, Category = "InventorySystemComponent")
@@ -284,6 +285,9 @@ protected:
 	void StartTeleportToLastCheckpointInput();
 	void CalculateMappedSoundValue(const FPlayerSoundData& Data, float Speed, float& OutVolumeMultiplier,
 		float& OutPitchMultiplier);
+
+	// Relay (Current, Max) component values into the existing UI (Max, Current).
+	void HandleStaminaChanged(float CurrentStamina, float MaxStamina);
 
 	// Damage Comp Event Delegate Functions
 	void OnDamaged();

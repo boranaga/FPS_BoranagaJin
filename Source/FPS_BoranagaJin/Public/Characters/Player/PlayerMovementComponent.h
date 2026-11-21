@@ -1,4 +1,4 @@
-
+ï»¿
 
 #pragma once
 
@@ -13,6 +13,7 @@ class UCurveVector;
 class AController;
 //class APlayerController;
 class ACharacterPlayer;
+class UStaminaComponent;
 
 USTRUCT(BlueprintType)
 struct FCachedInput
@@ -109,7 +110,7 @@ public:
 		DefaultCapsuleHalfHeight = HalfHeight;
 	}
 
-	bool FindGroundPoint(FVector& OutPoint); //MEMO: AI¿¡¼­ »ç¿ëµÊ
+	bool FindGroundPoint(FVector& OutPoint); //MEMO: AIï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
 	FVector2D GetMovementInputVector() const { return MovementInputVector; };
 
@@ -122,8 +123,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	bool IsDashing() const { return bIsDashing; }
 
+	// Compatibility read-only gauge (0..2) derived from the ONE StaminaComponent pool.
+	// No independent DashGauge recharge or charges exist anymore.
 	UFUNCTION(BlueprintCallable)
-	float GetDashGauge() const { return DashGauge; } //TOOD: Stamina SystemÀ¸·Î º¯°æ
+	float GetDashGauge() const;
 	UFUNCTION(BlueprintCallable)
 	float GetRunSpeed() const { return RunSpeed; }
 	UFUNCTION(BlueprintCallable)
@@ -192,9 +195,6 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Dash")
 	float DashDecelerationTime = 0.4f;
-
-	UPROPERTY(EditAnywhere, Category = "Movement|Dash")
-	float DashCooldown = 5.f;
 
 	UPROPERTY(EditAnywhere, Category = "Movement|Run")
 	float RunSpeed = 1000.f;
@@ -338,9 +338,6 @@ protected:
 	bool bIsDashing = false;
 	UPROPERTY(VisibleAnywhere, Category = "Movement|Dash")
 	float ElapsedTimeFromDash = 0.f;
-
-	UPROPERTY(VisibleAnywhere, Category = "Movement|Dash")
-	float DashGauge = 2.f;
 
 #pragma endregion Dash
 
@@ -571,7 +568,8 @@ protected:
 
 	void TickDead(float DeltaTime);
 
-	void UpdateDashGauge(float DeltaTime);
+	/** Sync movement activity with the owner UStaminaComponent (single source of truth). */
+	void SyncStaminaActivity();
 
 	void CacheInput();
 
@@ -583,16 +581,9 @@ protected:
 
 #pragma region Stamina
 protected:
-	float MaxStamina = 400.f;
-	float CurrStamina = 400.f;
-
-	float DashStaminaConsumeRate = -100.f;
-	float RunStaminaConsumeRate = -50.f;
-	float StaminaRecoveryRate = 100.f;
-
-	void UpdateStamina(float DeltaTime, float UpdateRate = 0.f);
-	void ConsumeStamina(float stamina);
-
+	// The only live stamina values are in this component. No duplicate pool here.
+	UPROPERTY(Transient)
+	TObjectPtr<UStaminaComponent> StaminaComponent = nullptr;
 #pragma endregion
 };
 

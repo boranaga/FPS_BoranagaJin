@@ -1,8 +1,9 @@
-
+ï»¿
 #include "Characters/Player/PlayerMovementComponent.h"
 
 #include "Characters/Player/PlayerMovementData.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/StaminaComponent.h"
 
 #include "Items/Weapons/Weapon.h"
 #include "Items/InventorySystemComponent.h"
@@ -15,10 +16,10 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Curves/CurveVector.h"
-#include "GameModes/DefaultGameMode.h" //TODO: GameMode ±¸Çö
+#include "GameModes/DefaultGameMode.h" //TODO: GameMode ï¿½ï¿½ï¿½ï¿½
 
-#define WALL_TRACE_CHANNEL ECC_GameTraceChannel2 //TODO: ¼öÁ¤
-#define ENEMY_TRACE_CHANNEL ECC_GameTraceChannel6 //TODO: ¼öÁ¤
+#define WALL_TRACE_CHANNEL ECC_GameTraceChannel2 //TODO: ï¿½ï¿½ï¿½ï¿½
+#define ENEMY_TRACE_CHANNEL ECC_GameTraceChannel6 //TODO: ï¿½ï¿½ï¿½ï¿½
 
 UPlayerMovementComponent::UPlayerMovementComponent()
 {
@@ -34,6 +35,7 @@ void UPlayerMovementComponent::BeginPlay()
 	{
 		CharacterPlayer = Cast<ACharacterPlayer>(PawnOwner);
 		PlayerController = Cast<APlayerController>(PawnOwner->GetController());
+		StaminaComponent = CharacterPlayer ? CharacterPlayer->GetStaminaComponent() : nullptr;
 	}
 
 	// Init trigger box related maps
@@ -47,9 +49,8 @@ void UPlayerMovementComponent::BeginPlay()
 	CurrentMovementState = EMovementState::EMS_Airborne;
 	OnAirborneDelegate.Broadcast();
 
-	//CharacterPlayer->InitUIManager();
-	//CharacterPlayer->OnStaminaInit.Broadcast(MaxStamina);
-	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
+	// CharacterPlayer relays UStaminaComponent::OnStaminaChanged to legacy UI delegate.
+	// No PlayerMovement-owned stamina initialization or broadcast.
 }
 
 void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -89,8 +90,6 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 	//ApplyMovementDataModifiers();
 	//ApplyKeyHoldModifiers();
 
-	//UpdateDashGauge(DeltaTime);
-
 	UpdateWallCooldowns();
 
 	if (!bControllerTilting)
@@ -108,6 +107,7 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 	CacheInput();
 
 	TickState(DeltaTime);
+	SyncStaminaActivity();
 
 	FVector DesiredTickMovement = Velocity * DeltaTime;
 	if (!DesiredTickMovement.IsNearlyZero())
@@ -355,7 +355,7 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 					bIsRunning = false;
 					bShiftPressed = false;
 				}
-				if (CurrStamina < -RunStaminaConsumeRate)
+				if (!StaminaComponent || !StaminaComponent->CanRun())
 				{
 					bIsRunning = false;
 					bShiftPressed = false;
@@ -375,17 +375,7 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 		}
 	}
 
-	//----------------------------
-	if (bIsRunning)
-	{
-		UpdateStamina(DeltaTime, RunStaminaConsumeRate);
-	}
-	else
-	{
-		UpdateStamina(DeltaTime, StaminaRecoveryRate);
-	}
-
-	//----------------------------
+	// Sprint drain/recovery is handled only by UStaminaComponent::TickComponent.
 
 
 	TryStartStep();
@@ -443,18 +433,14 @@ void UPlayerMovementComponent::TickMove(float DeltaTime)
 
 	if (Input.bShiftPressed)
 	{
-		if (CurrStamina >= DashStaminaConsumeRate)
+		if (!bIsDashing && !bIsRunning && !bIsCrouching &&
+			StaminaComponent && StaminaComponent->TryConsumeDashStamina())
 		{
-			if (!bIsDashing && !bIsRunning && !bIsCrouching)
-			{
-				SetIsDashing(true);
-				bIsRunning = true;
+			SetIsDashing(true);
+			bIsRunning = true;
 
-				const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
-				Velocity = DashDirection * DashStartSpeed;
-
-				ConsumeStamina(DashStaminaConsumeRate);
-			}
+			const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
+			Velocity = DashDirection * DashStartSpeed;
 		}
 		//else
 		//{
@@ -585,28 +571,16 @@ void UPlayerMovementComponent::TickSlide(float DeltaTime)
 		return;
 	}
 
-	if (Input.bShiftPressed)
+	if (Input.bShiftPressed && !bIsDashing &&
+		StaminaComponent && StaminaComponent->TryConsumeDashStamina())
 	{
-		if (DashGauge >= 1.f)
-		{
-			SetIsDashing(true);
-
-			bIsRunning = true; // Player will run after dash ends
-
-			DashGauge = FMath::Clamp(DashGauge - 1.f, 0.f, 2.f);
-
-			const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ? PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
-			Velocity = DashDirection * DashStartSpeed;
-			SetMovementState(EMovementState::EMS_Move);
-			return;
-		}
-		else
-		{
-			if (!bIsDashing)
-			{
-				bIsRunning = !bIsRunning;
-			}
-		}
+		SetIsDashing(true);
+		bIsRunning = true; // Continue running after sliding dash.
+		const FVector DashDirection = Input.WorldInputDir.IsNearlyZero() ?
+			PawnOwner->GetActorForwardVector() : Input.WorldInputDir;
+		Velocity = DashDirection * DashStartSpeed;
+		SetMovementState(EMovementState::EMS_Move);
+		return;
 	}
 }
 
@@ -795,7 +769,7 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 		}
 	}
 
-	if (bIsDashing) //TODO: ¼öÁ¤
+	if (bIsDashing) //TODO: ï¿½ï¿½ï¿½ï¿½
 	{
 		if (ElapsedTimeFromDash < DashDecelerationTime)
 		{
@@ -853,7 +827,7 @@ void UPlayerMovementComponent::TickAirborne(float DeltaTime)
 				Velocity.X = NewDirection.X * MaxHorizontalSpeed;
 				Velocity.Y = NewDirection.Y * MaxHorizontalSpeed;
 			}
-			else //TODO: ¿©±â¿¡¼­ °øÁß¿¡¼­ ÀÌµ¿ ÀÔ·Â ºÒ°¡´É ÇÏµµ·Ï ¼öÁ¤ÇÏ±â
+			else //TODO: ï¿½ï¿½ï¿½â¿¡ï¿½ï¿½ ï¿½ï¿½ï¿½ß¿ï¿½ï¿½ï¿½ ï¿½Ìµï¿½ ï¿½Ô·ï¿½ ï¿½Ò°ï¿½ï¿½ï¿½ ï¿½Ïµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½
 			{
 				Velocity.X = Velocity.GetSafeNormal2D().X * MaxHorizontalSpeed;
 				Velocity.Y = Velocity.GetSafeNormal2D().Y * MaxHorizontalSpeed;
@@ -1690,7 +1664,7 @@ bool UPlayerMovementComponent::IsGrounded()
 
 	bool bHit = GetWorld()->SweepSingleByChannel(GroundHit, SweepStart, SweepEnd, FQuat::Identity, ECC_WorldStatic,
 		FCollisionShape::MakeSphere(CapsuleRadius - 5.f), GroundSweepParams, ResponseParams);
-	//MEMO: ¿Ö CapsuleRadius - 5 ¸¦ ÇÏ´Â°¡?
+	//MEMO: ï¿½ï¿½ CapsuleRadius - 5 ï¿½ï¿½ ï¿½Ï´Â°ï¿½?
 
 	if (!bHit || !GroundHit.bBlockingHit)
 	{
@@ -1712,7 +1686,7 @@ void UPlayerMovementComponent::NotifyDamageData(const FDamageParams& DamageInfo)
 	ReceivedDamageType = DamageInfo.DamageType;
 	LastDamagedWorldTime = GetWorld()->GetTimeSeconds();
 	ReceivedDamageDirection = DamageInfo.HitDirection;
-	ReceivedDamageForce = DamageInfo.DamageAmount; //TODO: ¼öÁ¤ ÇÊ¿ä
+	ReceivedDamageForce = DamageInfo.DamageAmount; //TODO: ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½
 
 	switch (ReceivedDamageType)
 	{
@@ -1829,17 +1803,31 @@ bool UPlayerMovementComponent::FindGroundPoint(FVector& OutPoint)
 	return bHit;
 }
 
-void UPlayerMovementComponent::UpdateDashGauge(float DeltaTime)
+float UPlayerMovementComponent::GetDashGauge() const
 {
-	if (DashGauge < 2.f)
-	{
-		/*
-		 * Gauge max value is 2. and the dash cooldown is 5 seconds, and dash cooldown is accounted for a single dash, So
-		 * the increment factor becomes 1 second divided by dash cooldown.
-		 */
+	// Compatibility only: an old 0..2 gauge read from the current unified pool.
+	// If you need exact dash availability, call UStaminaComponent::CanDash().
+	if (!StaminaComponent) return 0.f;
+	const float Cost = StaminaComponent->GetDashStaminaCost();
+	return Cost <= KINDA_SMALL_NUMBER ? 2.f :
+		FMath::Clamp(StaminaComponent->GetCurrentStamina() / Cost, 0.f, 2.f);
+}
 
-		DashGauge = FMath::Clamp(DashGauge + (1.f / DashCooldown) * DeltaTime, 0.f, 2.f);
+void UPlayerMovementComponent::SyncStaminaActivity()
+{
+	if (!StaminaComponent) return;
+	const bool bGameplayActive = CurrentMovementState != EMovementState::EMS_Dead &&
+		CurrentMovementState != EMovementState::EMS_Downed;
+	StaminaComponent->SetRecoveryEnabled(bGameplayActive);
+	// Finish a dash even if it spends the last points; don't keep sprinting afterward.
+	if (!bIsDashing && bIsRunning && !StaminaComponent->CanRun())
+	{
+		bIsRunning = false;
 	}
+	// Only actual forward running drains stamina, not standing still or dashing in place.
+	StaminaComponent->SetRunningDrainEnabled(
+		bGameplayActive && CurrentMovementState == EMovementState::EMS_Move &&
+		bIsRunning && Input.MovementInput2D.Y > 0.f && !Input.WorldInputDir.IsNearlyZero());
 }
 
 void UPlayerMovementComponent::CacheInput()
@@ -1971,20 +1959,6 @@ void UPlayerMovementComponent::TryStartStep()
 	}
 }
 
-void UPlayerMovementComponent::UpdateStamina(float DeltaTime, float UpdateRate)
-{
-	CurrStamina += UpdateRate * DeltaTime;
-	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
-	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
-}
-
-void UPlayerMovementComponent::ConsumeStamina(float stamina)
-{
-	CurrStamina += stamina;
-	CurrStamina = FMath::Clamp(CurrStamina, 0.f, MaxStamina);
-	CharacterPlayer->OnStaminaUpdated.Broadcast(MaxStamina, CurrStamina);
-}
-
 void UPlayerMovementComponent::AddControllerRoll(float DeltaTime, const FVector& WallRunDirection, EWallRunSide WallRunSide)
 {
 	FVector PlayerForward = CharacterPlayer->GetActorForwardVector();
@@ -2081,7 +2055,8 @@ void UPlayerMovementComponent::ApplyMovementDataTable()
 	DashStartSpeed = Row->DashStartSpeed;
 	DashEndSpeed = Row->DashEndSpeed;
 	DashDecelerationTime = Row->DashDecelerationTime;
-	DashCooldown = Row->DashCooldown;
+	// FPlayerMovementRow::DashCooldown is legacy gauge data. Dash recovery is now
+	// fully owned by the character's UStaminaComponent DataTable settings.
 	RunSpeed = Row->RunSpeed;
 	CrouchSpeed = Row->CrouchSpeed;
 	CrouchHeightScale = Row->CrouchHeightScale;
@@ -2138,7 +2113,7 @@ void UPlayerMovementComponent::InitMovementDataTypeMap()
 	MovementDataTypeMap.Add(EMovementDataType::DashStartSpeed, &DashStartSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::DashEndSpeed, &DashEndSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::DashDecelerationTime, &DashDecelerationTime);
-	MovementDataTypeMap.Add(EMovementDataType::DashCooldown, &DashCooldown);
+	// DashCooldown no longer owns an independent gauge/recharge state.
 	MovementDataTypeMap.Add(EMovementDataType::RunSpeed, &RunSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::CrouchSpeed, &CrouchSpeed);
 	MovementDataTypeMap.Add(EMovementDataType::CrouchHeightScale, &CrouchHeightScale);

@@ -1,128 +1,175 @@
 #include "Characters/StaminaComponent.h"
 #include "Characters/CharacterComponentSettingsSource.h"
 #include "Characters/CharacterComponentSettings.h"
+#include "Engine/World.h"
 
 UStaminaComponent::UStaminaComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bCanEverTick = true;
+    // UPlayerMovementComponent ticks during physics; consume the updated running flag afterward.
+    PrimaryComponentTick.TickGroup = TG_PostPhysics;
 }
 
 void UStaminaComponent::BeginPlay()
 {
-	Super::BeginPlay();
-
-	ReloadSettingsFromOwnerDataTable();
-	CurrentStamina = MaxStamina;
-	bSettingsInitialized = true;
+    Super::BeginPlay();
+    ReloadSettingsFromOwnerDataTable();
+    CurrentStamina = MaxStamina;
+    bSettingsInitialized = true;
+    bContinuousRunningDrain = false;
+    bRecoveryEnabled = true;
 }
 
 void UStaminaComponent::TickComponent(
-	float DeltaTime,
-	ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction
-)
+    float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    if (!GetWorld() || DeltaTime <= 0.f) return;
 
-	RecoverStamina(DeltaTime);
+    if (bContinuousRunningDrain)
+    {
+        // Sprint drain and recovery are mutually exclusive, including RecoveryDelay=0.
+        if (RunStaminaCostPerSecond > 0.f)
+        {
+            LastConsumeTime = GetWorld()->GetTimeSeconds();
+            if (CurrentStamina > 0.f)
+            {
+                SpendStamina(RunStaminaCostPerSecond * DeltaTime);
+            }
+        }
+        return;
+    }
+
+    if (bRecoveryEnabled)
+    {
+        RecoverStamina(DeltaTime);
+    }
 }
 
 bool UStaminaComponent::CanConsume(float Amount) const
 {
-	return Amount > 0.f && CurrentStamina >= Amount;
+    return Amount > 0.f && CurrentStamina + KINDA_SMALL_NUMBER >= Amount;
 }
 
 bool UStaminaComponent::ConsumeStamina(float Amount)
 {
-	if (!CanConsume(Amount))
-	{
-		return false;
-	}
+    if (!CanConsume(Amount)) return false;
+    return SpendStamina(Amount);
+}
 
-	CurrentStamina = FMath::Clamp(CurrentStamina - Amount, 0.f, MaxStamina);
-	LastConsumeTime = GetWorld()->GetTimeSeconds();
+bool UStaminaComponent::SpendStamina(float Amount)
+{
+    if (Amount <= 0.f || !GetWorld() || CurrentStamina <= 0.f) return false;
+    const float Old = CurrentStamina;
+    CurrentStamina = FMath::Clamp(CurrentStamina - Amount, 0.f, MaxStamina);
+    LastConsumeTime = GetWorld()->GetTimeSeconds();
+    if (CurrentStamina == Old) return false;
+    BroadcastStaminaChanged();
+    if (Old > 0.f && CurrentStamina <= 0.f)
+    {
+        OnStaminaEmpty.Broadcast();
+    }
+    return true;
+}
 
-	OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+void UStaminaComponent::BroadcastStaminaChanged()
+{
+    // Native delegate uses (current, max). CharacterPlayer relays legacy (max, current).
+    OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+}
 
-	if (CurrentStamina <= 0.f)
-	{
-		OnStaminaEmpty.Broadcast();
-	}
+bool UStaminaComponent::CanRun() const
+{
+    return CurrentStamina > KINDA_SMALL_NUMBER &&
+        CurrentStamina + KINDA_SMALL_NUMBER >= MinimumRunStamina;
+}
 
-	return true;
+bool UStaminaComponent::CanDash() const
+{
+    return DashStaminaCost <= 0.f || CanConsume(DashStaminaCost);
+}
+
+bool UStaminaComponent::TryConsumeDashStamina()
+{
+    if (!CanDash()) return false;
+    if (DashStaminaCost <= 0.f) return true;
+    return ConsumeStamina(DashStaminaCost);
+}
+
+void UStaminaComponent::SetRunningDrainEnabled(bool bEnabled)
+{
+    bContinuousRunningDrain = bEnabled;
+}
+
+void UStaminaComponent::SetRecoveryEnabled(bool bEnabled)
+{
+    bRecoveryEnabled = bEnabled;
 }
 
 void UStaminaComponent::RecoverStamina(float DeltaTime)
 {
-	if (!GetWorld()) return;
-
-	const float CurrentTime = GetWorld()->GetTimeSeconds();
-
-	if (CurrentTime - LastConsumeTime < RecoveryDelay)
-	{
-		return;
-	}
-
-	if (CurrentStamina >= MaxStamina)
-	{
-		return;
-	}
-
-	CurrentStamina = FMath::Clamp(
-		CurrentStamina + RecoveryRate * DeltaTime,
-		0.f,
-		MaxStamina
-	);
-
-	OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+    if (!GetWorld() || !bRecoveryEnabled || bContinuousRunningDrain || DeltaTime <= 0.f)
+        return;
+    if (GetWorld()->GetTimeSeconds() - LastConsumeTime < RecoveryDelay)
+        return;
+    if (CurrentStamina >= MaxStamina || RecoveryRate <= 0.f)
+        return;
+    const float Old = CurrentStamina;
+    CurrentStamina = FMath::Clamp(CurrentStamina + RecoveryRate * DeltaTime, 0.f, MaxStamina);
+    if (CurrentStamina != Old) BroadcastStaminaChanged();
 }
 
 void UStaminaComponent::ResetStamina()
 {
-	CurrentStamina = MaxStamina;
-	LastConsumeTime = -999.f;
-
-	OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+    const float Previous = CurrentStamina;
+    CurrentStamina = MaxStamina;
+    LastConsumeTime = -999.f;
+    bContinuousRunningDrain = false;
+    bRecoveryEnabled = true;
+    if (Previous != CurrentStamina) BroadcastStaminaChanged();
 }
 
 bool UStaminaComponent::IsExhausted() const
 {
-	return CurrentStamina <= 0.f;
+    return CurrentStamina <= 0.f;
 }
 
 float UStaminaComponent::GetCurrentStamina() const
 {
-	return CurrentStamina;
+    return CurrentStamina;
 }
 
 float UStaminaComponent::GetMaxStamina() const
 {
-	return MaxStamina;
+    return MaxStamina;
 }
 
 float UStaminaComponent::GetStaminaPercent() const
 {
-	return MaxStamina > 0.f ? CurrentStamina / MaxStamina : 0.f;
+    return MaxStamina > 0.f ? CurrentStamina / MaxStamina : 0.f;
 }
+
 bool UStaminaComponent::ReloadSettingsFromOwnerDataTable()
 {
-	const FCharacterComponentSettingsRow* Row =
-		CharacterComponentSettings::Resolve(GetOwner(), TEXT("StaminaComponent"));
-	if (!Row) return false;
+    const FCharacterComponentSettingsRow* Row =
+        CharacterComponentSettings::Resolve(GetOwner(), TEXT("StaminaComponent"));
+    if (!Row) return false;
 
-	const float PreviousMax = MaxStamina;
-	const float PreviousCurrent = CurrentStamina;
+    const float PreviousMax = MaxStamina;
+    const float PreviousCurrent = CurrentStamina;
+    MaxStamina = FMath::Max(1.f, Row->Stamina.MaxStamina);
+    RecoveryRate = FMath::Max(0.f, Row->Stamina.RecoveryRate);
+    RecoveryDelay = FMath::Max(0.f, Row->Stamina.RecoveryDelay);
+    RunStaminaCostPerSecond = FMath::Max(0.f, Row->Stamina.RunStaminaCostPerSecond);
+    MinimumRunStamina = FMath::Clamp(Row->Stamina.MinimumRunStamina, 0.f, MaxStamina);
+    DashStaminaCost = FMath::Max(0.f, Row->Stamina.DashStaminaCost);
 
-	MaxStamina = FMath::Max(1.f, Row->Stamina.MaxStamina);
-	RecoveryRate = FMath::Max(0.f, Row->Stamina.RecoveryRate);
-	RecoveryDelay = FMath::Max(0.f, Row->Stamina.RecoveryDelay);
-
-	if (bSettingsInitialized)
-	{
-		const float Ratio = PreviousMax > KINDA_SMALL_NUMBER
-			? PreviousCurrent / PreviousMax : 0.f;
-		CurrentStamina = FMath::Clamp(Ratio * MaxStamina, 0.f, MaxStamina);
-		OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
-	}
-	return true;
+    if (bSettingsInitialized)
+    {
+        const float Ratio = PreviousMax > KINDA_SMALL_NUMBER
+            ? PreviousCurrent / PreviousMax : 0.f;
+        CurrentStamina = FMath::Clamp(Ratio * MaxStamina, 0.f, MaxStamina);
+        BroadcastStaminaChanged();
+    }
+    return true;
 }

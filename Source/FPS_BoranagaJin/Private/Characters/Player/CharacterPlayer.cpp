@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/Player/FPSPlayerController.h"
@@ -63,7 +63,7 @@ ACharacterPlayer::ACharacterPlayer()
 
 	// <HealthComponent>
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
-	// Separate UStaminaComponent pool; existing PlayerMovement stamina logic is unchanged.
+	// Unified StaminaComponent: movement no longer keeps a second stamina pool.
 	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
 
 	// <InventorySystem>
@@ -137,9 +137,15 @@ void ACharacterPlayer::BeginPlay()
 		HealthComponent->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
 	}
 
+	if (StaminaComponent)
+	{
+		StaminaComponent->OnStaminaChanged.AddUObject(
+			this, &ACharacterPlayer::HandleStaminaChanged);
+	}
+
 	if (IsValid(FootstepComponent))
 	{
-		FootstepComponent->SetFootstepMesh(HandsMesh); //TODO: ¹ß¹Ù´ÚÀÌ ÀÖ´Â Mesh·Î º¯°æÇÏ±â
+		FootstepComponent->SetFootstepMesh(HandsMesh); //TODO: ï¿½ß¹Ù´ï¿½ï¿½ï¿½ ï¿½Ö´ï¿½ Meshï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½
 	}
 
 	//GetDamageSystemComponent()->OnDamaged.AddUObject(CameraMovementComponent, &UPlayerCameraComponent::OnDamaged);
@@ -180,10 +186,21 @@ void ACharacterPlayer::BeginPlay()
 
 	//InitUIManager();
 	InitPlayerUISubsystem();
+
+	// Initial UI value: component BeginPlay has already applied the owner's DT.
+	if (StaminaComponent)
+	{
+		HandleStaminaChanged(StaminaComponent->GetCurrentStamina(),
+			StaminaComponent->GetMaxStamina());
+	}
 }
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (StaminaComponent)
+	{
+		StaminaComponent->OnStaminaChanged.RemoveAll(this);
+	}
 	Super::EndPlay(EndPlayReason);
 
 	//GetDamageSystemComponent()->OnDeath.RemoveAll(this);
@@ -301,14 +318,14 @@ void ACharacterPlayer::WritePlayerSaveData(FPlayerSaveData& OutSaveData) const
 	}
 
 	//-------------------
-	//TODO: ÀÌ¹Ì WirteInventorySaveData°¡ const¶ó¼­ const_cast´Â ÇÊ¿ä ¾øÀ» µí ÇÔ
+	//TODO: ï¿½Ì¹ï¿½ WirteInventorySaveDataï¿½ï¿½ constï¿½ï¿½ const_castï¿½ï¿½ ï¿½Ê¿ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½
 
 	// <const Version>
 	if (InventorySystem)
 	{
 		/*
-		 * WriteInventorySaveData°¡ ºñ-constÀÎ ÀÌÀ¯´Â
-		 * °¢ AItem::Serialize()°¡ ºñ-constÀÌ±â ¶§¹®ÀÔ´Ï´Ù.
+		 * WriteInventorySaveDataï¿½ï¿½ ï¿½ï¿½-constï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		 * ï¿½ï¿½ AItem::Serialize()ï¿½ï¿½ ï¿½ï¿½-constï¿½Ì±ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ô´Ï´ï¿½.
 		 */
 		const_cast<UInventorySystemComponent*>(InventorySystem.Get())->WriteInventorySaveData(OutSaveData.ItemInventorySlots, EInventoryName::Item);
 		//const_cast<UInventorySystemComponent*>(InventorySystem.Get())->WriteInventorySaveData(OutSaveData.WeaponInventorySlots, EInventoryName::Weapon);
@@ -700,9 +717,9 @@ void ACharacterPlayer::CalculateMappedSoundValue(const FPlayerSoundData& Data, f
 
 void ACharacterPlayer::OnDamaged()
 {
-	//TODO: Damage ¹ÞÀ»½Ã Ã³¸® ÇÊ¿ä
-	// ÀÏ½ÃÀûÀ¸·Î ¼Óµµ ´À·ÁÁü°ú °°Àº È¿°ú ÇÊ¿ä
-	// Damage Type¿¡ µû¸¥ ¼­·Î ´Ù¸¥ reaction ÇÊ¿ä
+	//TODO: Damage ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ ï¿½Ê¿ï¿½
+	// ï¿½Ï½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Óµï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È¿ï¿½ï¿½ ï¿½Ê¿ï¿½
+	// Damage Typeï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ù¸ï¿½ reaction ï¿½Ê¿ï¿½
 }
 
 //bool ACharacterPlayer::TakeDamage(const FDamageParams& DamageData, AActor* DamageCauser)
@@ -793,6 +810,11 @@ void ACharacterPlayer::OnDamaged()
 //	GetPlayerMovementComponent()->NotifyResetModification();
 //}
 
+
+void ACharacterPlayer::HandleStaminaChanged(float CurrentStamina, float MaxStamina)
+{
+	OnStaminaUpdated.Broadcast(MaxStamina, CurrentStamina);
+}
 
 void ACharacterPlayer::OnDeath()
 {
