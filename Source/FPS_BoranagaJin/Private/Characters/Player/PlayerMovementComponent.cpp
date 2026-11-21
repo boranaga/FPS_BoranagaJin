@@ -18,7 +18,7 @@
 #include "Curves/CurveVector.h"
 #include "GameModes/DefaultGameMode.h" //TODO: GameMode ����
 
-#define WALL_TRACE_CHANNEL ECC_GameTraceChannel2 //TODO: ����
+#define WALL_TRACE_CHANNEL ECC_GameTraceChannel7
 #define ENEMY_TRACE_CHANNEL ECC_GameTraceChannel6 //TODO: ����
 
 UPlayerMovementComponent::UPlayerMovementComponent()

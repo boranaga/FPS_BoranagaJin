@@ -1258,7 +1258,8 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 bool UInventorySystemComponent::SearchItems()
 {
 	TArray<TEnumAsByte<EObjectTypeQuery>> traceObjectTypes;
-	traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Visibility)); //TODO: Customize Collision Channel
+	//traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Visibility)); //TODO: Customize Collision Channel
+	traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_GameTraceChannel6)); //TODO: Customize Collision Channel
 	TArray<AActor*> ignoreActors;
 	ignoreActors.Init(PlayerOwner, 1);
 	FVector sphereSpwanLocation = PlayerOwner->GetActorLocation();

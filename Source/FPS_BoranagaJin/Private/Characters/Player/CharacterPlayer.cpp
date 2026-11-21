@@ -35,8 +35,8 @@ ACharacterPlayer::ACharacterPlayer()
 	RootComponent = CapsuleComponent;
 	CapsuleComponent->SetSimulatePhysics(false);
 	CapsuleComponent->InitCapsuleSize(40.f, 90.f);
-	CapsuleComponent->SetCollisionProfileName(TEXT("Pawn"));
-	//CapsuleComponent->SetCollisionProfileName(TEXT("Player"));
+	//CapsuleComponent->SetCollisionProfileName(TEXT("Pawn"));
+	CapsuleComponent->SetCollisionProfileName(TEXT("Player"));
 	CapsuleComponent->SetNotifyRigidBodyCollision(true);
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));

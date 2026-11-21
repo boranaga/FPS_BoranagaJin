@@ -13,9 +13,15 @@ AItemPickUp::AItemPickUp()
 	//IntactMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ItemMesh"));
 	//IntactMesh->SetupAttachment(RootComponent);
 
+	if (IntactMesh)
+	{
+		IntactMesh->SetCollisionProfileName(FName("ItemPickUp"));
+	}
+
+
 	PickUpComponent = CreateDefaultSubobject<UPickUpComponent>(TEXT("PickUpComponent"));
 	PickUpComponent->SetupAttachment(SceneRoot);
-
+	PickUpComponent->SetCollisionProfileName(FName("ItemPickUp"));
 
 	bDestroyActorAfterBreak = false;
 	bHideBrokenMeshAfterDelay = false;
