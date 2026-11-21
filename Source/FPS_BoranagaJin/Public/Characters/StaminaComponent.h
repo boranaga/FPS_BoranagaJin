@@ -28,7 +28,7 @@ public:
 private:
 	UPROPERTY(EditAnywhere, Category = "Stamina")
 	float MaxStamina = 1000.f;
-	
+
 	UPROPERTY(VisibleAnywhere, Category = "Stamina")
 	float CurrentStamina = 1000.f;
 
@@ -39,8 +39,12 @@ private:
 	float RecoveryDelay = 1.f;
 
 	float LastConsumeTime = -999.f;
+	bool bSettingsInitialized = false;
 
 public:
+	UFUNCTION(BlueprintCallable, Category = "Stamina - Configuration")
+	bool ReloadSettingsFromOwnerDataTable();
+
 	FOnStaminaChanged OnStaminaChanged;
 	FOnStaminaEmpty OnStaminaEmpty;
 

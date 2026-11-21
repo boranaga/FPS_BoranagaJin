@@ -1,6 +1,8 @@
 
 #include "Characters/HealthComponent.h"
 #include "Characters/BloodTrailComponent.h"
+#include "Characters/CharacterComponentSettingsSource.h"
+#include "Characters/CharacterComponentSettings.h"
 
 UHealthComponent::UHealthComponent()
 {
@@ -11,8 +13,10 @@ void UHealthComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	ReloadSettingsFromOwnerDataTable();
 	CurrentHealth = MaxHealth;
 	bIsDead = false;
+	bSettingsInitialized = true;
 
 	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 
@@ -50,7 +54,7 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 	}
 
 
-	if (GetWorld() && !BloodTrailComponent->IsBleeding())
+	if (GetWorld() && IsValid(BloodTrailComponent) && !BloodTrailComponent->IsBleeding())
 	{
 		const bool bHeavyDamage = ActualDamage >= HeavyDamageThreshold;
 		const bool bLowHealth = GetHealthPercent() <= BleedingHealthThresholdPercent;
@@ -151,3 +155,33 @@ void UHealthComponent::ResetHealth()
 //	}
 //
 //}
+
+// Optional explicit reload. Preserves health percentage after gameplay has begun.
+bool UHealthComponent::ReloadSettingsFromOwnerDataTable()
+{
+	const FCharacterComponentSettingsRow* Row =
+		CharacterComponentSettings::Resolve(GetOwner(), TEXT("HealthComponent"));
+	if (!Row) return false;
+
+	const float PreviousMax = MaxHealth;
+	const float PreviousCurrent = CurrentHealth;
+	const bool bWasDead = bIsDead;
+
+	MaxHealth = FMath::Max(1.f, Row->Health.MaxHealth);
+	BleedingHealthThresholdPercent = FMath::Clamp(
+		Row->Health.BleedingHealthThresholdPercent, 0.f, 1.f);
+	HeavyDamageThreshold = FMath::Max(0.f, Row->Health.HeavyDamageThreshold);
+	BleedingDurationAfterHeavyDamage = FMath::Max(
+		0.f, Row->Health.BleedingDurationAfterHeavyDamage);
+
+	if (bSettingsInitialized)
+	{
+		// Do not heal a dead actor during DataTable hot reload.
+		const float PreviousRatio = PreviousMax > KINDA_SMALL_NUMBER
+			? PreviousCurrent / PreviousMax : 0.f;
+		CurrentHealth = bWasDead ? 0.f : FMath::Clamp(PreviousRatio * MaxHealth, 0.f, MaxHealth);
+		// Preserve the delegate's argument ordering used in the uploaded code.
+		OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+	}
+	return true;
+}

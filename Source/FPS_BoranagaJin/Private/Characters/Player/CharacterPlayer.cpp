@@ -4,6 +4,7 @@
 #include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/PlayerMovementComponent.h"
 #include "Characters/HealthComponent.h"
+#include "Characters/StaminaComponent.h"
 #include "Characters/BloodTrailComponent.h"
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/InteractionComponent.h"
@@ -62,6 +63,8 @@ ACharacterPlayer::ACharacterPlayer()
 
 	// <HealthComponent>
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+	// Separate UStaminaComponent pool; existing PlayerMovement stamina logic is unchanged.
+	StaminaComponent = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComponent"));
 
 	// <InventorySystem>
 	InventorySystem = CreateDefaultSubobject<UInventorySystemComponent>(TEXT("InventorySystem"));

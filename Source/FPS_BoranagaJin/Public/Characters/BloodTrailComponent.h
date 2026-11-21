@@ -48,6 +48,9 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Blood Trail")
 	float BleedingDurationAfterHeavyDamage = 8.f;
 
+	UPROPERTY(EditAnywhere, Category = "Blood Trail", meta = (ClampMin = "0.01"))
+	float BloodTrailTickInterval = 0.1f;
+
 	bool bIsBleeding = false;
 
 	float LastBloodDropTime = -BIG_NUMBER;
@@ -59,10 +62,13 @@ private:
 
 public:
 	//void NotifyDamageReceived(float AppliedDamage);
+	UFUNCTION(BlueprintCallable, Category = "Blood Trail - Configuration")
+	bool ReloadSettingsFromOwnerDataTable();
+
 	void StartBleeding(bool bLoop = true, float duration = 0.f);
 	void StopBleeding();
 	bool IsBleeding() const;
-	float GetBleedingEndTime() const { return bIsBleeding; }
+	float GetBleedingEndTime() const { return BleedingEndTime; }
 private:
 	void UpdateBleedingState();
 	bool CanDropBlood() const;

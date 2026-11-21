@@ -39,7 +39,12 @@ private:
 
 	//bool bIsBleeding = false;
 	bool bIsDead = false;
+	bool bSettingsInitialized = false;
 public:
+	// Reads only the Owner actor's assigned row (if it implements the interface).
+	UFUNCTION(BlueprintCallable, Category = "Health - Configuration")
+	bool ReloadSettingsFromOwnerDataTable();
+
 	FOnHealthChanged OnHealthChanged;
 	FOnDeath OnDeath;
 

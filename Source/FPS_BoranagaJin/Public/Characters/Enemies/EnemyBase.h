@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Interface/DamageInterface.h"
+#include "Characters/CharacterComponentSettingsSource.h"
 #include "EnemyBase.generated.h"
 
 class ACharacterPlayer;
@@ -14,11 +15,21 @@ class UFootstepComponent;
 class UEnemyStateMachineComponent;
 
 UCLASS()
-class FPS_BORANAGAJIN_API AEnemyBase : public ACharacter, public IDamageableInterface
+class FPS_BORANAGAJIN_API AEnemyBase : public ACharacter, public IDamageableInterface, public ICharacterComponentSettingsSource
 {
 	GENERATED_BODY()
 public:
 	AEnemyBase();
+
+	// Shared table used by all owned Health/Stamina/BloodTrail components.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy - Component Settings",
+		meta = (RowType = "/Script/FPS_BORANAGAJIN.CharacterComponentSettingsRow"))
+	FDataTableRowHandle CharacterComponentSettingsRow;
+
+	virtual FDataTableRowHandle GetCharacterComponentSettingsRow() const override
+	{
+		return CharacterComponentSettingsRow;
+	}
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;

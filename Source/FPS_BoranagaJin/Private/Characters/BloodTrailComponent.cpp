@@ -1,17 +1,20 @@
 #include "Characters/BloodTrailComponent.h"
 #include "Characters/BloodStainActor.h"
 #include "Characters/HealthComponent.h"
+#include "Characters/CharacterComponentSettingsSource.h"
+#include "Characters/CharacterComponentSettings.h"
 
 UBloodTrailComponent::UBloodTrailComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.TickInterval = 0.1f;
+	PrimaryComponentTick.TickInterval = BloodTrailTickInterval;
 }
 
 void UBloodTrailComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	ReloadSettingsFromOwnerDataTable();
 	AActor* OwnerActor = GetOwner();
 	if (!OwnerActor) { return; }
 	HealthComponent = OwnerActor->FindComponentByClass<UHealthComponent>();
@@ -171,4 +174,30 @@ void UBloodTrailComponent::StopBleeding()
 bool UBloodTrailComponent::IsBleeding() const
 {
 	return bIsBleeding;
+}
+bool UBloodTrailComponent::ReloadSettingsFromOwnerDataTable()
+{
+	const FCharacterComponentSettingsRow* Row =
+		CharacterComponentSettings::Resolve(GetOwner(), TEXT("BloodTrailComponent"));
+	if (!Row) return false;
+
+	// Empty class preserves the component's class assigned from a Blueprint.
+	if (Row->BloodTrail.BloodStainClass)
+	{
+		BloodStainClass = Row->BloodTrail.BloodStainClass;
+	}
+
+	BleedingHealthThresholdPercent = FMath::Clamp(
+		Row->BloodTrail.BleedingHealthThresholdPercent, 0.f, 1.f);
+	HeavyDamageThreshold = FMath::Max(0.f, Row->BloodTrail.HeavyDamageThreshold);
+	MinimumBloodDropInterval = FMath::Max(0.01f, Row->BloodTrail.MinimumBloodDropInterval);
+	MinimumBloodDropDistance = FMath::Max(0.f, Row->BloodTrail.MinimumBloodDropDistance);
+	GroundTraceDistance = FMath::Max(1.f, Row->BloodTrail.GroundTraceDistance);
+	BleedingDurationAfterHeavyDamage = FMath::Max(
+		0.f, Row->BloodTrail.BleedingDurationAfterHeavyDamage);
+	BloodTrailTickInterval = FMath::Max(0.01f, Row->BloodTrail.BloodTrailTickInterval);
+
+	// Tick interval can be changed at runtime without reconstructing the component.
+	SetComponentTickInterval(BloodTrailTickInterval);
+	return true;
 }

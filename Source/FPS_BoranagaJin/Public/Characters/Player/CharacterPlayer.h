@@ -6,6 +6,7 @@
 //#include "GameFramework/Character.h" //TODO: Pawn vs Character which one?
 #include "GameFramework/Pawn.h"
 #include "Interface/DamageInterface.h"
+#include "Characters/CharacterComponentSettingsSource.h"
 #include "Interface/SaveablePlayerInterface.h"
 #include "Items/Weapons/WeaponStateType.h"
 #include "CharacterPlayer.generated.h"
@@ -21,6 +22,7 @@ class UFootstepComponent; //TODO: Á¡°Ë
 
 class UPlayerMovementComponent;
 class UHealthComponent;
+class UStaminaComponent;
 class UBloodTrailComponent;
 class UPlayerCameraComponent;
 class UInventorySystemComponent;
@@ -67,11 +69,20 @@ DECLARE_MULTICAST_DELEGATE(FOnThrowableWeaponReleaseNotify);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerHealthHalved);
 
 UCLASS()
-class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageableInterface, public ISaveablePlayerInterface
+class FPS_BORANAGAJIN_API ACharacterPlayer : public APawn, public IDamageableInterface, public ISaveablePlayerInterface, public ICharacterComponentSettingsSource
 {
 	GENERATED_BODY()
 public:
 	ACharacterPlayer();
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Player - Component Settings",
+		meta = (RowType = "/Script/FPS_BORANAGAJIN.CharacterComponentSettingsRow"))
+	FDataTableRowHandle CharacterComponentSettingsRow;
+
+	virtual FDataTableRowHandle GetCharacterComponentSettingsRow() const override
+	{
+		return CharacterComponentSettingsRow;
+	}
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -100,6 +111,7 @@ public:
 	FVector2D GetPlayerLookInputVector() const { return PlayerLookInputVector2D; }
 	UPlayerMovementComponent* GetPlayerMovementComponent() { return MovementComponent; }
 	UHealthComponent* GetHealthComponent() { return HealthComponent; }
+	UStaminaComponent* GetStaminaComponent() const { return StaminaComponent; }
 
 
 	UFootstepComponent* GetFootstepComponent() const { return FootstepComponent; }
@@ -189,6 +201,9 @@ protected:
 	TObjectPtr<UPlayerMovementComponent> MovementComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HealthComponent")
 	TObjectPtr<UHealthComponent> HealthComponent;
+	// New: CharacterPlayer originally did not create UStaminaComponent.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "StaminaComponent")
+	TObjectPtr<UStaminaComponent> StaminaComponent;
 	UPROPERTY(EditAnywhere, Category = "InventorySystemComponent")
 	TObjectPtr<UInventorySystemComponent> InventorySystem;
 	UPROPERTY(VisibleAnywhere, Category = "BloodTrailComponent")

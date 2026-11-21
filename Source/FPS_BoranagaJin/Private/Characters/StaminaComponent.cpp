@@ -1,4 +1,6 @@
 #include "Characters/StaminaComponent.h"
+#include "Characters/CharacterComponentSettingsSource.h"
+#include "Characters/CharacterComponentSettings.h"
 
 UStaminaComponent::UStaminaComponent()
 {
@@ -9,7 +11,9 @@ void UStaminaComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	ReloadSettingsFromOwnerDataTable();
 	CurrentStamina = MaxStamina;
+	bSettingsInitialized = true;
 }
 
 void UStaminaComponent::TickComponent(
@@ -99,4 +103,26 @@ float UStaminaComponent::GetMaxStamina() const
 float UStaminaComponent::GetStaminaPercent() const
 {
 	return MaxStamina > 0.f ? CurrentStamina / MaxStamina : 0.f;
+}
+bool UStaminaComponent::ReloadSettingsFromOwnerDataTable()
+{
+	const FCharacterComponentSettingsRow* Row =
+		CharacterComponentSettings::Resolve(GetOwner(), TEXT("StaminaComponent"));
+	if (!Row) return false;
+
+	const float PreviousMax = MaxStamina;
+	const float PreviousCurrent = CurrentStamina;
+
+	MaxStamina = FMath::Max(1.f, Row->Stamina.MaxStamina);
+	RecoveryRate = FMath::Max(0.f, Row->Stamina.RecoveryRate);
+	RecoveryDelay = FMath::Max(0.f, Row->Stamina.RecoveryDelay);
+
+	if (bSettingsInitialized)
+	{
+		const float Ratio = PreviousMax > KINDA_SMALL_NUMBER
+			? PreviousCurrent / PreviousMax : 0.f;
+		CurrentStamina = FMath::Clamp(Ratio * MaxStamina, 0.f, MaxStamina);
+		OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+	}
+	return true;
 }
