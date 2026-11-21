@@ -116,6 +116,8 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 	LightCueRetargetInterval = Row->LightCueRetargetInterval;
 	LightCueRetargetDistance = Row->LightCueRetargetDistance;
 	LightCueMinimumMoveDistance = Row->LightCueMinimumMoveDistance;
+	bPrioritizeDirectChaseWhenClose = Row->bPrioritizeDirectChaseWhenClose;
+	DirectChaseOverrideDistance = FMath::Max(0.f, Row->DirectChaseOverrideDistance);
 	ImpactReactionRadius = Row->ImpactReactionRadius;
 	ImpactSafeDistance = Row->ImpactSafeDistance;
 	ImpactEvadeSearchRadius = Row->ImpactEvadeSearchRadius;
@@ -632,7 +634,8 @@ void UEnemyStateMachineComponent::OnTargetFound()
 	}
 	// If sight was regained while escaping an impact, use the same sound
 	// memory to begin lateral movement immediately on resuming Chase.
-	if (bSightJustRegained && IsRecentImpactForDodge() && Enemy &&
+	if (bSightJustRegained && !ShouldPrioritizeDirectChase() &&
+		IsRecentImpactForDodge() && Enemy &&
 		FVector::Dist2D(Enemy->GetActorLocation(), LastImpactLocation) <= ImpactReactionRadius)
 	{
 		RegisterCombatThreat(true);
@@ -1364,7 +1367,9 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 
 	// Movement plan: first honor the existing melee range, then use
 	// time-limited, navmesh-based lateral waypoints while under fire.
-	const bool bImmediateImpactDanger = IsCombatDodgeActive() && IsRecentImpactForDodge() &&
+	const bool bDirectChaseNearTarget = ShouldPrioritizeDirectChase();
+	const bool bImmediateImpactDanger = !bDirectChaseNearTarget &&
+		IsCombatDodgeActive() && IsRecentImpactForDodge() &&
 		FVector::Dist2D(Enemy->GetActorLocation(), LastImpactLocation) <= CombatDodgeHazardRadius;
 	if (IsTargetInAttackRange() && !bImmediateImpactDanger)
 	{
@@ -1374,6 +1379,16 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 
 	const FVector MovementLookPoint = Enemy->GetActorLocation() + Enemy->GetVelocity();
 	RotateToTargetDirection(DeltaTime, MovementLookPoint);
+
+	// A close, sight-confirmed player has priority over impact avoidance.
+	// Cancel the lateral waypoint state and request the real moving Actor goal.
+	// AEnemyBaseAIController caches MoveToActor requests, so this is safe per Tick.
+	if (bDirectChaseNearTarget)
+	{
+		ResetCombatDodgeMovement();
+		Task_MoveToTarget();
+		return;
+	}
 
 	if (UpdateCombatDodgeChase())
 	{
@@ -2716,6 +2731,26 @@ void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
 		}
 	}
 
+	// A nearby, visually confirmed player takes priority over impact evasion.
+	// This is intentionally limited to an existing Chase (or an impact evasion
+	// that originated in Chase). Hearing alone must never reveal player position.
+	const bool bFromChase = CurrentState == EEnemyStateType::Chase ||
+		(CurrentState == EEnemyStateType::EvadeImpact &&
+			StateBeforeImpactEvade == EEnemyStateType::Chase);
+	if (bFromChase && ShouldPrioritizeDirectChase())
+	{
+		if (CurrentState == EEnemyStateType::EvadeImpact)
+		{
+			// Stop the old escape MoveTo; regular Chase will issue MoveToActor.
+			FinishImpactEvasion();
+		}
+		else
+		{
+			ResetCombatDodgeMovement();
+		}
+		return;
+	}
+
 	// A distant impact may refine an investigation but is NOT a reason to dodge.
 	const float Distance = FVector::Dist2D(Enemy->GetActorLocation(), ImpactLocation);
 
@@ -2865,6 +2900,16 @@ void UEnemyStateMachineComponent::MoveToImpactEvadeLocation()
 void UEnemyStateMachineComponent::UpdateEvadeImpact(float DeltaTime)
 {
 	if (!Enemy || !GetWorld()) { return; }
+
+	// The player can move into this radius after an evasion has already begun.
+	// Do not wait for ImpactEvadeMinimumTime/ImpactEvadeMaximumTime in that case.
+	if (StateBeforeImpactEvade == EEnemyStateType::Chase &&
+		ShouldPrioritizeDirectChase())
+	{
+		FinishImpactEvasion();
+		return;
+	}
+
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
 	const float ElapsedTime = CurrentTime - ImpactEvadeStartTime;
 	const float DistanceFromImpact = FVector::Dist2D(
@@ -3005,10 +3050,22 @@ bool UEnemyStateMachineComponent::IsRecentImpactForDodge() const
 	return GetWorld() && (GetWorld()->GetTimeSeconds() - LastImpactTime <= CombatDodgeImpactMemory);
 }
 
+bool UEnemyStateMachineComponent::ShouldPrioritizeDirectChase() const
+{
+	// A memory of a previously seen player is not enough: require live sight.
+	// Compare horizontal distance to avoid eye/capsule height skewing the range.
+	return bPrioritizeDirectChaseWhenClose &&
+		DirectChaseOverrideDistance > 0.f &&
+		IsValid(Enemy) && HasTarget() && bTargetCurrentlyVisible &&
+		FVector::DistSquared2D(Enemy->GetActorLocation(), TargetActor->GetActorLocation())
+		<= FMath::Square(DirectChaseOverrideDistance);
+}
+
 bool UEnemyStateMachineComponent::IsCombatDodgeActive() const
 {
 	return bEnableCombatZigzag && GetWorld() && Enemy && HasTarget() &&
 		bTargetCurrentlyVisible && !IsDefensiveState() &&
+		!ShouldPrioritizeDirectChase() &&
 		GetWorld()->GetTimeSeconds() - LastCombatThreatTime <= CombatDodgeThreatMemory;
 }
 

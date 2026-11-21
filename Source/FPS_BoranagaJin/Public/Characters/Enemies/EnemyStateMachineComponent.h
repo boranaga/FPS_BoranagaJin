@@ -501,6 +501,18 @@ private:
 	float LastLightCueMoveTime = -BIG_NUMBER;
 	bool HasRecentLightCue() const;
 
+	// When a visually confirmed player is this close, Chase uses direct
+	// MoveToActor instead of an impact-escape path or zigzag waypoint.
+	// Setting distance to 0 effectively disables the range override.
+	UPROPERTY(EditAnywhere, Category = "Chase - Direct Pursuit")
+	bool bPrioritizeDirectChaseWhenClose = true;
+
+	UPROPERTY(EditAnywhere, Category = "Chase - Direct Pursuit",
+		meta = (ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
+	float DirectChaseOverrideDistance = 600.f;
+
+	bool ShouldPrioritizeDirectChase() const;
+
 	// <Impact Evasion> -- independent of health-based Flee/Hide/Recover.
 private:
 	UPROPERTY(EditAnywhere, Category = "Enemy|Impact Avoidance", meta = (ClampMin = "0.0"))

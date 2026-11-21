@@ -263,6 +263,17 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "EvadeImpact", meta = (ClampMin = "0.0"))
     float ImpactNoiseCooldown = 0.35f;
 
+    // Chase - Direct Pursuit
+    // Overrides impact evasion and zigzag only while a player is confirmed
+    // visible and close enough. Defensive states and door breaching retain
+    // their normal priorities.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Direct Pursuit")
+    bool bPrioritizeDirectChaseWhenClose = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Direct Pursuit",
+        meta = (ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
+    float DirectChaseOverrideDistance = 600.f;
+
     // Chase - Combat Dodge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Combat Dodge")
     bool bEnableCombatZigzag = true;
