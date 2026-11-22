@@ -1,4 +1,4 @@
-#include "Characters/Enemies/EnemyStateMachineComponent.h"
+癤�#include "Characters/Enemies/EnemyStateMachineComponent.h"
 #include "Characters/Enemies/EnemyStateMachineSettings.h"
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
@@ -70,6 +70,21 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 	DeadMovementSpeed = Row->DeadMovementSpeed;
 	EvadeImpactMovementSpeed = Row->EvadeImpactMovementSpeed;
 	BreachDoorMovementSpeed = Row->BreachDoorMovementSpeed;
+
+	// Temporary Chase hit reaction settings.
+	bEnableChaseHitReaction = Row->bEnableChaseHitReaction;
+	bChaseHitReactToBulletDamage = Row->bChaseHitReactToBulletDamage;
+	bChaseHitReactToMeleeDamage = Row->bChaseHitReactToMeleeDamage;
+	bChaseHitReactToExplosionDamage = Row->bChaseHitReactToExplosionDamage;
+	bChaseHitStopVelocityOnImpact = Row->bChaseHitStopVelocityOnImpact;
+	ChaseHitMinimumDamage = FMath::Max(0.f, Row->ChaseHitMinimumDamage);
+	ChaseHitReactionCooldown = FMath::Max(0.f, Row->ChaseHitReactionCooldown);
+	ChaseHitStaggerDuration = FMath::Max(0.f, Row->ChaseHitStaggerDuration);
+	ChaseHitStaggerSpeedMultiplier = FMath::Clamp(Row->ChaseHitStaggerSpeedMultiplier, 0.f, 1.f);
+	ChaseHitSlowdownDuration = FMath::Max(0.f, Row->ChaseHitSlowdownDuration);
+	ChaseHitSlowdownSpeedMultiplier = FMath::Clamp(Row->ChaseHitSlowdownSpeedMultiplier, 0.f, 1.f);
+	ChaseHitRecoveryDuration = FMath::Max(0.f, Row->ChaseHitRecoveryDuration);
+	bLogChaseHitReaction = Row->bLogChaseHitReaction;
 
 	TargetMemoryDuration = Row->TargetMemoryDuration;
 	AttackStaminaCost = Row->AttackStaminaCost;
@@ -157,6 +172,11 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 	MaximumTrackableBloodAge = Row->MaximumTrackableBloodAge;
 	BloodSearchInterval = Row->BloodSearchInterval;
 	BloodTrailLostWaitTime = Row->BloodTrailLostWaitTime;
+
+	if (!bEnableChaseHitReaction)
+	{
+		ClearChaseHitReaction();
+	}
 
 	ResolvePatrolPointsFromDataTableTags(Row->PatrolPointTags);
 
@@ -270,6 +290,19 @@ void UEnemyStateMachineComponent::TickComponent(
 	}
 	UpdateState(DeltaTime);
 
+	// IMPORTANT: a newly accepted zigzag waypoint exempts this enemy from
+	// the entire hit reaction, including one already started a frame earlier.
+	// Do not alter the AIController path here. Only restore MaxWalkSpeed.
+	if (bChaseHitReactionActive && IsZigzagChaseMovementActive())
+	{
+		ClearChaseHitReaction();
+		ApplyStateMovementSpeed(0.f, true);
+	}
+	else if (bChaseHitReactionActive && !IsChaseHitReactionActive())
+	{
+		ClearChaseHitReaction();
+	}
+
 	// After behavior code: combat dodge waypoint selection can become active or
 	// expire without a ChangeState call, so Chase speed must be updated here.
 	ApplyStateMovementSpeed(DeltaTime);
@@ -288,7 +321,7 @@ float UEnemyStateMachineComponent::SelectBaseMovementSpeed(EEnemyStateType State
 	case EEnemyStateType::Chase:
 		// Only boost speed when the zigzag waypoint move was actually accepted.
 		// A failed/unavailable dodge route should retain ordinary Chase speed.
-		return (bHasCombatDodgeWaypoint && IsCombatDodgeActive())
+		return IsZigzagChaseMovementActive()
 			? CombatDodgeMovementSpeed : ChaseMovementSpeed;
 	case EEnemyStateType::Attack:      return AttackMovementSpeed;
 	case EEnemyStateType::Investigate: return InvestigateMovementSpeed;
@@ -313,15 +346,18 @@ bool UEnemyStateMachineComponent::IsStationaryMovementState(EEnemyStateType Stat
 
 float UEnemyStateMachineComponent::GetDesiredStateMovementSpeed() const
 {
-	if (!bEnableStateMovementSpeed)
-	{
-		return FMath::Max(0.f, InitialCharacterMaxWalkSpeed);
-	}
+	// Preserve the old behavior if per-state movement is disabled, but still
+	// allow a short hit reaction when ordinary Chase is active.
+	const float BaseSpeed = bEnableStateMovementSpeed
+		? FMath::Max(0.f, SelectBaseMovementSpeed(CurrentState))
+		: FMath::Max(0.f, InitialCharacterMaxWalkSpeed);
 
-	const float BaseSpeed = FMath::Max(0.f, SelectBaseMovementSpeed(CurrentState));
-	const float DefaultScale = FMath::Max(0.f, StateMovementSpeedScale);
-	const float RuntimeScale = FMath::Max(0.f, RuntimeMovementSpeedMultiplier);
-	return BaseSpeed * DefaultScale * RuntimeScale;
+	const float StateScale = bEnableStateMovementSpeed
+		? FMath::Max(0.f, StateMovementSpeedScale) : 1.f;
+	const float RuntimeScale = bEnableStateMovementSpeed
+		? FMath::Max(0.f, RuntimeMovementSpeedMultiplier) : 1.f;
+
+	return BaseSpeed * StateScale * RuntimeScale * GetChaseHitSpeedMultiplier();
 }
 
 float UEnemyStateMachineComponent::GetAppliedMovementSpeed() const
@@ -377,8 +413,11 @@ void UEnemyStateMachineComponent::ApplyStateMovementSpeed(
 
 	const bool bStationary = bInstantApplyStationarySpeed &&
 		IsStationaryMovementState(CurrentState);
+	// Hit-react timing owns its own stagger/hold/recovery curve, so it must not
+	// be distorted by the general state-transition FInterpTo setting.
 	const bool bSnap = bForceImmediate || !bEnableStateMovementSpeed ||
-		!bInterpolateStateMovementSpeed || bStationary;
+		!bInterpolateStateMovementSpeed || bStationary ||
+		IsChaseHitReactionActive();
 
 	float NewSpeed = DesiredSpeed;
 	if (!bSnap)
@@ -402,9 +441,158 @@ void UEnemyStateMachineComponent::ApplyStateMovementSpeed(
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Brief hit reaction while directly chasing (never during zigzag path following).
+// Modifies ONLY CharacterMovement->MaxWalkSpeed; preserves the active MoveTo.
+// -----------------------------------------------------------------------------
+bool UEnemyStateMachineComponent::IsZigzagChaseMovementActive() const
+{
+	// bHasCombatDodgeWaypoint is only set when MoveToCombatDodgeLocation accepted
+	// a navigation request. A recent shot ALONE is not a zigzag movement.
+	return CurrentState == EEnemyStateType::Chase &&
+		bHasCombatDodgeWaypoint && IsCombatDodgeActive();
+}
+
+bool UEnemyStateMachineComponent::IsChaseHitReactionActive() const
+{
+	if (!bChaseHitReactionActive || !bEnableChaseHitReaction ||
+		CurrentState != EEnemyStateType::Chase || !GetWorld() ||
+		IsZigzagChaseMovementActive())
+	{
+		return false;
+	}
+
+	const float TotalDuration =
+		FMath::Max(0.f, ChaseHitStaggerDuration) +
+		FMath::Max(0.f, ChaseHitSlowdownDuration) +
+		FMath::Max(0.f, ChaseHitRecoveryDuration);
+
+	return TotalDuration > 0.f &&
+		(GetWorld()->GetTimeSeconds() - ChaseHitReactionStartTime) < TotalDuration;
+}
+
+float UEnemyStateMachineComponent::GetChaseHitSpeedMultiplier() const
+{
+	if (!IsChaseHitReactionActive())
+	{
+		return 1.f;
+	}
+
+	const float Elapsed = FMath::Max(0.f,
+		GetWorld()->GetTimeSeconds() - ChaseHitReactionStartTime);
+	const float StaggerTime = FMath::Max(0.f, ChaseHitStaggerDuration);
+	const float SlowTime = FMath::Max(0.f, ChaseHitSlowdownDuration);
+	const float RecoverTime = FMath::Max(0.f, ChaseHitRecoveryDuration);
+	const float StaggerFactor = FMath::Clamp(ChaseHitStaggerSpeedMultiplier, 0.f, 1.f);
+	const float SlowFactor = FMath::Clamp(ChaseHitSlowdownSpeedMultiplier, 0.f, 1.f);
+
+	if (Elapsed < StaggerTime)
+	{
+		return StaggerFactor;
+	}
+	if (Elapsed < StaggerTime + SlowTime)
+	{
+		return SlowFactor;
+	}
+	if (RecoverTime <= KINDA_SMALL_NUMBER)
+	{
+		return 1.f;
+	}
+
+	// Smoothstep recovery from SlowFactor to 1.0, independent of the
+	// state speed interpolation setting.
+	const float Alpha = FMath::Clamp(
+		(Elapsed - StaggerTime - SlowTime) / RecoverTime, 0.f, 1.f);
+	const float SmoothAlpha = Alpha * Alpha * (3.f - 2.f * Alpha);
+	return FMath::Lerp(SlowFactor, 1.f, SmoothAlpha);
+}
+
+void UEnemyStateMachineComponent::ClearChaseHitReaction()
+{
+	bChaseHitReactionActive = false;
+	ChaseHitReactionStartTime = -BIG_NUMBER;
+	// Keep LastChaseHitReactionTime so rapid state changes do not bypass cooldown.
+}
+
+void UEnemyStateMachineComponent::TryStartChaseHitReaction(
+	float AppliedDamage, EGameDamageType DamageType)
+{
+	if (!bEnableChaseHitReaction || !IsValid(Enemy) || !GetWorld() ||
+		CurrentState != EEnemyStateType::Chase ||
+		!FMath::IsFinite(AppliedDamage) ||
+		AppliedDamage < FMath::Max(0.f, ChaseHitMinimumDamage))
+	{
+		return;
+	}
+
+	// Required exception: an active zigzag path never gets slowed or stopped.
+	if (IsZigzagChaseMovementActive())
+	{
+		if (bLogChaseHitReaction)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[EnemyChaseHit] Ignored during zigzag: %s"),
+				*GetNameSafe(Enemy));
+		}
+		return;
+	}
+
+	bool bEligibleDamage = false;
+	switch (DamageType)
+	{
+	case EGameDamageType::Bullet:
+		bEligibleDamage = bChaseHitReactToBulletDamage;
+		break;
+	case EGameDamageType::Melee:
+		// The current project also reports several bullet projectile hits as Melee.
+		bEligibleDamage = bChaseHitReactToMeleeDamage;
+		break;
+	case EGameDamageType::Explosion:
+		bEligibleDamage = bChaseHitReactToExplosionDamage;
+		break;
+	default:
+		break;
+	}
+	if (!bEligibleDamage) return;
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastChaseHitReactionTime < FMath::Max(0.f, ChaseHitReactionCooldown))
+	{
+		return;
+	}
+
+	const float TotalDuration =
+		FMath::Max(0.f, ChaseHitStaggerDuration) +
+		FMath::Max(0.f, ChaseHitSlowdownDuration) +
+		FMath::Max(0.f, ChaseHitRecoveryDuration);
+	if (TotalDuration <= 0.f) return;
+
+	bChaseHitReactionActive = true;
+	ChaseHitReactionStartTime = Now;
+	LastChaseHitReactionTime = Now;
+
+	// Reset instantaneous velocity via NavMovementComponent, KEEP following path.
+	// The controller keeps its goal/path and resumes issuing acceleration.
+	if (bChaseHitStopVelocityOnImpact)
+	{
+		if (UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
+		{
+			Movement->StopMovementKeepPathing();
+		}
+	}
+
+	ApplyStateMovementSpeed(0.f, true);
+
+	if (bLogChaseHitReaction)
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("[EnemyChaseHit] Trigger: %s Damage=%.1f Type=%d SpeedFactor=%.2f"),
+			*GetNameSafe(Enemy), AppliedDamage, static_cast<int32>(DamageType),
+			GetChaseHitSpeedMultiplier());
+	}
+}
+
 void UEnemyStateMachineComponent::OnIdleFinished()
 {
-	// TODO: 일단 무조건 Patrol인데, 조건 추가해야할듯
 	SetState(EEnemyStateType::Patrol);
 }
 
@@ -502,15 +690,15 @@ bool UEnemyStateMachineComponent::HasReachedIdleLookRotation() const
 //{
 //	if (!Enemy) { return; }
 //
-//	//TODO: Rotation 함수 수정하기
+//	//TODO: Rotation 占쌉쇽옙 占쏙옙占쏙옙占싹깍옙
 //	if (UCharacterMovementComponent* MovementComponent = Enemy->GetCharacterMovement())
 //	{
 //		MovementComponent->bOrientRotationToMovement = bEnable;
 //	}
 //
 //	/*
-//	 * 직접 Actor를 회전할 것이므로
-//	 * Controller Rotation Yaw도 사용하지 않는다.
+//	 * 占쏙옙占쏙옙 Actor占쏙옙 회占쏙옙占쏙옙 占쏙옙占싱므뤄옙
+//	 * Controller Rotation Yaw占쏙옙 占쏙옙占쏙옙占쏙옙占� 占십는댐옙.
 //	 */
 //	Enemy->bUseControllerRotationYaw = false;
 //}
@@ -798,10 +986,6 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		}
 		else
 		{
-			/*
-			 * 은신 위치를 못 찾았으면 단순히 플레이어 반대 방향으로
-			 * 임시 도망 위치를 만든다.
-			 */
 			if (Enemy && TargetActor)
 			{
 				UE_LOG(LogTemp, Error, TEXT("No Way!!!!!!"));
@@ -872,6 +1056,7 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 
 	case EEnemyStateType::Chase:
 		ResetCombatDodgeMovement();
+		ClearChaseHitReaction();
 		break;
 
 	case EEnemyStateType::BreachDoor:
@@ -985,7 +1170,6 @@ void UEnemyStateMachineComponent::UpdateIdle(float DeltaTime)
 	}
 
 	UpdateIdleLook(DeltaTime);
-	//MEMO: Idle To Patrol 전환은 일단 EnterState에서 타이머로 해결했음
 }
 
 void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
@@ -1342,8 +1526,6 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 
 		if (!StaminaComponent->ConsumeStamina(ChaseCost))
 		{
-			//TODO: 조건을 조금 더 상세하게 지정할 필요 있음
-
 			SetState(EEnemyStateType::Patrol);
 			return;
 		}
@@ -1474,10 +1656,6 @@ void UEnemyStateMachineComponent::UpdateFlee(float DeltaTime)
 	FVector TargetLocation = Enemy->GetActorLocation() + Enemy->GetVelocity();
 	RotateToTargetDirection(DeltaTime, TargetLocation);
 
-	/*
-	 * 도망 중 다시 플레이어에게 노출됐더라도 이동은 계속한다.
-	 * 후보 지점에 도착하면 실제로 가려졌는지 다시 검사한다.
-	 */
 	if (!IsAtHideLocation())
 	{
 		Task_MoveToHideLocation();
@@ -1492,9 +1670,6 @@ void UEnemyStateMachineComponent::UpdateFlee(float DeltaTime)
 		return;
 	}
 
-	/*
-	 * 도착했는데 여전히 보이는 위치라면 다른 은신 위치를 찾는다.
-	 */
 	bHasValidHideLocation = FindHideLocation_Upgrade(
 		TargetActor,
 		HideLocation
@@ -1519,10 +1694,6 @@ void UEnemyStateMachineComponent::UpdateHide(float DeltaTime)
 		return;
 	}
 
-	/*
-	 * 숨어 있는 동안 플레이어에게 다시 노출되면
-	 * 새로운 위치로 도망간다.
-	 */
 	if (TargetActor &&
 		!IsLocationHiddenFromActor(Enemy->GetActorLocation(), TargetActor))
 	{
@@ -1562,9 +1733,6 @@ void UEnemyStateMachineComponent::UpdateRecover(float DeltaTime)
 		return;
 	}
 
-	/*
-	 * 회복 중 다시 발각되면 즉시 도망.
-	 */
 	if (TargetActor &&
 		!IsLocationHiddenFromActor(Enemy->GetActorLocation(), TargetActor))
 	{
@@ -1599,8 +1767,8 @@ void UEnemyStateMachineComponent::UpdateRecover(float DeltaTime)
 
 void UEnemyStateMachineComponent::UpdateDead(float DeltaTime)
 {
-	// 사망 후 처리
-	// Collision 끄기, Ragdoll, Destroy Timer 등
+	// 占쏙옙占� 占쏙옙 처占쏙옙
+	// Collision 占쏙옙占쏙옙, Ragdoll, Destroy Timer 占쏙옙
 }
 
 bool UEnemyStateMachineComponent::HasTarget() const
@@ -1731,10 +1899,6 @@ bool UEnemyStateMachineComponent::FindHideLocation(AActor* ThreatActor, FVector&
 			EnemyLocation
 		);
 
-		/*
-		 * 플레이어에게서 멀수록 높은 점수.
-		 * Enemy가 지나치게 멀리 이동해야 하면 약간 감점.
-		 */
 		const float Score =
 			DistanceFromThreat -
 			DistanceFromEnemy * 0.25f;
@@ -1806,14 +1970,6 @@ bool UEnemyStateMachineComponent::FindHideLocation_Upgrade(AActor* ThreatActor, 
 
 		if (SearchRadius <= 0.f) { continue; }
 
-		/*
-		 * 모든 링이 정확히 같은 방향만 검사하지 않도록
-		 * 홀수 번째 링은 각도 간격의 절반만큼 회전시킨다.
-		 *
-		 * 예:
-		 * 첫 번째 링: 0, 30, 60, 90 ...
-		 * 두 번째 링: 15, 45, 75, 105 ...
-		 */
 		const float RingAngleOffset = RadiusIndex % 2 == 0 ? 0.f : AngleStep * 0.5f;
 
 		for (int32 SampleIndex = 0; SampleIndex < HideLocationSampleCount; ++SampleIndex)
@@ -1825,10 +1981,6 @@ bool UEnemyStateMachineComponent::FindHideLocation_Upgrade(AActor* ThreatActor, 
 
 			const FVector RawCandidateLocation = EnemyLocation + Direction * SearchRadius;
 
-			/*
-			 * 계산한 위치가 NavMesh 위에 정확히 있지 않을 수 있으므로
-			 * 주변 NavMesh 지점으로 투영한다.
-			 */
 			FNavLocation ProjectedNavLocation;
 
 			const FVector ProjectionExtent(
@@ -1901,10 +2053,7 @@ bool UEnemyStateMachineComponent::FindHideLocation_Upgrade(AActor* ThreatActor, 
 
 			const float DistanceFromEnemy = FVector::Dist2D(CandidateLocation, EnemyLocation);
 
-			/*
-			 * 플레이어에게서 멀수록 높은 점수.
-			 * Enemy의 이동 거리가 길수록 감점.
-			 */
+
 			const float Score = DistanceFromThreat - DistanceFromEnemy * 0.25f;
 
 #if ENABLE_DRAW_DEBUG
@@ -1972,9 +2121,6 @@ bool UEnemyStateMachineComponent::IsLocationHiddenFromActor(const FVector& Locat
 	FRotator ViewRotation;
 	Observer->GetActorEyesViewPoint(ViewLocation, ViewRotation);
 
-	/*
-	 * 후보 지점의 발 위치가 아니라 Enemy 몸통 높이를 검사한다.
-	 */
 	const FVector CandidateViewLocation = Location + FVector(0.f, 0.f, 80.f);
 
 	FHitResult HitResult;
@@ -2012,9 +2158,6 @@ bool UEnemyStateMachineComponent::IsLocationHiddenFromActor(const FVector& Locat
 	);
 #endif
 
-	/*
-	 * 중간에 벽이나 장애물이 맞았다면 해당 위치는 가려진 위치다.
-	 */
 	return bBlocked;
 }
 
@@ -2073,16 +2216,8 @@ void UEnemyStateMachineComponent::BeginFlee(AActor* ThreatActor)
 
 	if (!IsDefensiveState()) { StateBeforeFlee = CurrentState; }
 
-	/*
-	 * 최대 회복 가능 체력은 MaxHealth의 일정 비율이다.
-	 * 예: 최대 체력 100, 비율 0.65 → 65까지만 회복 가능.
-	 */
 	RecoveryHealthCap = HealthComponent->GetMaxHealth() * RecoveryHealthCapPercent;
 
-	/*
-	 * 현재 체력이 이미 제한치보다 높다면 회복은 하지 않고
-	 * 은신 시간만 가진 뒤 복귀한다.
-	 */
 	RecoveryHealthCap = FMath::Max(RecoveryHealthCap, HealthComponent->GetCurrentHealth());
 
 	bHasValidHideLocation = FindHideLocation_Upgrade(TargetActor, HideLocation);
@@ -2095,11 +2230,6 @@ void UEnemyStateMachineComponent::ReturnToPreviousBehavior()
 	bHasValidHideLocation = false;
 	AccumulatedBurstDamage = 0.f;
 
-	/*
-	 * 공격자가 아직 유효하고 시야에 있을 수 있지만,
-	 * 회복 직후 바로 Attack으로 순간 전환하는 것보다는
-	 * Chase부터 다시 시작하는 편이 안전하다.
-	 */
 	if (IsValid(TargetActor))
 	{
 		SetState(EEnemyStateType::Chase);
@@ -2171,7 +2301,7 @@ void UEnemyStateMachineComponent::Task_AttackTarget()
 
 	LastAttackTime = GetWorld()->GetTimeSeconds();
 
-	//TODO: AnimNotify에서 해결하기
+	//TODO: AnimNotify占쏙옙占쏙옙 占쌔곤옙占싹깍옙
 	if (EnemyAudioComponent)
 	{
 		EnemyAudioComponent->NotifyAttack();
@@ -2385,7 +2515,8 @@ void UEnemyStateMachineComponent::OnInvestigateWaitFinished()
 	}
 }
 
-void UEnemyStateMachineComponent::NotifyDamageReceived(float DamageAmount, AActor* DamageInstigator)
+void UEnemyStateMachineComponent::NotifyDamageReceived(
+	float DamageAmount, AActor* DamageInstigator, EGameDamageType DamageType)
 {
 	if (!Enemy || !HealthComponent || HealthComponent->IsDead())
 	{
@@ -2402,12 +2533,8 @@ void UEnemyStateMachineComponent::NotifyDamageReceived(float DamageAmount, AActo
 		);
 	}
 
-
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
 
-	/*
-	 * 기존 피해 누적 시간창이 끝났다면 새 시간창을 시작한다.
-	 */
 	if (CurrentTime > BurstDamageWindowEndTime)
 	{
 		AccumulatedBurstDamage = 0.f;
@@ -2422,9 +2549,10 @@ void UEnemyStateMachineComponent::NotifyDamageReceived(float DamageAmount, AActo
 		return;
 	}
 
-	/*
-	 * 도망 조건을 만족하지 않으면 기존처럼 공격자를 추적한다.
-	 */
+	// State is still Chase here if the hit was non-fatal and did not cause Flee.
+	// Enqueue ONLY the speed reaction; never StopAIMovement/MoveTo here.
+	TryStartChaseHitReaction(DamageAmount, DamageType);
+
 	if (!IsDefensiveState() && DamageInstigator)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Flee Failed!!!"));
@@ -3355,10 +3483,6 @@ void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 {
 	if (!Enemy || !AIController) { return; }
 
-	/*
-	 * 실제 Player를 시야로 발견하면 혈흔 추적보다
-	 * 직접 추격을 우선한다.
-	 */
 	if (HasTarget())
 	{
 		ClearBloodTrail();
@@ -3398,10 +3522,6 @@ void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 		return;
 	}
 
-	/*
-	 * 아직 다음 혈흔이 생성되지 않았을 수 있으므로
-	 * 마지막 혈흔에서 잠시 기다린다.
-	 */
 	if (BloodTrailLostStartTime <= 0.f)
 	{
 		BloodTrailLostStartTime = GetWorld()->GetTimeSeconds();
@@ -3455,13 +3575,6 @@ bool UEnemyStateMachineComponent::FindInitialBloodStain(ABloodStainActor*& OutBl
 
 		AActor* TrailOwner = BloodStain->GetTrailOwner();
 
-		/*
-		 * Enemy 자신 또는 다른 Enemy가 남긴 혈흔은
-		 * 필요에 따라 제외한다.
-		 *
-		 * 여기서는 Player 혈흔 여부를 프로젝트의
-		 * Tag 또는 Class로 판별한다고 가정한다.
-		 */
 		if (!TrailOwner || !TrailOwner->ActorHasTag(TEXT("Player")))
 		{
 			continue;
@@ -3526,10 +3639,6 @@ bool UEnemyStateMachineComponent::FindNextBloodStain(ABloodStainActor*& OutBlood
 			continue;
 		}
 
-		/*
-		 * 순서가 가장 가까운 다음 혈흔을 우선한다.
-		 * 같은 Sequence라면 거리가 가까운 것을 선택한다.
-		 */
 		const bool bBetterSequence = CandidateSequence < BestSequenceIndex;
 
 		const bool bSameSequenceButCloser =

@@ -1,4 +1,4 @@
-
+ï»¿
 #include "Characters/Enemies/EnemyBase.h"
 #include "Characters/Enemies/AIControllers/EnemyBaseAIController.h"
 #include "Characters/HealthComponent.h"
@@ -13,7 +13,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
-//TODO: Custom Damage Component·Î º¯°æÇØ¾ßÇÔ
+//TODO: Custom Damage Componentï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ï¿½ï¿½
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
 
@@ -67,14 +67,14 @@ void AEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	#if ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 
-		if (StateMachineComponent)
-		{
-			StateMachineComponent->DrawDebug();
-		}
+	if (StateMachineComponent)
+	{
+		StateMachineComponent->DrawDebug();
+	}
 
-	#endif
+#endif
 }
 
 float AEnemyBase::GetCurrentHealth() const
@@ -138,7 +138,7 @@ float AEnemyBase::ReceiveDamage(const FDamageParams& DamageInfo)
 
 	if (!HealthComponent->IsDead() && StateMachineComponent)
 	{
-		StateMachineComponent->NotifyDamageReceived(AppliedDamage, DamageInstigator);
+		StateMachineComponent->NotifyDamageReceived(AppliedDamage, DamageInstigator, DamageInfo.DamageType);
 	}
 
 	//------------------------------------------------
@@ -157,8 +157,8 @@ void AEnemyBase::OnDeath()
 		StateMachineComponent->SetState(EEnemyStateType::Dead);
 	}
 
-	// ¿©±â¼­ ±âÁ¸ Die Ã³¸® ¿¬°á
-	// StopMovement, DisableCollision, DeathMontage, Ragdoll, SetLifeSpan µî
+	// ï¿½ï¿½ï¿½â¼­ ï¿½ï¿½ï¿½ï¿½ Die Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+	// StopMovement, DisableCollision, DeathMontage, Ragdoll, SetLifeSpan ï¿½ï¿½
 }
 
 void AEnemyBase::OnDamagedBy(AActor* DamageInstigatorActor)
@@ -188,18 +188,18 @@ void AEnemyBase::AttackTarget(AActor* Target)
 	if (!Target) return;
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy Attack Target: %s"), *Target->GetName());
 
-	// ³ªÁß¿¡ ¿©±â¼­:
-	// 1. Attack Montage Àç»ý
-	// 2. AnimNotify¿¡¼­ ½ÇÁ¦ µ¥¹ÌÁö Àû¿ë
-	// 3. ¹«±â Trace / Melee Hit Ã³¸®
+	// ï¿½ï¿½ï¿½ß¿ï¿½ ï¿½ï¿½ï¿½â¼­:
+	// 1. Attack Montage ï¿½ï¿½ï¿½
+	// 2. AnimNotifyï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+	// 3. ï¿½ï¿½ï¿½ï¿½ Trace / Melee Hit Ã³ï¿½ï¿½
 
 	if (AttackMontage)
 	{
 		PlayAnimMontage(AttackMontage);
 	}
 
-	// Áö±ÝÀº Å×½ºÆ®¿ëÀ¸·Î Áï½Ã µ¥¹ÌÁö
-	// ³ªÁß¿¡´Â AnimNotify¿¡¼­ ApplyAttackDamage(Target)À» È£ÃâÇÏ´Â ±¸Á¶°¡ ÁÁÀ½
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½×½ï¿½Æ®ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	// ï¿½ï¿½ï¿½ß¿ï¿½ï¿½ï¿½ AnimNotifyï¿½ï¿½ï¿½ï¿½ ApplyAttackDamage(Target)ï¿½ï¿½ È£ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	ApplyAttackDamage(Target);
 }
 
@@ -253,10 +253,10 @@ void AEnemyBase::Die()
 
 	//-------------------------------------
 
-	// <Object Pooling »ç¿ë ¾ÈÇÒ °æ¿ì>
+	// <Object Pooling ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½>
 	SetLifeSpan(DestroyDelayAfterDeath);
 
-	//// <Obejct Pooling »ç¿ëÇÒ °æ¿ì>
+	//// <Obejct Pooling ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½>
 	//GetWorld()->GetTimerManager().SetTimer(
 	//	DeathTimerHandle,
 	//	this,
@@ -271,7 +271,7 @@ void AEnemyBase::DisableEnemyCollision()
 {
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// Mesh´Â »ç¸Á ¾Ö´Ï¸ÞÀÌ¼ÇÀ» º¸¿©Áà¾ß ÇÏ¹Ç·Î ±âº»ÀûÀ¸·Î Query¸¸ À¯ÁöÇÏ°Å³ª NoCollision Ã³¸® °¡´É
+	// Meshï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ï¹Ç·ï¿½ ï¿½âº»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Queryï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï°Å³ï¿½ NoCollision Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	if (!bUseRagdollOnDeath)
 	{
 		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);

@@ -1,7 +1,8 @@
-#pragma once
+癤�#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Characters/GameDamageType.h"
 #include "EnemyStateType.h"
 #include "Engine/DataTable.h"
 #include "EnemyStateMachineComponent.generated.h"
@@ -100,6 +101,59 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement - State Speeds", meta = (ClampMin = "0.0"))
 	float BreachDoorMovementSpeed = 230.f; // BreachDoor approach
 
+	// Chase - Hit Reaction settings (overridden by EnemyStateMachineSettings DataTable).
+	/** Master switch for a short hit reaction while Chase is active. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bEnableChaseHitReaction = true;
+
+	/** React to EGameDamageType::Bullet. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bChaseHitReactToBulletDamage = true;
+
+	/** Compatibility with existing AProjectile paths that currently report Melee. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bChaseHitReactToMeleeDamage = true;
+
+	/** Optionally react to explosion damage. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bChaseHitReactToExplosionDamage = false;
+
+	/** Instantly zero current movement velocity while retaining the current MoveTo path. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bChaseHitStopVelocityOnImpact = true;
+
+	/** Minimum ACTUALLY applied damage to trigger the reaction. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+	float ChaseHitMinimumDamage = 1.f;
+
+	/** Minimum spacing between new reactions; prevents automatic fire from freezing AI. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+	float ChaseHitReactionCooldown = 0.85f;
+
+	/** Brief flinch phase in seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+	float ChaseHitStaggerDuration = 0.10f;
+
+	/** Flinch-phase maximum walk speed multiplier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ChaseHitStaggerSpeedMultiplier = 0.10f;
+
+	/** Reduced speed hold after flinch in seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+	float ChaseHitSlowdownDuration = 0.25f;
+
+	/** Post-hit reduced maximum walk speed multiplier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ChaseHitSlowdownSpeedMultiplier = 0.50f;
+
+	/** Smooth recovery from slowdown back to 1.0 in seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+	float ChaseHitRecoveryDuration = 0.40f;
+
+	/** Log actual hit reaction trigger and skip by zigzag. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Hit Reaction")
+	bool bLogChaseHitReaction = false;
+
 private:
 	// This is runtime-only; initialize once from the pawn's CharacterMovement.
 	float InitialCharacterMaxWalkSpeed = 0.f;
@@ -107,11 +161,25 @@ private:
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Movement - Runtime")
 	float RuntimeMovementSpeedMultiplier = 1.f;
 
+	// Transient hit-reaction state: only one window at a time, no extra timers.
+	bool bChaseHitReactionActive = false;
+	float ChaseHitReactionStartTime = -BIG_NUMBER;
+	float LastChaseHitReactionTime = -BIG_NUMBER;
+
+	bool IsZigzagChaseMovementActive() const;
+	float GetChaseHitSpeedMultiplier() const;
+	void TryStartChaseHitReaction(float AppliedDamage, EGameDamageType DamageType);
+	void ClearChaseHitReaction();
+
 	float SelectBaseMovementSpeed(EEnemyStateType State) const;
 	bool IsStationaryMovementState(EEnemyStateType State) const;
 	void ApplyStateMovementSpeed(float DeltaTime, bool bForceImmediate = false);
 
 public:
+	/** True only during an active normal-Chase hit reaction; never during zigzag. */
+	UFUNCTION(BlueprintPure, Category = "Enemy|Movement")
+	bool IsChaseHitReactionActive() const;
+
 	/** State-specific target speed after DataTable and runtime multipliers. */
 	UFUNCTION(BlueprintPure, Category = "Enemy|Movement")
 	float GetDesiredStateMovementSpeed() const;
@@ -187,14 +255,12 @@ private:
 	FRotator IdleBaseRotation = FRotator::ZeroRotator;
 	FRotator IdleTargetRotation = FRotator::ZeroRotator;
 
-	// 다음에 바라볼 방향 인덱스
 	int32 IdleLookDirectionIndex = 0;
 
 	EEnemyIdleLookPhase IdleLookPhase = EEnemyIdleLookPhase::Waiting;
 
 	float IdlePhaseStartTime = 0.f;
 
-	//TODO: Rotation 시작 방향(좌인지 우인지)는 Random으로 결정하도록 함
 	UPROPERTY(EditAnywhere, Category = "Enemy|Idle")
 	TArray<float> IdleLookYawOffsets =
 	{
@@ -617,19 +683,17 @@ private:
 
 	// <Damaged>
 public:
-	void NotifyDamageReceived(float DamageAmount, AActor* DamageInstigator);
+	void NotifyDamageReceived(float DamageAmount, AActor* DamageInstigator,
+		EGameDamageType DamageType = EGameDamageType::None);
 
 	// <Flee>
 private:
-	// 이 비율 이하로 체력이 내려가면 도망
 	UPROPERTY(EditAnywhere, Category = "Enemy|Flee")
 	float FleeHealthThresholdPercent = 0.3f;
 
-	// 짧은 시간 안에 이 피해량 이상 받으면 도망
 	UPROPERTY(EditAnywhere, Category = "Enemy|Flee")
 	float BurstDamageThreshold = 35.f;
 
-	// 급격한 피해를 누적해서 검사할 시간
 	UPROPERTY(EditAnywhere, Category = "Enemy|Flee")
 	float BurstDamageWindow = 1.5f;
 
@@ -668,17 +732,14 @@ private:
 
 	float HideStartTime = 0.f;
 
-	// 초당 회복량
 	UPROPERTY(EditAnywhere, Category = "Enemy|Recovery")
 	float RecoveryHealthPerSecond = 8.f;
 
-	// 최대 체력의 65%까지만 회복 가능
 	UPROPERTY(EditAnywhere, Category = "Enemy|Recovery", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RecoveryHealthCapPercent = 0.65f;
 
 	float RecoveryHealthCap = 0.f;
 
-	// 도망치기 전 상태
 	EEnemyStateType StateBeforeFlee = EEnemyStateType::Patrol;
 
 	// <Attack>

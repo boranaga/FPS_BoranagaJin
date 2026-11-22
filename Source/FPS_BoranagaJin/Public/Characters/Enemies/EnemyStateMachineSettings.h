@@ -274,6 +274,61 @@ public:
         meta = (ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
     float DirectChaseOverrideDistance = 600.f;
 
+    // Chase - Hit Reaction (temporary damage-induced speed reduction)
+    // The reaction only works during ordinary Chase, never during an active
+    // navigated zigzag waypoint. No AI MoveTo is canceled or reissued.
+    /** Master switch for a short hit reaction while Chase is active. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bEnableChaseHitReaction = true;
+
+    /** React to EGameDamageType::Bullet. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bChaseHitReactToBulletDamage = true;
+
+    /** Compatibility with existing AProjectile paths that currently report Melee. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bChaseHitReactToMeleeDamage = true;
+
+    /** Optionally react to explosion damage. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bChaseHitReactToExplosionDamage = false;
+
+    /** Instantly zero current movement velocity while retaining the current MoveTo path. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bChaseHitStopVelocityOnImpact = true;
+
+    /** Minimum ACTUALLY applied damage to trigger the reaction. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+    float ChaseHitMinimumDamage = 1.f;
+
+    /** Minimum spacing between new reactions; prevents automatic fire from freezing AI. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+    float ChaseHitReactionCooldown = 0.85f;
+
+    /** Brief flinch phase in seconds. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+    float ChaseHitStaggerDuration = 0.10f;
+
+    /** Flinch-phase maximum walk speed multiplier. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float ChaseHitStaggerSpeedMultiplier = 0.10f;
+
+    /** Reduced speed hold after flinch in seconds. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+    float ChaseHitSlowdownDuration = 0.25f;
+
+    /** Post-hit reduced maximum walk speed multiplier. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float ChaseHitSlowdownSpeedMultiplier = 0.50f;
+
+    /** Smooth recovery from slowdown back to 1.0 in seconds. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction", meta = (ClampMin = "0.0"))
+    float ChaseHitRecoveryDuration = 0.40f;
+
+    /** Log actual hit reaction trigger and skip by zigzag. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Hit Reaction")
+    bool bLogChaseHitReaction = false;
+
     // Chase - Combat Dodge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Combat Dodge")
     bool bEnableCombatZigzag = true;
