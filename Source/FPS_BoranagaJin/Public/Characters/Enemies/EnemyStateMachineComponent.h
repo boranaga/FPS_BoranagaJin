@@ -217,6 +217,24 @@ private:
 	FVector LastSeenTargetLocation = FVector::ZeroVector;
 	bool bHasLastSeenTargetLocation = false;
 
+	// Last confirmed location is valid only until TargetMemoryDuration expires.
+	// No live TargetActor position is used when sight is lost.
+	float LastSeenTargetTime = -BIG_NUMBER;
+
+	// Throttle movement requests to estimated positions. NOT part of the DataTable.
+	bool bPlayerMemoryMoveIssued = false;
+	float LastPlayerMemoryMoveTime = -BIG_NUMBER;
+	FVector LastPlayerMemoryMoveGoal = FVector::ZeroVector;
+
+	// Player memory requires a confirmed sighting; hearing/light hypotheses
+	// NEVER become verified player memory or trigger Chase by themselves.
+	bool GetRememberedPlayerLocation(FVector& OutLocation) const;
+	// Save a hypothesis for Investigate, without registering its source Actor.
+	void ProcessUnconfirmedInvestigationClue(const FVector& EstimatedLocation,
+		float SignificantMoveDistance);
+	void UpdatePlayerMemoryChase(float DeltaTime);
+	void ResetPlayerMemoryMove();
+
 	UPROPERTY(VisibleAnywhere, Category = "Enemy|State")
 	EEnemyStateType CurrentState = EEnemyStateType::Idle;
 
@@ -313,6 +331,15 @@ public:
 	AActor* GetTrackedTarget() const { return TargetActor.Get(); }
 	/** Confirmed by UAISense_Sight only; a light cue never sets this flag. */
 	bool IsTargetCurrentlyVisible() const { return bTargetCurrentlyVisible; }
+
+	/** Only confirmed sight or an unexpired LAST VISUAL sighting permits Chase.
+	 *  Hearing and player-light estimates are INVESTIGATE clues, not target memory. */
+	UFUNCTION(BlueprintPure, Category = "Enemy|Target Memory")
+	bool HasPriorityPlayerPositionMemory() const;
+
+	/** Returns visible Actor location or an unexpired last-seen location only. */
+	UFUNCTION(BlueprintCallable, Category = "Enemy|Target Memory")
+	bool GetPriorityPlayerMemoryLocation(FVector& OutLocation) const;
 
 	void OnTargetFound();
 	void OnTargetMissed();
@@ -551,7 +578,7 @@ private:
 		const FVector& ProjectileTravelDirection);
 
 	// <Player light perception>: independent of gunshot memory.
-private:
+protected:
 	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "0.0"))
 	float LightCueMemoryDuration = 7.f;
 	UPROPERTY(EditAnywhere, Category = "Enemy|Light Perception", meta = (ClampMin = "0.1"))
@@ -576,6 +603,19 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Chase - Direct Pursuit",
 		meta = (ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
 	float DirectChaseOverrideDistance = 600.f;
+
+	// Chase uses these values only while following a CONFIRMED last-seen position.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Player Memory", meta = (ClampMin = "0.1"))
+	float PlayerMemoryMoveRequestInterval = 0.85f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Player Memory", meta = (ClampMin = "10.0"))
+	float PlayerMemoryRetargetDistance = 150.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Player Memory", meta = (ClampMin = "20.0"))
+	float PlayerMemoryAcceptanceRadius = 110.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chase - Player Memory")
+	bool bDrawPlayerMemoryDebug = false;
 
 	bool ShouldPrioritizeDirectChase() const;
 

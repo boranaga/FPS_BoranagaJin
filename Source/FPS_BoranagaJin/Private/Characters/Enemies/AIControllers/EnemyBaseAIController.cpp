@@ -317,6 +317,9 @@ void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimu
         return;
     }
 
+    // Generic sounds cannot override a sight-confirmed or inferred player goal.
+    if (SM->HasPriorityPlayerPositionMemory()) return;
+
     // Footsteps, Reloading and other ordinary gameplay cues.
     SM->SetLastHeardLocation(HeardLocation);
     if (State != EEnemyStateType::Investigate)

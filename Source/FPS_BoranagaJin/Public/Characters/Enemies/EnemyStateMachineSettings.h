@@ -274,6 +274,23 @@ public:
         meta = (ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
     float DirectChaseOverrideDistance = 600.f;
 
+    // Chase - Player Position Memory (cm, seconds)
+    /** Minimum gap between requests while chasing an estimated position. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Player Memory", meta = (ClampMin = "0.1"))
+    float PlayerMemoryMoveRequestInterval = 0.85f;
+
+    /** Minimum change to the remembered search goal before requesting a new path. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Player Memory", meta = (ClampMin = "10.0"))
+    float PlayerMemoryRetargetDistance = 150.f;
+
+    /** Distance at which the enemy waits at an estimated destination. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Player Memory", meta = (ClampMin = "20.0"))
+    float PlayerMemoryAcceptanceRadius = 110.f;
+
+    /** Draw currently remembered location / pursuit mode in PIE. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chase - Player Memory")
+    bool bDrawPlayerMemoryDebug = false;
+
     // Chase - Hit Reaction (temporary damage-induced speed reduction)
     // The reaction only works during ordinary Chase, never during an active
     // navigated zigzag waypoint. No AI MoveTo is canceled or reissued.

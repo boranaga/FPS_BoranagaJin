@@ -133,6 +133,10 @@ bool UEnemyStateMachineComponent::ReloadSettingsFromDataTable()
 	LightCueMinimumMoveDistance = Row->LightCueMinimumMoveDistance;
 	bPrioritizeDirectChaseWhenClose = Row->bPrioritizeDirectChaseWhenClose;
 	DirectChaseOverrideDistance = FMath::Max(0.f, Row->DirectChaseOverrideDistance);
+	PlayerMemoryMoveRequestInterval = FMath::Max(0.1f, Row->PlayerMemoryMoveRequestInterval);
+	PlayerMemoryRetargetDistance = FMath::Max(10.f, Row->PlayerMemoryRetargetDistance);
+	PlayerMemoryAcceptanceRadius = FMath::Max(20.f, Row->PlayerMemoryAcceptanceRadius);
+	bDrawPlayerMemoryDebug = Row->bDrawPlayerMemoryDebug;
 	ImpactReactionRadius = Row->ImpactReactionRadius;
 	ImpactSafeDistance = Row->ImpactSafeDistance;
 	ImpactEvadeSearchRadius = Row->ImpactEvadeSearchRadius;
@@ -255,6 +259,9 @@ void UEnemyStateMachineComponent::BeginPlay()
 
 	TargetActor = nullptr;
 
+	LastSeenTargetTime = -BIG_NUMBER;
+	ResetPlayerMemoryMove();
+
 	// Store the Blueprint/class MaxWalkSpeed before changing it.
 	if (IsValid(Enemy) && IsValid(Enemy->GetCharacterMovement()))
 	{
@@ -289,6 +296,15 @@ void UEnemyStateMachineComponent::TickComponent(
 		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
 	}
 	UpdateState(DeltaTime);
+
+	// A remembered player location has global priority over both passive search states.
+	// This also self-heals state set via legacy code/delegates on earlier frames.
+	if (HasPriorityPlayerPositionMemory() &&
+		(CurrentState == EEnemyStateType::TrackBlood ||
+			CurrentState == EEnemyStateType::Investigate))
+	{
+		SetState(EEnemyStateType::Chase);
+	}
 
 	// IMPORTANT: a newly accepted zigzag waypoint exempts this enemy from
 	// the entire hit reaction, including one already started a frame earlier.
@@ -709,6 +725,175 @@ bool UEnemyStateMachineComponent::HasRecentLightCue() const
 		GetWorld()->GetTimeSeconds() - LastLightCueTime <= LightCueMemoryDuration;
 }
 
+// -----------------------------------------------------------------------------
+// Confirmed PLAYER memory only. A sound bearing or illuminated surface is an
+// INVESTIGATION CLUE, even if it originated from a player-controlled source.
+// Never equate a hypothesis with a visually confirmed Actor position.
+// -----------------------------------------------------------------------------
+bool UEnemyStateMachineComponent::GetRememberedPlayerLocation(FVector& OutLocation) const
+{
+	OutLocation = FVector::ZeroVector;
+	const UWorld* World = GetWorld();
+	if (!World || !bHasLastSeenTargetLocation) return false;
+
+	const float Age = World->GetTimeSeconds() - LastSeenTargetTime;
+	if (LastSeenTargetTime <= -BIG_NUMBER / 2.f || Age < 0.f ||
+		Age >= FMath::Max(0.f, TargetMemoryDuration))
+	{
+		return false;
+	}
+
+	OutLocation = LastSeenTargetLocation;
+	return true;
+}
+
+// Records the best current estimated source position without ever calling
+// SetTarget() or reading the sound instigator's actual Actor position.
+// Policy belongs to the clue receiver, NOT to SetState().
+void UEnemyStateMachineComponent::ProcessUnconfirmedInvestigationClue(
+	const FVector& EstimatedLocation, float SignificantMoveDistance)
+{
+	if (!GetWorld() || !IsValid(Enemy) || Enemy->IsDead() ||
+		!FMath::IsFinite(EstimatedLocation.X) ||
+		!FMath::IsFinite(EstimatedLocation.Y) ||
+		!FMath::IsFinite(EstimatedLocation.Z))
+	{
+		return;
+	}
+
+	const bool bNewGoal = !bHasHeardLocation ||
+		FVector::DistSquared2D(LastHeardLocation, EstimatedLocation) >=
+		FMath::Square(FMath::Max(10.f, SignificantMoveDistance));
+
+	// Keep the previous goal for small noise variations to avoid path jitter.
+	if (bNewGoal)
+	{
+		SetLastHeardLocation(EstimatedLocation);
+	}
+
+	// Higher-priority, VISUALLY confirmed player memory must remain in Chase;
+	// preserve the clue so it may be used after that memory expires.
+	if (HasPriorityPlayerPositionMemory() || IsDefensiveState() ||
+		CurrentState == EEnemyStateType::Dead ||
+		CurrentState == EEnemyStateType::BreachDoor ||
+		CurrentState == EEnemyStateType::EvadeImpact)
+	{
+		return;
+	}
+
+	if (CurrentState == EEnemyStateType::Investigate)
+	{
+		if (bNewGoal)
+		{
+			// A fresh, substantially different clue supersedes the old wait.
+			bIsWaitingAtInvestigateLocation = false;
+			GetWorld()->GetTimerManager().ClearTimer(InvestigateWaitTimerHandle);
+			InvestigateStartTime = GetWorld()->GetTimeSeconds();
+			// UpdateInvestigate will issue the next path request with its
+			// existing cadence; do not flood AIController with per-shot MoveTo.
+		}
+		return;
+	}
+
+	if (bHasHeardLocation &&
+		(CurrentState == EEnemyStateType::Idle ||
+			CurrentState == EEnemyStateType::Patrol ||
+			CurrentState == EEnemyStateType::TrackBlood ||
+			CurrentState == EEnemyStateType::Chase ||
+			(CurrentState == EEnemyStateType::Attack && !bTargetCurrentlyVisible)))
+	{
+		SetState(EEnemyStateType::Investigate);
+	}
+}
+
+bool UEnemyStateMachineComponent::GetPriorityPlayerMemoryLocation(
+	FVector& OutLocation) const
+{
+	// Exact current player position may only come from a confirmed sight stimulus.
+	if (bTargetCurrentlyVisible && HasTarget())
+	{
+		OutLocation = TargetActor->GetActorLocation();
+		return true;
+	}
+	return GetRememberedPlayerLocation(OutLocation);
+}
+
+bool UEnemyStateMachineComponent::HasPriorityPlayerPositionMemory() const
+{
+	if (!IsValid(Enemy) || Enemy->IsDead()) return false;
+	FVector UnusedLocation;
+	return GetPriorityPlayerMemoryLocation(UnusedLocation);
+}
+
+void UEnemyStateMachineComponent::ResetPlayerMemoryMove()
+{
+	bPlayerMemoryMoveIssued = false;
+	LastPlayerMemoryMoveTime = -BIG_NUMBER;
+	LastPlayerMemoryMoveGoal = FVector::ZeroVector;
+}
+
+void UEnemyStateMachineComponent::UpdatePlayerMemoryChase(float DeltaTime)
+{
+	FVector Goal;
+	if (!GetRememberedPlayerLocation(Goal))
+	{
+		StopChase();
+		return;
+	}
+
+	if (!IsValid(AIController) && IsValid(Enemy))
+	{
+		AIController = Cast<AEnemyBaseAIController>(Enemy->GetController());
+	}
+	if (!IsValid(AIController) || !IsValid(Enemy) || !GetWorld()) return;
+
+	// Door breaching may still be necessary at an inferred, NOT exact, location.
+	UpdateDoorChaseMovementProgress();
+	if (TryBeginDoorBreach(Goal, EEnemyStateType::Chase)) return;
+
+	// Do not use IsTargetInAttackRange / MoveToTarget while the target is unseen.
+	// Both read the live Actor location and would grant information through walls.
+	RotateToTargetDirection(DeltaTime, Goal);
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	// Chase memory is only the last visually confirmed location.
+	const float RetargetDistance = FMath::Max(10.f, PlayerMemoryRetargetDistance);
+	const float MoveInterval = FMath::Max(0.1f, PlayerMemoryMoveRequestInterval);
+	const float AcceptanceRadius = FMath::Max(20.f, PlayerMemoryAcceptanceRadius);
+
+	const bool bGoalMoved = !bPlayerMemoryMoveIssued ||
+		FVector::DistSquared2D(LastPlayerMemoryMoveGoal, Goal) >=
+		FMath::Square(FMath::Max(10.f, RetargetDistance));
+	const bool bAtGoal = FVector::DistSquared2D(Enemy->GetActorLocation(), Goal) <=
+		FMath::Square(FMath::Max(20.f, AcceptanceRadius));
+
+	if (bAtGoal)
+	{
+		// Wait at the predicted point for either a fresh clue or memory expiry.
+		// Also cancel a previously active MoveToActor on the very first
+		// sight-lost frame: otherwise it could keep following a hidden player.
+		if (!bPlayerMemoryMoveIssued || AIController->IsFollowingAPath())
+		{
+			AIController->StopAIMovement();
+		}
+		bPlayerMemoryMoveIssued = true;
+		LastPlayerMemoryMoveGoal = Goal;
+		return;
+	}
+
+	const bool bPathFinished = !AIController->IsFollowingAPath();
+	const bool bNeedMove = !bPlayerMemoryMoveIssued || bGoalMoved || bPathFinished;
+	if (bNeedMove && (!bPlayerMemoryMoveIssued ||
+		Now - LastPlayerMemoryMoveTime >= FMath::Max(0.1f, MoveInterval)))
+	{
+		// A location-only request: no target Actor tracking, no Tick-level repath.
+		AIController->MoveToLocationPoint(Goal, AcceptanceRadius);
+		LastPlayerMemoryMoveGoal = Goal;
+		LastPlayerMemoryMoveTime = Now;
+		bPlayerMemoryMoveIssued = true;
+	}
+}
+
 void UEnemyStateMachineComponent::NotifyPlayerLightObserved(
 	const FVector& EstimatedPosition, bool bEmitterDirectlyVisible,
 	const AActor* SourceActor)
@@ -722,7 +907,6 @@ void UEnemyStateMachineComponent::NotifyPlayerLightObserved(
 	// A light cue is NOT direct vision of the player: never SetTarget(),
 	// OnTargetFound() or set bTargetCurrentlyVisible from this method.
 	const float Now = GetWorld()->GetTimeSeconds();
-	const FVector PreviousEstimate = LastEstimatedLightSource;
 	const bool bPreviousCueValid = HasRecentLightCue();
 
 	FVector NewEstimate = EstimatedPosition;
@@ -749,47 +933,22 @@ void UEnemyStateMachineComponent::NotifyPlayerLightObserved(
 	bHasLightCue = true;
 	LastLightCueTime = Now;
 
-	// Combat sound has precedence over a speculative light patch; direct
-	// observation of the emitter is stronger and may refine the search.
+	// A sound cue can take priority over a less reliable indirect light patch.
+	// The light estimate is still kept for later; neither grants exact sight.
 	if (HasRecentGunshotMemory() && !bEmitterDirectlyVisible) return;
 
-	// An active combat, breach, evasion or tracked visual target must not be
-	// interrupted by a light cue. Save the cue for StopChase() if needed.
-	if (HasTarget() || CurrentState == EEnemyStateType::BreachDoor ||
-		CurrentState == EEnemyStateType::EvadeImpact ||
-		CurrentState == EEnemyStateType::Attack ||
-		CurrentState == EEnemyStateType::Chase)
+	if (CurrentState == EEnemyStateType::Dead || IsDefensiveState() ||
+		CurrentState == EEnemyStateType::BreachDoor ||
+		CurrentState == EEnemyStateType::EvadeImpact)
 	{
 		return;
 	}
 
-	if (FVector::Dist2D(Enemy->GetActorLocation(), LastEstimatedLightSource) <=
-		LightCueMinimumMoveDistance)
-	{
-		return;
-	}
-
-	if (CurrentState != EEnemyStateType::Investigate)
-	{
-		SetLastHeardLocation(LastEstimatedLightSource);
-		LastLightCueMoveTime = Now;
-		SetState(EEnemyStateType::Investigate);
-		return;
-	}
-
-	const bool bEstimateMoved = !bPreviousCueValid ||
-		FVector::DistSquared2D(PreviousEstimate, LastEstimatedLightSource) >=
-		FMath::Square(LightCueRetargetDistance);
-
-	if (bEstimateMoved && Now - LastLightCueMoveTime >= LightCueRetargetInterval)
-	{
-		SetLastHeardLocation(LastEstimatedLightSource);
-		LastLightCueMoveTime = Now;
-		InvestigateStartTime = Now;
-		bIsWaitingAtInvestigateLocation = false;
-		GetWorld()->GetTimerManager().ClearTimer(InvestigateWaitTimerHandle);
-		MoveToLastHeardLocation();
-	}
+	// Seeing a light patch/emitter does NOT confirm the player Actor.
+	// It supplies a location for Investigate unless a real visual sighting
+	// already authorizes Chase. Never use Player->GetActorLocation() here.
+	ProcessUnconfirmedInvestigationClue(LastEstimatedLightSource,
+		LightCueRetargetDistance);
 }
 
 void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
@@ -799,6 +958,8 @@ void UEnemyStateMachineComponent::SetTarget(AActor* NewTarget)
 	{
 		bHasLastSeenTargetLocation = false;
 		LastSeenTargetLocation = FVector::ZeroVector;
+		LastSeenTargetTime = -BIG_NUMBER;
+		ResetPlayerMemoryMove();
 	}
 	TargetActor = NewTarget;
 }
@@ -815,6 +976,8 @@ void UEnemyStateMachineComponent::OnTargetFound()
 {
 	const bool bSightJustRegained = !bTargetCurrentlyVisible;
 	bTargetCurrentlyVisible = true;
+	LastSeenTargetTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -BIG_NUMBER;
+	ResetPlayerMemoryMove();
 	if (HasTarget())
 	{
 		LastSeenTargetLocation = TargetActor->GetActorLocation();
@@ -838,6 +1001,12 @@ void UEnemyStateMachineComponent::OnTargetFound()
 void UEnemyStateMachineComponent::OnTargetMissed()
 {
 	bTargetCurrentlyVisible = false;
+	// Freeze the last visually confirmed position for a finite memory window.
+	if (bHasLastSeenTargetLocation && GetWorld())
+	{
+		LastSeenTargetTime = GetWorld()->GetTimeSeconds();
+	}
+	ResetPlayerMemoryMove();
 	// TargetMemoryDuration remains intact; do not use live Actor coordinates
 	// for new lateral waypoints after sight is lost.
 	bHasCombatDodgeWaypoint = false;
@@ -858,10 +1027,8 @@ void UEnemyStateMachineComponent::SetState(EEnemyStateType NewState)
 	ExitState(CurrentState);
 	CurrentState = NewState;
 
-	// Apply immediately if interpolation is disabled; otherwise the new
-	// speed is reached over subsequent ticks. Stationary states may snap to 0.
+	// Transition effects belong to the state lifecycle; no AI-priority policy here.
 	ApplyStateMovementSpeed(0.f);
-
 	EnterState(CurrentState);
 
 	if (EnemyAudioComponent)
@@ -914,7 +1081,10 @@ void UEnemyStateMachineComponent::EnterState(EEnemyStateType NewState)
 		break;
 
 	case EEnemyStateType::Chase:
+		// A Chase owns no blood-trail tracking context.
+		ClearBloodTrail();
 		ResetDoorBreachProgress();
+		ResetPlayerMemoryMove();
 		bHasCombatDodgeWaypoint = false;
 		bForceCombatDodgeRepath = true;
 		UE_LOG(LogTemp, Warning, TEXT("Enter Chase"));
@@ -1056,7 +1226,13 @@ void UEnemyStateMachineComponent::ExitState(EEnemyStateType OldState)
 
 	case EEnemyStateType::Chase:
 		ResetCombatDodgeMovement();
+		ResetPlayerMemoryMove();
 		ClearChaseHitReaction();
+		break;
+
+	case EEnemyStateType::TrackBlood:
+		// Leaving TrackBlood always releases tracked stain/owner memory.
+		ClearBloodTrail();
 		break;
 
 	case EEnemyStateType::BreachDoor:
@@ -1157,7 +1333,12 @@ void UEnemyStateMachineComponent::UpdateState(float DeltaTime)
 
 void UEnemyStateMachineComponent::UpdateIdle(float DeltaTime)
 {
-	if (HasTarget())
+	if (HasPriorityPlayerPositionMemory())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+	if (bTargetCurrentlyVisible && HasTarget())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -1174,7 +1355,12 @@ void UEnemyStateMachineComponent::UpdateIdle(float DeltaTime)
 
 void UEnemyStateMachineComponent::UpdatePatrol(float DeltaTime)
 {
-	if (HasTarget())
+	if (HasPriorityPlayerPositionMemory())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+	if (bTargetCurrentlyVisible && HasTarget())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -1483,7 +1669,14 @@ void UEnemyStateMachineComponent::FinishDoorBreach(bool bFailed)
 	Task_StopMovement();
 
 	// ExitState(BreachDoor) clears the weak pointer.
-	if (DoorBreachReturnState == EEnemyStateType::Chase && HasTarget())
+	if (DoorBreachReturnState == EEnemyStateType::Chase &&
+		HasPriorityPlayerPositionMemory())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+
+	if (HasPriorityPlayerPositionMemory())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -1491,12 +1684,7 @@ void UEnemyStateMachineComponent::FinishDoorBreach(bool bFailed)
 
 	// Hearing is not equivalent to an exact player location. If sight has
 	// expired, investigate the last known sight position or earlier sound.
-	if (bHasLastSeenTargetLocation)
-	{
-		SetLastHeardLocation(LastSeenTargetLocation);
-		SetState(EEnemyStateType::Investigate);
-	}
-	else if (bHasHeardLocation)
+	if (bHasHeardLocation)
 	{
 		SetState(EEnemyStateType::Investigate);
 	}
@@ -1508,7 +1696,7 @@ void UEnemyStateMachineComponent::FinishDoorBreach(bool bFailed)
 
 void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 {
-	if (!HasTarget() || ShouldLoseTarget())
+	if (!HasPriorityPlayerPositionMemory())
 	{
 		StopChase();
 		return;
@@ -1531,6 +1719,17 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 		}
 	}
 
+	// When vision is lost, navigate ONLY to the last VISUALLY confirmed position.
+	// This branch never reads TargetActor's live position and never attacks blindly.
+	if (!bTargetCurrentlyVisible || !HasTarget())
+	{
+		UpdatePlayerMemoryChase(DeltaTime);
+		return;
+	}
+
+	// Continue the normal moving-Actor Chase only with confirmed sight.
+	bPlayerMemoryMoveIssued = false;
+
 	// A closed, weakened door may be blocking the chase even when NavMesh
 	// suggests a direct path through it. Detect only the FIRST visible blocker.
 	// Zigzag / attack target only after this obstacle priority is resolved.
@@ -1538,6 +1737,7 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 	{
 		LastSeenTargetLocation = TargetActor->GetActorLocation();
 		bHasLastSeenTargetLocation = true;
+		LastSeenTargetTime = GetWorld() ? GetWorld()->GetTimeSeconds() : LastSeenTargetTime;
 	}
 	UpdateDoorChaseMovementProgress();
 	if (bTargetCurrentlyVisible || bHasLastSeenTargetLocation)
@@ -1584,6 +1784,20 @@ void UEnemyStateMachineComponent::UpdateChase(float DeltaTime)
 
 void UEnemyStateMachineComponent::UpdateAttack(float DeltaTime)
 {
+	// An Actor reference is not equivalent to live sight.
+	if (!bTargetCurrentlyVisible)
+	{
+		if (HasPriorityPlayerPositionMemory())
+		{
+			SetState(EEnemyStateType::Chase);
+		}
+		else
+		{
+			StopChase();
+		}
+		return;
+	}
+
 	if (!HasTarget())
 	{
 		SetState(EEnemyStateType::Patrol);
@@ -2230,7 +2444,7 @@ void UEnemyStateMachineComponent::ReturnToPreviousBehavior()
 	bHasValidHideLocation = false;
 	AccumulatedBurstDamage = 0.f;
 
-	if (IsValid(TargetActor))
+	if (HasPriorityPlayerPositionMemory())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -2252,33 +2466,34 @@ void UEnemyStateMachineComponent::ReturnToPreviousBehavior()
 
 void UEnemyStateMachineComponent::StopChase()
 {
-	if (CurrentState == EEnemyStateType::BreachDoor)
-	{
-		// Sight memory timed out; stop treating the actor as a live target,
-		// but allow the already-committed door strike to finish.
-		ClearTarget();
-		return;
-	}
+	if (bTargetCurrentlyVisible && HasTarget()) return;
+
+	// Sight-based actor memory has expired. Keep the hearing clue for a
+	// separate Investigate; it must never extend confirmed Chase by itself.
 	ClearTarget();
 
-	// The sight-loss timer must not cancel an ongoing impact dodge or flee.
+	if (CurrentState == EEnemyStateType::BreachDoor)
+	{
+		return; // allow a committed door strike to complete
+	}
 	if (CurrentState != EEnemyStateType::Chase &&
 		CurrentState != EEnemyStateType::Attack)
 	{
 		return;
 	}
 
-	if (HasRecentGunshotMemory())
+	if (HasPriorityPlayerPositionMemory())
 	{
-		SetLastHeardLocation(EstimatedGunshotLocation);
-		SetState(EEnemyStateType::Investigate);
+		ResetPlayerMemoryMove();
+		if (CurrentState != EEnemyStateType::Chase)
+		{
+			SetState(EEnemyStateType::Chase);
+		}
+		return;
 	}
-	else if (HasRecentLightCue())
-	{
-		SetLastHeardLocation(LastEstimatedLightSource);
-		SetState(EEnemyStateType::Investigate);
-	}
-	else if (bHasHeardLocation)
+
+	// No confirmed visual memory remains. Auditory/light clues are for Investigate.
+	if (bHasHeardLocation)
 	{
 		SetState(EEnemyStateType::Investigate);
 	}
@@ -2406,7 +2621,13 @@ void UEnemyStateMachineComponent::SetLastHeardLocation(const FVector& NewLocatio
 
 void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 {
-	if (HasTarget())
+	if (HasPriorityPlayerPositionMemory())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+
+	if (bTargetCurrentlyVisible && HasTarget())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -2468,11 +2689,22 @@ void UEnemyStateMachineComponent::UpdateInvestigate(float DeltaTime)
 	FVector TargetLocation = Enemy->GetActorLocation() + Enemy->GetVelocity();
 	RotateToTargetDirection(DeltaTime, TargetLocation);
 
-	// Avoid issuing a new pathfinding request every single Tick.
+	// Every new rifle round can refine the guess. Never replace an active
+	// MoveTo on every round/frame: require BOTH elapsed time and a need to move.
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
-	if (CurrentTime - LastInvestigateMoveTime >= 0.85f ||
-		FVector::DistSquared2D(LastRequestedInvestigateLocation, LastHeardLocation) >=
-		FMath::Square(GunshotRetargetDistance))
+	const bool bGunshotClue = HasRecentGunshotMemory();
+	const bool bLightClue = !bGunshotClue && HasRecentLightCue();
+	const float RetargetInterval = bGunshotClue ? GunshotMoveRetargetInterval :
+		(bLightClue ? LightCueRetargetInterval : 0.85f);
+	const float RetargetDistance = bGunshotClue ? GunshotRetargetDistance :
+		(bLightClue ? LightCueRetargetDistance : 150.f);
+	const bool bTimeToRetry = CurrentTime - LastInvestigateMoveTime >=
+		FMath::Max(0.1f, RetargetInterval);
+	const bool bClueMoved = FVector::DistSquared2D(
+		LastRequestedInvestigateLocation, LastHeardLocation) >=
+		FMath::Square(FMath::Max(10.f, RetargetDistance));
+	const bool bNoActivePath = !IsValid(AIController) || !AIController->IsFollowingAPath();
+	if (bTimeToRetry && (bClueMoved || bNoActivePath))
 	{
 		MoveToLastHeardLocation();
 	}
@@ -2504,6 +2736,12 @@ bool UEnemyStateMachineComponent::IsAtLastHeardLocation() const
 
 void UEnemyStateMachineComponent::OnInvestigateWaitFinished()
 {
+	if (HasPriorityPlayerPositionMemory())
+	{
+		bIsWaitingAtInvestigateLocation = false;
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
 	bIsWaitingAtInvestigateLocation = false;
 	bHasHeardLocation = false;
 
@@ -2524,7 +2762,9 @@ void UEnemyStateMachineComponent::NotifyDamageReceived(
 	}
 
 	if (DamageAmount <= 0.f) { return; }
-	if (DamageInstigator) { TargetActor = DamageInstigator; }
+	// A DamageCauser/Instigator pointer is NOT visual confirmation. Do not
+	// make the shooter a Chase target merely because the Enemy took damage.
+	// Only OnTargetFound (Sight) grants that authority.
 
 	if (EnemyAudioComponent)
 	{
@@ -2555,10 +2795,17 @@ void UEnemyStateMachineComponent::NotifyDamageReceived(
 
 	if (!IsDefensiveState() && DamageInstigator)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Flee Failed!!!"));
-
-		SetTarget(DamageInstigator);
-		SetState(EEnemyStateType::Chase);
+		// A known player remains a priority. If sight was never confirmed,
+		// retain the separate combat-noise hypothesis for Investigate instead.
+		if (HasPriorityPlayerPositionMemory())
+		{
+			SetState(EEnemyStateType::Chase);
+		}
+		else if (HasRecentGunshotMemory())
+		{
+			ProcessUnconfirmedInvestigationClue(EstimatedGunshotLocation,
+				GunshotRetargetDistance);
+		}
 	}
 }
 
@@ -2735,39 +2982,13 @@ void UEnemyStateMachineComponent::NotifyGunshotHeard(
 		RegisterCombatThreat(false);
 	}
 
-	if (IsDefensiveState() || CurrentState == EEnemyStateType::EvadeImpact ||
-		CurrentState == EEnemyStateType::BreachDoor ||
-		CurrentState == EEnemyStateType::Dead ||
-		(HasTarget() && (CurrentState == EEnemyStateType::Chase ||
-			CurrentState == EEnemyStateType::Attack)))
-	{
-		return;
-	}
-
-	const FVector PreviousInvestigation = LastHeardLocation;
-	SetLastHeardLocation(EstimatedGunshotLocation);
-
-	if (CurrentState != EEnemyStateType::Investigate)
-	{
-		LastGunshotMoveTime = CurrentTime;
-		SetState(EEnemyStateType::Investigate);
-		return;
-	}
-
-	const bool bDestinationChanged = FVector::DistSquared2D(
-		PreviousInvestigation, LastHeardLocation) >= FMath::Square(GunshotRetargetDistance);
-	const bool bMayRetarget =
-		CurrentTime - LastGunshotMoveTime >= GunshotMoveRetargetInterval;
-
-	if (bIsWaitingAtInvestigateLocation || (bDestinationChanged && bMayRetarget))
-	{
-		GetWorld()->GetTimerManager().ClearTimer(InvestigateWaitTimerHandle);
-		bIsWaitingAtInvestigateLocation = false;
-		LastGunshotMoveTime = CurrentTime;
-		InvestigateStartTime = CurrentTime;
-		MoveToLastHeardLocation();
-	}
+	// Hearing a shot is evidence of a SOURCE, not proof of Player identity.
+	// An Enemy that has never visually identified the player MUST Investigate.
+	// A confirmed, unexpired last sighting still takes precedence as Chase.
+	ProcessUnconfirmedInvestigationClue(EstimatedGunshotLocation,
+		GunshotRetargetDistance);
 }
+
 
 void UEnemyStateMachineComponent::RefineGunshotEstimateFromImpact(
 	const FVector& ImpactLocation, const FVector& ProjectileTravelDirection)
@@ -2923,7 +3144,17 @@ void UEnemyStateMachineComponent::NotifyProjectileImpactHeard(
 				CurrentState == EEnemyStateType::Patrol ||
 				CurrentState == EEnemyStateType::TrackBlood))
 		{
-			SetState(EEnemyStateType::Investigate);
+			// Decide the next state here, not in SetState().
+			// A credible player-position hypothesis takes precedence over
+			// passive investigation even when the impact is far away.
+			if (HasPriorityPlayerPositionMemory())
+			{
+				SetState(EEnemyStateType::Chase);
+			}
+			else
+			{
+				SetState(EEnemyStateType::Investigate);
+			}
 		}
 		return;
 	}
@@ -3093,7 +3324,13 @@ void UEnemyStateMachineComponent::FinishImpactEvasion()
 	Task_StopMovement();
 	bHasImpactEvadeLocation = false;
 
-	if (HasTarget())
+	if (bTargetCurrentlyVisible && HasTarget())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
+
+	if (HasPriorityPlayerPositionMemory())
 	{
 		SetState(EEnemyStateType::Chase);
 		return;
@@ -3444,6 +3681,18 @@ void UEnemyStateMachineComponent::DrawDebug() const
 		);
 	}
 
+	if (bDrawPlayerMemoryDebug && GetWorld())
+	{
+		FVector MemoryGoal;
+		if (GetPriorityPlayerMemoryLocation(MemoryGoal))
+		{
+			DrawDebugSphere(GetWorld(), MemoryGoal, 45.f, 12,
+				FColor::Magenta, false, 0.f, 0, 2.f);
+			DrawDebugLine(GetWorld(), Enemy->GetActorLocation(), MemoryGoal,
+				FColor::Magenta, false, 0.f, 0, 1.5f);
+		}
+	}
+
 	if (HasRecentGunshotMemory())
 	{
 		DrawDebugSphere(GetWorld(), EstimatedGunshotLocation, 35.f, 10,
@@ -3481,9 +3730,15 @@ void UEnemyStateMachineComponent::DrawDebug() const
 
 void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 {
+	if (HasPriorityPlayerPositionMemory())
+	{
+		ClearBloodTrail();
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
 	if (!Enemy || !AIController) { return; }
 
-	if (HasTarget())
+	if (bTargetCurrentlyVisible && HasTarget())
 	{
 		ClearBloodTrail();
 		SetState(EEnemyStateType::Chase);
@@ -3539,7 +3794,13 @@ void UEnemyStateMachineComponent::UpdateTrackBlood(float DeltaTime)
 
 bool UEnemyStateMachineComponent::CanSearchForBlood() const
 {
-	if (!GetWorld()) { return false; }
+	if (!GetWorld() || HasPriorityPlayerPositionMemory()) return false;
+	// Do not abandon an ongoing sound/light investigation for incidental
+	// blood before reaching/checking the estimated source position.
+	if (CurrentState == EEnemyStateType::Investigate && bHasHeardLocation)
+	{
+		return false;
+	}
 
 	const bool bPassiveState =
 		CurrentState == EEnemyStateType::Idle ||
@@ -3553,6 +3814,7 @@ bool UEnemyStateMachineComponent::CanSearchForBlood() const
 
 bool UEnemyStateMachineComponent::TryAcquireBloodTrail()
 {
+	if (HasPriorityPlayerPositionMemory()) return false;
 	ABloodStainActor* FoundBloodStain = nullptr;
 	if (!FindInitialBloodStain(FoundBloodStain)) { return false; }
 	SetCurrentBloodStain(FoundBloodStain);
@@ -3701,6 +3963,12 @@ void UEnemyStateMachineComponent::ReturnFromBloodTracking()
 	}
 
 	ClearBloodTrail();
+
+	if (HasPriorityPlayerPositionMemory())
+	{
+		SetState(EEnemyStateType::Chase);
+		return;
+	}
 
 	if (!LastBloodLocation.IsNearlyZero())
 	{
