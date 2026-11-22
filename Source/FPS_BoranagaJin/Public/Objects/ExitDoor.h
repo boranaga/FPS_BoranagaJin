@@ -19,17 +19,17 @@ struct FInventorySlot;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnExitDoorUnlocked, AExitDoor*, ExitDoor);
 
-/** 탈출구에 넣어야 하는 아이템 1칸 */
+/** One item slot required to unlock the exit. */
 USTRUCT(BlueprintType)
 struct FPS_BORANAGAJIN_API FExitRequirementSlot
 {
 	GENERATED_BODY()
 
-	/** 아이템 BP의 ItemID 와 같아야 합니다. (KeyCard / Battery / Fuse / Chip) */
+	/** Must match the ItemID defined in the item Blueprint. (KeyCard / Battery / Fuse / Chip) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	FName ItemID = NAME_None;
 
-	/** UI에 표시할 이름 */
+	/** Name displayed in the UI. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	FText DisplayName;
 
@@ -38,20 +38,20 @@ struct FPS_BORANAGAJIN_API FExitRequirementSlot
 };
 
 /**
- * 아이템 3개를 넣어야 열리는 탈출구.
+ * An exit that unlocks after three required items have been inserted.
  *
- * - ExitNumber(1~4)를 정하면 필요한 아이템 3개가 자동으로 채워집니다.
- *     1번: 키카드 / 배터리 / 퓨즈   (칩 X)
- *     2번: 배터리 / 퓨즈 / 칩       (키카드 X)
- *     3번: 퓨즈 / 칩 / 키카드       (배터리 X)
- *     4번: 칩 / 키카드 / 배터리     (퓨즈 X)
- * - 플레이어가 DoorVolume에서 ShowDistance(기본 1m) 안에 들어오면 화면에 UI가 표시됩니다.
- * - 갖고 있는 아이템의 칸은 마우스로 클릭해서 넣을 수 있습니다. (그때만 마우스 커서가 나타납니다)
- * - 3개가 모두 들어가면 LinkedDoor가 열리고 LinkedEscapeTrigger가 켜집니다.
+ * - Setting ExitNumber (1-4) automatically populates the three required item slots.
+ *     Exit 1: KeyCard / Battery / Fuse   (no Chip)
+ *     Exit 2: Battery / Fuse / Chip      (no KeyCard)
+ *     Exit 3: Fuse / Chip / KeyCard      (no Battery)
+ *     Exit 4: Chip / KeyCard / Battery   (no Fuse)
+ * - The UI appears when the player comes within ShowDistance (default: 1 m) of DoorVolume.
+ * - Players can click slots for items they own to insert them. (The mouse cursor appears only then.)
+ * - Once all three items are inserted, LinkedDoor opens and LinkedEscapeTrigger is enabled.
  *
- * 기존 클래스(인벤토리, 문, 탈출 트리거)는 수정하지 않고 공개된 함수만 사용합니다.
- * - 아이템은 EItemName이 아니라 ItemID(FName)로 구분합니다.
- * - 잠겨 있는 동안에는 DoorVolume이 상호작용 트레이스를 대신 받아서 문을 직접 열 수 없게 합니다.
+ * Uses only public functions without modifying existing classes (inventory, door, or escape trigger).
+ * - Items are identified by ItemID (FName), not EItemName.
+ * - While locked, DoorVolume intercepts interaction traces so the door cannot be opened directly.
  */
 UCLASS()
 class FPS_BORANAGAJIN_API AExitDoor : public AActor, public IInteractableInterface
@@ -68,7 +68,7 @@ protected:
 #endif
 
 public:
-	/** ExitNumber에 맞는 기본 아이템 3개로 RequiredSlots를 다시 채웁니다. */
+	/** Repopulates RequiredSlots with the three default items corresponding to ExitNumber. */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Exit")
 	void ApplyExitPreset();
 
@@ -85,12 +85,12 @@ public:
 	FOnExitDoorUnlocked OnExitDoorUnlocked;
 
 protected:
-	/** 3개가 모두 들어갔을 때 블루프린트에서 추가 연출을 하고 싶을 때 사용 */
+	/** Blueprint event for additional effects when all three items have been inserted. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Exit")
 	void OnExitUnlocked();
 
 private:
-	/** 틱/타이머 없이, 접근 감지 박스(ProximityVolume)의 오버랩 이벤트로 UI를 켜고 끈다. */
+	/** Shows or hides the UI through ProximityVolume overlap events without ticks or timers. */
 	UFUNCTION()
 	void HandleProximityBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	UFUNCTION()
@@ -98,7 +98,7 @@ private:
 
 	void SetNearbyPlayer(ACharacterPlayer* Player);
 	void ClearNearbyPlayer();
-	/** 인벤토리가 바뀌면 UI를 갱신한다. (가까이 있는 동안만 연결) */
+	/** Refreshes the UI when the inventory changes. (Bound only while the player is nearby.) */
 	void HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySlots);
 
 	void SetWidgetShown(bool bShown);
@@ -106,7 +106,7 @@ private:
 	void UpdateCursorMode(bool bWantCursor);
 
 	void SetLinkedActorsLocked(bool bLocked);
-	/** ExitOpen처럼 "박스에 닿으면 타임라인으로 열리는" 블루프린트 문을 잠그거나 연다. */
+	/** Locks or unlocks Blueprint doors like ExitOpen that open via a timeline when a trigger box is entered. */
 	void SetTriggeredDoorLocked(AActor* DoorActor, bool bLocked);
 	AActor* FindNearestDoorActor() const;
 
@@ -120,42 +120,42 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<USceneComponent> SceneRoot;
 
-	/** 문 메시. 비워 두고 레벨에 따로 배치한 문 위에 이 액터를 올려도 됩니다. */
+	/** Door mesh. Can be left empty if this actor is placed over a separate door in the level. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UStaticMeshComponent> DoorMesh;
 
 	/**
-	 * 문이 차지하는 영역. 이 박스 표면에서 ShowDistance 안에 들어오면 UI가 뜹니다.
-	 * 잠겨 있는 동안에는 상호작용 트레이스(Visibility)를 막아서 문 대신 이 액터가 선택됩니다.
-	 * 문 전체를 살짝 덮도록 Box Extent를 조절하세요.
+	 * Area occupied by the door. The UI appears within ShowDistance of this box surface.
+	 * While locked, this actor blocks interaction traces (Visibility) so it is selected instead of the door.
+	 * Adjust Box Extent to cover the entire door with a small margin.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UBoxComponent> DoorVolume;
 
-	/** DoorVolume을 ShowDistance만큼 키운 영역. 플레이어가 겹치면 UI가 뜹니다. (BeginPlay에서 자동으로 맞춤) */
+	/** DoorVolume expanded by ShowDistance. The UI appears when the player overlaps it. (Configured automatically in BeginPlay.) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UBoxComponent> ProximityVolume;
 
-	/** 탈출구 번호 (1~4). 바꾸면 RequiredSlots가 자동으로 다시 채워집니다. */
+	/** Exit number (1-4). Changing it automatically repopulates RequiredSlots. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Exit", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 ExitNumber = 1;
 
-	/** 비워 두면 "N번 탈출구"로 표시됩니다. */
+	/** If empty, displays a default title equivalent to "Exit N". */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	FText ExitTitle;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	TArray<FExitRequirementSlot> RequiredSlots;
 
-	/** 아이템별 UI 아이콘 (없으면 이름만 표시) */
+	/** UI icons for each item. (Displays only the item name if no icon is assigned.) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	TMap<FName, TObjectPtr<UTexture2D>> ItemIcons;
 
-	/** true면 넣은 아이템이 인벤토리에서 사라집니다. */
+	/** If true, inserted items are removed from the inventory. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	bool bConsumeItems = true;
 
-	/** 플레이어(캡슐 표면)와 문(DoorVolume 표면) 사이가 이 거리 이내면 UI를 표시합니다. */
+	/** Shows the UI when the gap between the player capsule surface and DoorVolume surface is within this distance. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|UI", meta = (ClampMin = "0.0", Units = "cm"))
 	float ShowDistance = 100.f;
 
@@ -163,31 +163,31 @@ protected:
 	TSubclassOf<UExitDoorWidget> WidgetClass;
 
 	/**
-	 * 잠가 두었다가 3개가 모두 들어가면 여는 문.
-	 * - ExitOpen 같은 블루프린트 문: 잠긴 동안 문의 감지 박스를 꺼 두고, 열 때 문의 타임라인을 재생합니다.
-	 * - DestructibleDoor: OpenDoor()로 엽니다.
+	 * Door to keep locked until all three items are inserted.
+	 * - Blueprint doors like ExitOpen: disable their detection boxes while locked, then play their timelines on unlock.
+	 * - DestructibleDoor: open using OpenDoor().
 	 */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Exit|Link")
 	TObjectPtr<AActor> LinkedDoor;
 
-	/** 자동 연결할 때 문으로 인식할 클래스 목록 */
+	/** Classes recognized as doors during automatic linking. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link", meta = (EditCondition = "bAutoLinkNearby"))
 	TArray<TSubclassOf<AActor>> AutoLinkDoorClasses;
 
 	/**
-	 * true: 한 번 열리면 계속 열려 있습니다.
-	 * false: 열린 뒤에는 문 블루프린트의 원래 동작(가까이 가면 열리고 멀어지면 닫힘)으로 돌아갑니다.
+	 * true: Once opened, the door stays open.
+	 * false: After unlocking, the Blueprint door resumes its original behavior (opens nearby, closes when the player leaves).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link")
 	bool bKeepDoorOpenAfterUnlock = true;
 
-	/** 꺼 두었다가 3개가 모두 들어가면 켜는 탈출 트리거 */
+	/** Escape trigger to keep disabled until all three items have been inserted. */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Exit|Link")
 	TObjectPtr<AMapEscapeTrigger> LinkedEscapeTrigger;
 
 	/**
-	 * LinkedDoor / LinkedEscapeTrigger를 비워 두면
-	 * 시작할 때 AutoLinkRadius 안에서 가장 가까운 문과 탈출 트리거를 자동으로 연결합니다.
+	 * If LinkedDoor / LinkedEscapeTrigger are unassigned,
+	 * automatically links the nearest door and escape trigger within AutoLinkRadius at startup.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link")
 	bool bAutoLinkNearby = true;
@@ -217,12 +217,12 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UExitDoorWidget> ExitWidget;
 
-	/** 마우스 커서를 켜 준 컨트롤러 (끌 때 되돌리기 위해 기억) */
+	/** Controller that enabled the mouse cursor, retained so the cursor can be restored later. */
 	TWeakObjectPtr<APlayerController> CursorController;
 
 	bool bWidgetShown = false;
 
-	/** 잠그면서 꺼 둔 문의 감지 박스와 원래 충돌 설정 */
+	/** Door trigger boxes disabled during locking and their original collision settings. */
 	TArray<TWeakObjectPtr<UShapeComponent>> LockedTriggers;
 	TArray<TEnumAsByte<ECollisionEnabled::Type>> LockedTriggerCollision;
 

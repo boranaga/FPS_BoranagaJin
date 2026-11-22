@@ -22,8 +22,8 @@
 
 namespace
 {
-	// 1번 탈출구부터 3개씩 차례로 밀려서 사용한다. (N번 탈출구 = N-1번째부터 3개)
-	// 아이템 BP의 ItemID 와 같은 이름이어야 한다.
+	// Each exit uses three consecutive items, shifted by one per exit. (Exit N starts at index N - 1.)
+	// Names must match the ItemID values in the item Blueprints.
 	const TCHAR* const GExitItemOrder[] =
 	{
 		TEXT("KeyCard"),
@@ -32,7 +32,7 @@ namespace
 		TEXT("Chip")
 	};
 
-	// 인벤토리 클래스는 수정하지 않고, 공개된 슬롯 배열만 읽고 쓴다.
+	// Read and modify only the publicly exposed slot array; do not change the inventory class.
 	int32 CountItems(const ACharacterPlayer* Player, FName ItemID)
 	{
 		const UInventorySystemComponent* Inventory = IsValid(Player) ? Player->GetInventorySystemComponent() : nullptr;
@@ -60,14 +60,14 @@ namespace
 		{
 			if (Slot.IsEmpty() || Slot.ItemID != ItemID) { continue; }
 
-			// INDEX_NONE = 마지막 아이템. 슬롯이 비면 FInventorySlot이 스스로 초기화한다.
+			// INDEX_NONE removes the last item. FInventorySlot resets itself when the slot becomes empty.
 			AItem* RemovedItem = Slot.RemoveItem(INDEX_NONE);
 			if (IsValid(RemovedItem))
 			{
 				RemovedItem->DeactivateItem();
 			}
 
-			// 인벤토리 UI 갱신
+			// Refresh the inventory UI.
 			Player->OnInventoryUpdatedDelegate.Broadcast(*Slots);
 			return true;
 		}
@@ -76,7 +76,7 @@ namespace
 
 	const int32 GExitRequiredItemCount = 3;
 
-	// 다른 HUD보다 위, 일시정지/게임오버 메뉴보다는 아래
+	// Above other HUD elements, but below the pause and game-over menus.
 	const int32 GExitWidgetZOrder = 5;
 
 	template<typename TActor>
@@ -112,16 +112,16 @@ AExitDoor::AExitDoor()
 	DoorVolume->SetupAttachment(SceneRoot);
 	DoorVolume->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
 	DoorVolume->SetBoxExtent(FVector(25.f, 100.f, 110.f));
-	// 잠겨 있는 동안 상호작용 트레이스(Visibility)만 막는다. 이동이나 총알은 막지 않는다.
+	// While locked, block only interaction traces (Visibility), not movement or bullets.
 	DoorVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DoorVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
 	DoorVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	DoorVolume->SetGenerateOverlapEvents(false);
 
-	// 플레이어 접근 감지용 박스. 틱이나 타이머 없이 오버랩 이벤트만 사용한다.
+	// Player proximity detection box. Uses only overlap events, without ticks or timers.
 	ProximityVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("ProximityVolume"));
 	ProximityVolume->SetupAttachment(SceneRoot);
-	// BeginPlay에서 DoorVolume 위치로 옮기므로 Movable이어야 한다.
+	// Must be movable because BeginPlay positions it at DoorVolume.
 	ProximityVolume->SetMobility(EComponentMobility::Movable);
 	ProximityVolume->SetCanEverAffectNavigation(false);
 
@@ -157,15 +157,15 @@ void AExitDoor::BeginPlay()
 	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: BeginPlay (Exit %d, LinkedDoor=%s, LinkedEscapeTrigger=%s, ShowDistance=%.0f)"),
 		*GetName(), ExitNumber, *GetNameSafe(LinkedDoor), *GetNameSafe(LinkedEscapeTrigger), ShowDistance);
 
-	// 충돌 설정은 블루프린트에 저장된 값에 덮어써지지 않도록 여기서 한 번 더 확정한다.
-	// 캡슐(Pawn 프로필)은 WorldDynamic을 Block하므로, 이 박스가 Pawn에 Overlap이면 오버랩이 성립한다.
+	// Reapply collision settings here to prevent Blueprint-saved values from overriding them.
+	// The capsule (Pawn profile) blocks WorldDynamic, so overlap occurs if this box overlaps Pawn.
 	ProximityVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	ProximityVolume->SetCollisionObjectType(ECC_WorldDynamic);
 	ProximityVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
 	ProximityVolume->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	ProximityVolume->SetGenerateOverlapEvents(true);
 
-	// DoorVolume을 ShowDistance만큼 키운 영역으로 맞춘다. (스케일은 박스 크기에 반영)
+	// Match DoorVolume expanded by ShowDistance. (Account for scale in the box extent.)
 	FTransform VolumeTransform = DoorVolume->GetComponentTransform();
 	VolumeTransform.SetScale3D(FVector::OneVector);
 	ProximityVolume->SetWorldTransform(VolumeTransform);
@@ -178,7 +178,7 @@ void AExitDoor::BeginPlay()
 	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: ProximityVolume loc=%s extent=%s"),
 		*GetName(), *ProximityVolume->GetComponentLocation().ToString(), *ProximityVolume->GetUnscaledBoxExtent().ToString());
 
-	// 시작할 때 이미 박스 안에 있는 플레이어
+	// Handle a player already inside the box at startup.
 	TArray<AActor*> OverlappingActors;
 	ProximityVolume->GetOverlappingActors(OverlappingActors, ACharacterPlayer::StaticClass());
 	for (AActor* Actor : OverlappingActors)
@@ -252,12 +252,12 @@ FText AExitDoor::GetDefaultItemDisplayName(FName ItemID)
 
 void AExitDoor::SetLinkedActorsLocked(bool bLocked)
 {
-	// 잠긴 동안에는 DoorVolume이 문 대신 상호작용 트레이스를 받는다.
+	// While locked, DoorVolume receives interaction traces instead of the door.
 	DoorVolume->SetCollisionEnabled(bLocked ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 
 	if (LinkedEscapeTrigger)
 	{
-		// 트리거의 충돌을 꺼서 겹침 이벤트가 생기지 않게 한다.
+		// Disable trigger collision to prevent overlap events.
 		LinkedEscapeTrigger->SetActorEnableCollision(!bLocked);
 	}
 
@@ -282,7 +282,7 @@ void AExitDoor::SetTriggeredDoorLocked(AActor* DoorActor, bool bLocked)
 {
 	if (bLocked)
 	{
-		// 문 블루프린트의 감지 박스를 꺼서, 플레이어가 다가가도 스스로 열리지 않게 한다.
+		// Disable the door Blueprint detection boxes so it cannot open automatically when approached.
 		LockedTriggers.Reset();
 		LockedTriggerCollision.Reset();
 
@@ -300,15 +300,15 @@ void AExitDoor::SetTriggeredDoorLocked(AActor* DoorActor, bool bLocked)
 		return;
 	}
 
-	// 문 블루프린트의 타임라인(열리는 애니메이션)을 직접 재생한다.
+	// Directly play the door Blueprint timelines (opening animations).
 	TInlineComponentArray<UTimelineComponent*> Timelines(DoorActor);
 	for (UTimelineComponent* Timeline : Timelines)
 	{
 		Timeline->Play();
 	}
 
-	// 계속 열어 둘 거라면 감지 박스는 꺼진 채로 둔다. (켜면 멀어질 때 다시 닫힌다)
-	// 타임라인을 못 찾았을 때는 원래 동작이라도 하도록 되살린다.
+	// If the door should stay open, leave detection boxes disabled. (Re-enabling them could close it when the player leaves.)
+	// If no timeline was found, restore detection boxes to allow the original behavior.
 	if (!bKeepDoorOpenAfterUnlock || Timelines.IsEmpty())
 	{
 		for (int32 Index = 0; Index < LockedTriggers.Num(); ++Index)
@@ -336,9 +336,9 @@ AActor* AExitDoor::FindNearestDoorActor() const
 		if (Candidate == this) { continue; }
 
 		const bool bIsDoor = AutoLinkDoorClasses.ContainsByPredicate([Candidate](const TSubclassOf<AActor>& DoorClass)
-		{
-			return DoorClass && Candidate->IsA(DoorClass);
-		});
+			{
+				return DoorClass && Candidate->IsA(DoorClass);
+			});
 		if (!bIsDoor) { continue; }
 
 		const float DistSq = FVector::DistSquared(Candidate->GetActorLocation(), GetActorLocation());
@@ -378,7 +378,7 @@ void AExitDoor::SetNearbyPlayer(ACharacterPlayer* Player)
 	ClearNearbyPlayer();
 	NearbyPlayer = Player;
 
-	// 잠긴 동안 DoorVolume이 덮지 못한 부분으로 문이 열려 있으면 다시 닫는다.
+	// If the door was opened through an area not covered by DoorVolume while locked, close it again.
 	if (!bUnlocked)
 	{
 		ADestructibleDoor* DestructibleDoor = Cast<ADestructibleDoor>(LinkedDoor);
@@ -388,7 +388,7 @@ void AExitDoor::SetNearbyPlayer(ACharacterPlayer* Player)
 		}
 	}
 
-	// 가까이 있는 동안 인벤토리 변화를 UI에 반영한다.
+	// Reflect inventory changes in the UI while the player is nearby.
 	InventoryUpdatedHandle = NearbyPlayer->OnInventoryUpdatedDelegate.AddUObject(this, &AExitDoor::HandleInventoryUpdated);
 
 	SetWidgetShown(true);
@@ -437,7 +437,7 @@ void AExitDoor::SetWidgetShown(bool bShown)
 
 	if (ExitWidget)
 	{
-		// 패널 바깥은 클릭이 통과해야 하므로 SelfHitTestInvisible.
+		// Use SelfHitTestInvisible so clicks pass through outside the panel.
 		ExitWidget->SetVisibility(bShown ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
@@ -483,7 +483,7 @@ void AExitDoor::RefreshWidget()
 		}
 	}
 
-	// 넣을 수 있는 아이템이 있을 때만 마우스 커서를 켠다.
+	// Show the mouse cursor only when the player has an item that can be inserted.
 	UpdateCursorMode(bWidgetShown && !bUnlocked && bHasInsertable);
 
 	if (!IsValid(ExitWidget)) { return; }
@@ -503,7 +503,7 @@ void AExitDoor::UpdateCursorMode(bool bWantCursor)
 	{
 		APlayerController* PlayerController = IsValid(NearbyPlayer) ? Cast<APlayerController>(NearbyPlayer->GetController()) : nullptr;
 
-		// 이미 커서가 켜져 있으면(인벤토리, 일시정지 메뉴 등) 건드리지 않는다.
+		// Do not interfere if another UI (inventory, pause menu, etc.) already shows the cursor.
 		if (PlayerController && !PlayerController->bShowMouseCursor)
 		{
 			FInputModeGameAndUI InputMode;
@@ -576,7 +576,7 @@ void AExitDoor::Unlock()
 	OnExitDoorUnlocked.Broadcast(this);
 }
 
-// 상호작용 키로도 넣을 수 있다. (잠긴 동안 DoorVolume이 트레이스에 잡힌다)
+// Items can also be inserted using the interaction key. (DoorVolume is hit by traces while locked.)
 void AExitDoor::Interact_Implementation(AActor* Interactor)
 {
 	if (bUnlocked) { return; }
