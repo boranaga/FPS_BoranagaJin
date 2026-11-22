@@ -18,6 +18,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInterface.h"
 #include "TimerManager.h"
 
 namespace
@@ -100,13 +101,13 @@ namespace
 
 AExitDoor::AExitDoor()
 {
-	PrimaryActorTick.bCanEverTick = false;
-
-	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
-	SetRootComponent(SceneRoot);
+	// Parent ADestructibleDoor owns the root, pivot, and destructive mesh components.
+	// Keep ticking available for the inherited open/close interpolation.
 
 	DoorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DoorMesh"));
 	DoorMesh->SetupAttachment(SceneRoot);
+	DoorMesh->SetVisibility(false);
+	DoorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	DoorVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("DoorVolume"));
 	DoorVolume->SetupAttachment(SceneRoot);
@@ -125,14 +126,45 @@ AExitDoor::AExitDoor()
 	ProximityVolume->SetMobility(EComponentMobility::Movable);
 	ProximityVolume->SetCanEverAffectNavigation(false);
 
+	// A puzzle exit always starts closed regardless of the base default.
+	bStartsOpen = false;
 	WidgetClass = UExitDoorWidget::StaticClass();
 	AutoLinkDoorClasses.Add(ADestructibleDoor::StaticClass());
 
 	ApplyExitPreset();
 }
 
+void AExitDoor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// Migration bridge for Blueprints that populated the old DoorMesh component.
+	// New levels should assign their mesh directly to inherited IntactMesh.
+	if (IsValid(DoorMesh) && IsValid(IntactMesh))
+	{
+		if (!IntactMesh->GetStaticMesh() && DoorMesh->GetStaticMesh())
+		{
+			IntactMesh->SetStaticMesh(DoorMesh->GetStaticMesh());
+			IntactMesh->SetWorldTransform(DoorMesh->GetComponentTransform());
+
+			for (int32 Index = 0; Index < DoorMesh->GetNumMaterials(); ++Index)
+			{
+				if (UMaterialInterface* Material = DoorMesh->GetMaterial(Index))
+				{
+					IntactMesh->SetMaterial(Index, Material);
+				}
+			}
+		}
+
+		DoorMesh->SetVisibility(false);
+		DoorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+}
+
 void AExitDoor::BeginPlay()
 {
+	// Ignore bStartsOpen on legacy Blueprints: exit requirements must be met first.
+	bStartsOpen = false;
 	Super::BeginPlay();
 
 	if (RequiredSlots.IsEmpty())
@@ -148,7 +180,9 @@ void AExitDoor::BeginPlay()
 
 	if (bAutoLinkNearby)
 	{
-		if (!LinkedDoor) { LinkedDoor = FindNearestDoorActor(); }
+		// An exit without an intact physical mesh can still use a legacy external door.
+		const bool bNeedsExternalDoor = bAutoLinkExternalDoor || !IsValid(IntactMesh) || !IntactMesh->GetStaticMesh();
+		if (bNeedsExternalDoor && !LinkedDoor) { LinkedDoor = FindNearestDoorActor(); }
 		if (!LinkedEscapeTrigger) { LinkedEscapeTrigger = FindNearestActor<AMapEscapeTrigger>(this, AutoLinkRadius); }
 	}
 
@@ -250,16 +284,61 @@ FText AExitDoor::GetDefaultItemDisplayName(FName ItemID)
 	return FText::FromName(ItemID);
 }
 
+void AExitDoor::SetDoorOpen(bool bOpen)
+{
+	// All inherited OpenDoor/ToggleDoor requests go through this virtual setter.
+	if ((bOpen && !bUnlocked) || (!bOpen && bUnlocked && bKeepDoorOpenAfterUnlock))
+	{
+		return;
+	}
+
+	Super::SetDoorOpen(bOpen);
+}
+
+void AExitDoor::RestoreDestructibleObject()
+{
+	Super::RestoreDestructibleObject();
+
+	// A restored exit is a fresh locked puzzle.
+	bUnlocked = false;
+	for (FExitRequirementSlot& Slot : RequiredSlots)
+	{
+		Slot.bInserted = false;
+	}
+
+	SetLinkedActorsLocked(true);
+	if (bWidgetShown) { RefreshWidget(); }
+}
+
+void AExitDoor::OnAfterLoad()
+{
+	Super::OnAfterLoad();
+
+	// The SaveGame properties restore both unlock state and inserted items.
+	// Reapply it to the inherited door and to the optional linked actors.
+	SetLinkedActorsLocked(!bUnlocked);
+	if (bWidgetShown) { RefreshWidget(); }
+}
+
 void AExitDoor::SetLinkedActorsLocked(bool bLocked)
 {
-	// While locked, DoorVolume receives interaction traces instead of the door.
+	// The query-only box intercepts interaction traces, never physical movement.
 	DoorVolume->SetCollisionEnabled(bLocked ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 
-	if (LinkedEscapeTrigger)
+	// This physical door is the inherited ADestructibleDoor, not LinkedDoor.
+	if (!bDestroyed)
 	{
-		// Disable trigger collision to prevent overlap events.
+		if (bLocked) { CloseDoor(); }
+		else { OpenDoor(); }
+	}
+
+	if (IsValid(LinkedEscapeTrigger))
+	{
 		LinkedEscapeTrigger->SetActorEnableCollision(!bLocked);
 	}
+
+	// Legacy levels may still configure an additional external door.
+	if (!IsValid(LinkedDoor) || LinkedDoor == this) { return; }
 
 	if (ADestructibleDoor* DestructibleDoor = Cast<ADestructibleDoor>(LinkedDoor))
 	{
@@ -333,7 +412,7 @@ AActor* AExitDoor::FindNearestDoorActor() const
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
 		AActor* Candidate = *It;
-		if (Candidate == this) { continue; }
+		if (Candidate == this || Candidate->IsA(AExitDoor::StaticClass())) { continue; }
 
 		const bool bIsDoor = AutoLinkDoorClasses.ContainsByPredicate([Candidate](const TSubclassOf<AActor>& DoorClass)
 			{
@@ -378,13 +457,17 @@ void AExitDoor::SetNearbyPlayer(ACharacterPlayer* Player)
 	ClearNearbyPlayer();
 	NearbyPlayer = Player;
 
-	// If the door was opened through an area not covered by DoorVolume while locked, close it again.
+	// Reassert the closed state if anything outside the puzzle tried to open it.
 	if (!bUnlocked)
 	{
-		ADestructibleDoor* DestructibleDoor = Cast<ADestructibleDoor>(LinkedDoor);
-		if (DestructibleDoor && DestructibleDoor->IsDoorOpen())
+		if (!bDestroyed && IsDoorOpen()) { CloseDoor(); }
+
+		if (ADestructibleDoor* ExternalDoor = Cast<ADestructibleDoor>(LinkedDoor))
 		{
-			DestructibleDoor->CloseDoor();
+			if (ExternalDoor != this && ExternalDoor->IsDoorOpen())
+			{
+				ExternalDoor->CloseDoor();
+			}
 		}
 	}
 
@@ -579,9 +662,19 @@ void AExitDoor::Unlock()
 // Items can also be inserted using the interaction key. (DoorVolume is hit by traces while locked.)
 void AExitDoor::Interact_Implementation(AActor* Interactor)
 {
-	if (bUnlocked) { return; }
+	if (bUnlocked)
+	{
+		// Optional normal door interaction after the exit has been unlocked.
+		if (bAllowManualDoorInteractionAfterUnlock && !bKeepDoorOpenAfterUnlock &&
+			Super::CanInteract_Implementation(Interactor))
+		{
+			ToggleDoor();
+		}
+		return;
+	}
 
 	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Interactor);
+	if (!IsValid(Player)) { return; }
 
 	bool bInsertedAny = false;
 	for (int32 Index = 0; Index < RequiredSlots.Num(); ++Index)
@@ -598,18 +691,39 @@ void AExitDoor::Interact_Implementation(AActor* Interactor)
 
 bool AExitDoor::CanInteract_Implementation(AActor* Interactor) const
 {
-	return !bUnlocked && IsValid(Interactor);
+	if (!IsValid(Cast<ACharacterPlayer>(Interactor)))
+	{
+		return false;
+	}
+
+	if (!bUnlocked)
+	{
+		// The exit requirements remain usable even if the physical door broke.
+		return true;
+	}
+
+	return bAllowManualDoorInteractionAfterUnlock && !bKeepDoorOpenAfterUnlock &&
+		Super::CanInteract_Implementation(Interactor);
 }
 
 FText AExitDoor::GetInteractionText_Implementation(AActor* Interactor) const
 {
+	if (bUnlocked)
+	{
+		return bAllowManualDoorInteractionAfterUnlock && !bKeepDoorOpenAfterUnlock
+			? Super::GetInteractionText_Implementation(Interactor)
+			: UnlockedHintText;
+	}
+
 	return HasInsertableItem(Cast<ACharacterPlayer>(Interactor)) ? InteractionText : NoItemHintText;
 }
 
 void AExitDoor::BeginFocus_Implementation(AActor* Interactor)
 {
+	Super::BeginFocus_Implementation(Interactor);
 }
 
 void AExitDoor::EndFocus_Implementation(AActor* Interactor)
 {
+	Super::EndFocus_Implementation(Interactor);
 }

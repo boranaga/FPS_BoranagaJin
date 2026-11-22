@@ -39,7 +39,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Door")
 	void ToggleDoor();
 	UFUNCTION(BlueprintCallable, Category = "Door")
-	void SetDoorOpen(bool bOpen);
+	virtual void SetDoorOpen(bool bOpen); // Virtual for access-controlled child classes.
 	UFUNCTION(BlueprintPure, Category = "Door")
 	bool IsDoorOpen() const;
 	UFUNCTION(BlueprintPure, Category = "Door")

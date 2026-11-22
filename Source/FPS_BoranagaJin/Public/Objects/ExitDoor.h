@@ -1,16 +1,15 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "Interface/InteractableInterface.h"
+#include "Objects/DestructibleDoor.h"
 #include "ExitDoor.generated.h"
 
 class AExitDoor;
 class ACharacterPlayer;
-class ADestructibleDoor;
 class AMapEscapeTrigger;
 class APlayerController;
 class UBoxComponent;
+class UPrimitiveComponent;
 class UExitDoorWidget;
 class UShapeComponent;
 class UStaticMeshComponent;
@@ -26,14 +25,14 @@ struct FPS_BORANAGAJIN_API FExitRequirementSlot
 	GENERATED_BODY()
 
 	/** Must match the ItemID defined in the item Blueprint. (KeyCard / Battery / Fuse / Chip) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Exit")
 	FName ItemID = NAME_None;
 
 	/** Name displayed in the UI. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Exit")
 	FText DisplayName;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Exit")
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, SaveGame, Category = "Exit")
 	bool bInserted = false;
 };
 
@@ -47,20 +46,24 @@ struct FPS_BORANAGAJIN_API FExitRequirementSlot
  *     Exit 4: Chip / KeyCard / Battery   (no Fuse)
  * - The UI appears when the player comes within ShowDistance (default: 1 m) of DoorVolume.
  * - Players can click slots for items they own to insert them. (The mouse cursor appears only then.)
- * - Once all three items are inserted, LinkedDoor opens and LinkedEscapeTrigger is enabled.
+ * - Once all three items are inserted, the inherited physical door opens, any
+ *   optional LinkedDoor opens, and LinkedEscapeTrigger is enabled.
  *
- * Uses only public functions without modifying existing classes (inventory, door, or escape trigger).
+ * Inherits physical door movement, damage, and destruction from ADestructibleDoor.
+ * Uses the existing inventory, door, and escape trigger APIs.
  * - Items are identified by ItemID (FName), not EItemName.
- * - While locked, DoorVolume intercepts interaction traces so the door cannot be opened directly.
+ * - While locked, DoorVolume intercepts interaction traces and the overridden
+ *   SetDoorOpen prevents opening through the parent door API.
  */
 UCLASS()
-class FPS_BORANAGAJIN_API AExitDoor : public AActor, public IInteractableInterface
+class FPS_BORANAGAJIN_API AExitDoor : public ADestructibleDoor
 {
 	GENERATED_BODY()
 public:
 	AExitDoor();
 
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 #if WITH_EDITOR
@@ -68,6 +71,15 @@ protected:
 #endif
 
 public:
+	/** Enforces the exit puzzle when opening the physical door. */
+	virtual void SetDoorOpen(bool bOpen) override;
+
+	/** Resets the exit puzzle and locks the door after restoration. */
+	virtual void RestoreDestructibleObject() override;
+
+	/** Reapplies saved unlock state to the door and escape trigger. */
+	virtual void OnAfterLoad() override;
+
 	/** Repopulates RequiredSlots with the three default items corresponding to ExitNumber. */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Exit")
 	void ApplyExitPreset();
@@ -117,16 +129,17 @@ private:
 	bool HasInsertableItem(const ACharacterPlayer* Player) const;
 
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
-	TObjectPtr<USceneComponent> SceneRoot;
-
-	/** Door mesh. Can be left empty if this actor is placed over a separate door in the level. */
+	/**
+	 * Legacy mesh retained for existing ExitDoor Blueprints.
+	 * When IntactMesh is unset, copy this mesh into inherited IntactMesh.
+	 * The legacy component itself does not render or collide.
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	TObjectPtr<UStaticMeshComponent> DoorMesh;
 
 	/**
 	 * Area occupied by the door. The UI appears within ShowDistance of this box surface.
-	 * While locked, this actor blocks interaction traces (Visibility) so it is selected instead of the door.
+	 * While locked, this component blocks interaction traces (Visibility) for this actor.
 	 * Adjust Box Extent to cover the entire door with a small margin.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
@@ -144,7 +157,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
 	FText ExitTitle;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Exit")
 	TArray<FExitRequirementSlot> RequiredSlots;
 
 	/** UI icons for each item. (Displays only the item name if no icon is assigned.) */
@@ -163,8 +176,9 @@ protected:
 	TSubclassOf<UExitDoorWidget> WidgetClass;
 
 	/**
-	 * Door to keep locked until all three items are inserted.
-	 * - Blueprint doors like ExitOpen: disable their detection boxes while locked, then play their timelines on unlock.
+	 * Optional additional external door retained for older maps.
+	 * The inherited physical door is always controlled, even when unassigned.
+	 * - Timeline-driven Blueprint: disable detection boxes while locked, then play the timeline.
 	 * - DestructibleDoor: open using OpenDoor().
 	 */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Exit|Link")
@@ -175,8 +189,8 @@ protected:
 	TArray<TSubclassOf<AActor>> AutoLinkDoorClasses;
 
 	/**
-	 * true: Once opened, the door stays open.
-	 * false: After unlocking, the Blueprint door resumes its original behavior (opens nearby, closes when the player leaves).
+	 * true: Keep this door open and leave external Blueprint detection boxes disabled.
+	 * false: Permit closing this door and restore external Blueprint trigger behavior.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link")
 	bool bKeepDoorOpenAfterUnlock = true;
@@ -186,11 +200,19 @@ protected:
 	TObjectPtr<AMapEscapeTrigger> LinkedEscapeTrigger;
 
 	/**
-	 * If LinkedDoor / LinkedEscapeTrigger are unassigned,
-	 * automatically links the nearest door and escape trigger within AutoLinkRadius at startup.
+	 * Automatically links the nearest escape trigger when unassigned.
+	 * External door auto-linking is opt-in unless no physical door mesh is assigned.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link")
 	bool bAutoLinkNearby = true;
+
+	/** Preserve auto-link behavior for an additional external door if desired. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link", meta = (EditCondition = "bAutoLinkNearby"))
+	bool bAutoLinkExternalDoor = false;
+
+	/** When enabled, allow normal door interaction after unlocking if keep-open is false. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Interaction")
+	bool bAllowManualDoorInteractionAfterUnlock = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link", meta = (EditCondition = "bAutoLinkNearby", ClampMin = "0.0", Units = "cm"))
 	float AutoLinkRadius = 500.f;
@@ -207,7 +229,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Text")
 	FText InteractionText = FText::FromString(TEXT("아이템 넣기"));
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Exit")
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, SaveGame, Category = "Exit")
 	bool bUnlocked = false;
 
 private:
