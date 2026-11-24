@@ -257,6 +257,11 @@ void UPlayerUISubsystem::HandleExitDoorSlotClicked(int32 SlotIndex)
     Door->HandleSlotClicked(SlotIndex);
 }
 
+bool UPlayerUISubsystem::IsWorldInteractionInputBlocked() const
+{
+    return IsExitDoorUIOpen() || IsOtherModalUIVisible();
+}
+
 bool UPlayerUISubsystem::IsOtherModalUIVisible() const
 {
     constexpr EUIType ModalTypes[] = {

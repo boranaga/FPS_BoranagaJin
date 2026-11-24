@@ -14,15 +14,12 @@
 
 #include "ObjectPoolSubsystem.h"
 
-#include "UI/InteractionWidget.h"
 
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetMathLibrary.h"
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
@@ -52,7 +49,6 @@ void UInventorySystemComponent::BeginPlay()
 void UInventorySystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	SearchItems(); //TODO: 탐색 조건 넣기
 	//CalculateScreenCenterWorldPositionAndDirection(ScreenCenterWorldLocation, ScreenCenterWorldDirection);
 	CalculateTargetRightHandPosition();
 	UpdateOffHandFlashlightAttachment();
@@ -79,9 +75,6 @@ void UInventorySystemComponent::InitializePlayerReference()
 
 			if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
 			{
-				// Inereact With WeaponPickUp
-				EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &UInventorySystemComponent::PickUpItem);
-
 				//// Switch Weapon (Legacy)
 				//EnhancedInputComponent->BindAction(SwitchWeaponUpAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToNextWeapon);
 				//EnhancedInputComponent->BindAction(SwitchWeaponDownAction, ETriggerEvent::Started, this, &UInventorySystemComponent::SwitchToPreviousWeapon);
@@ -714,7 +707,7 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 		}
 	}
 
-	// Caller ObtainItem will publish the updated inventory snapshots.
+	// The pickup inventory transaction publishes the updated inventory snapshots.
 	return true;
 }
 
@@ -1255,238 +1248,68 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 	// PlayerOwner->OnItemToolWidgetCloseRequestedDelegate.Broadcast();
 }
 
-bool UInventorySystemComponent::SearchItems()
+bool UInventorySystemComponent::TryStorePickup(AItemPickUp* Pickup)
 {
-	TArray<TEnumAsByte<EObjectTypeQuery>> traceObjectTypes;
-	//traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Visibility)); //TODO: Customize Collision Channel
-	traceObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_GameTraceChannel6)); //TODO: Customize Collision Channel
-	TArray<AActor*> ignoreActors;
-	ignoreActors.Init(PlayerOwner, 1);
-	FVector sphereSpwanLocation = PlayerOwner->GetActorLocation();
-	TArray<AActor*> overlappedActors;
-	bool bIsItemInViewPort = UKismetSystemLibrary::SphereOverlapActors(GetWorld(), sphereSpwanLocation, SearchItemRadius, traceObjectTypes, nullptr, ignoreActors, overlappedActors);
-
-	float MinDistanceToItem = SearchItemRadius;
-	AItemPickUp* NearestItem = nullptr;
-
-	for (AActor* overlappedActor : overlappedActors)
-	{
-		AItemPickUp* ItemObject = Cast<AItemPickUp>(overlappedActor);
-		if (ItemObject != nullptr && !ItemObject->IsDead())
-		{
-			if (IsInViewport(GetScreenPositionOfWorldLocation(ItemObject->GetActorLocation()).Get<0>(), SearchItemViewportRatio_Width, SearchItemViewportRatio_Height))
-			{
-				float DistanceToItem = PlayerOwner->GetDistanceTo(ItemObject);
-				if (DistanceToItem < MinDistanceToItem)
-				{
-					MinDistanceToItem = DistanceToItem;
-					NearestItem = ItemObject;
-				}
-			}
-		}
-	}
-
-	if (OverlappedItem == nullptr && NearestItem != nullptr)
-	{
-		PlayerOwner->OnInteractionUIPopUpDelegate.Broadcast();
-	}
-
-	OverlappedItem = NearestItem;
-
-	if (OverlappedItem != nullptr)
-	{
-		PlayerOwner->OnInteractionUIUpdatedDelegate.Broadcast(true, OverlappedItem->GetActorLocation());
-	}
-	else
-	{
-		PlayerOwner->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
-	}
-	return bIsItemInViewPort;
-}
-
-void UInventorySystemComponent::PickUpItem()
-{
-	if (OverlappedItem != nullptr)
-	{
-		if (CurrWeapon)
-		{
-			if (CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Unequipped
-				&& CurrWeapon->GetCurrentState() != EWeaponStateType::WeaponStateType_Idle)
-			{
-				return;
-			}
-		}
-
-		if (OverlappedItem->IsMagazine())
-		{
-			ObtainAmmo(OverlappedItem);
-		}
-		else
-		{
-			//ObtainItem(OverlappedItem);
-			ObtainItem(OverlappedItem);
-		}
-	}
-}
-
-bool UInventorySystemComponent::ObtainItem(AItemPickUp* NewItemPickUp)
-{
-	if (!IsValid(NewItemPickUp) || !IsValid(PlayerOwner) ||
-		NewItemPickUp->GetItemName() == EItemName::ItemName_None)
+	// Only inventory mutations belong here. Detection/input/world actor lifetime
+	// are handled by UInteractionComponent.
+	if (!IsValid(Pickup) || !IsValid(PlayerOwner) || Pickup->IsDead() ||
+		Pickup->GetItemName() == EItemName::ItemName_None)
 	{
 		return false;
 	}
 
-	if (NewItemPickUp->IsWeapon())
+	if (Pickup->IsMagazine())
 	{
-		if (!AddWeaponFromPickUp(NewItemPickUp)) { return false; }
-		NewItemPickUp->DeactivateItemPickUp();
+		return TryStoreMagazineAmmo(Pickup);
+	}
+
+	if (Pickup->IsWeapon())
+	{
+		if (!AddWeaponFromPickUp(Pickup)) { return false; }
 		SynchronizeQuickSlots();
 		NotifyWeaponInventoriesChanged();
 	}
-	else if (NewItemPickUp->IsThrowableWeapon())
+	else if (Pickup->IsThrowableWeapon())
 	{
-		if (!AddThrowableWeaponFromPickUp(NewItemPickUp)) { return false; }
-		NewItemPickUp->DeactivateItemPickUp();
+		if (!AddThrowableWeaponFromPickUp(Pickup)) { return false; }
 		SynchronizeQuickSlots();
 		PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 	}
 	else
 	{
-		if (!AddItemFromPickUp(NewItemPickUp)) { return false; }
-		NewItemPickUp->DeactivateItemPickUp();
+		if (!AddItemFromPickUp(Pickup)) { return false; }
 		SynchronizeQuickSlots();
 		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 	}
+
 	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 	return true;
 }
 
-TTuple<FVector2D, bool> UInventorySystemComponent::GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const
+bool UInventorySystemComponent::TryStoreMagazineAmmo(AItemPickUp* MagazinePickup)
 {
-	FVector2D ScreenLocation = FVector2D::ZeroVector;
-	bool bResult = UGameplayStatics::ProjectWorldToScreen(PlayerController, SearchLocation, ScreenLocation);
-
-	return MakeTuple(ScreenLocation, bResult);
-}
-
-bool UInventorySystemComponent::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
-{
-	FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
-
-	bool bIsInWidth = true;
-	bool bIsInHeight = true;
-
-	// Check Width
-	if (ScreenRatio_Width == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Width) > 1.0f || (ScreenRatio_Width == (1.0f - ScreenRatio_Width)))
-	{
-		if (ActorScreenPosition.X >= 0.0f && ActorScreenPosition.X <= ViewportSize.X)
-		{
-			bIsInWidth = true;
-		}
-		else
-		{
-			bIsInWidth = false;
-		}
-	}
-	else
-	{
-		float LargeScreenRatio_Width;
-		float SmallScreenRatio_Width;
-
-		if (ScreenRatio_Width < (1.0f - ScreenRatio_Width))
-		{
-			LargeScreenRatio_Width = 1.0f - ScreenRatio_Width;
-			SmallScreenRatio_Width = ScreenRatio_Width;
-		}
-		else
-		{
-			LargeScreenRatio_Width = ScreenRatio_Width;
-			SmallScreenRatio_Width = 1.0f - ScreenRatio_Width;
-		}
-
-		if (ActorScreenPosition.X >= ViewportSize.X * SmallScreenRatio_Width && ActorScreenPosition.X <= ViewportSize.X * LargeScreenRatio_Width)
-		{
-			bIsInWidth = true;
-		}
-		else
-		{
-			bIsInWidth = false;
-		}
-	}
-
-	// Check Height
-	if (ScreenRatio_Height == 0.0f || UKismetMathLibrary::Abs(ScreenRatio_Height) > 1.0f || (ScreenRatio_Height == (1.0f - ScreenRatio_Height)))
-	{
-		if (ActorScreenPosition.Y >= 0.0f && ActorScreenPosition.Y <= ViewportSize.Y)
-		{
-			bIsInHeight = true;
-		}
-		else
-		{
-			bIsInHeight = false;
-		}
-	}
-	else
-	{
-		float LargeScreenRatio_Height;
-		float SmallScreenRatio_Height;
-
-		if (ScreenRatio_Height < (1.0f - ScreenRatio_Height))
-		{
-			LargeScreenRatio_Height = 1.0f - ScreenRatio_Height;
-			SmallScreenRatio_Height = ScreenRatio_Height;
-		}
-		else
-		{
-			LargeScreenRatio_Height = ScreenRatio_Height;
-			SmallScreenRatio_Height = 1.0f - ScreenRatio_Height;
-		}
-
-		if (ActorScreenPosition.Y >= ViewportSize.Y * SmallScreenRatio_Height && ActorScreenPosition.Y <= ViewportSize.Y * LargeScreenRatio_Height)
-		{
-			bIsInHeight = true;
-		}
-		else
-		{
-			bIsInHeight = false;
-		}
-	}
-
-	// Return
-	if (bIsInWidth && bIsInHeight)
-	{
-		return true;
-	}
-	else
+	if (!IsValid(MagazinePickup) || MagazinePickup->IsDead() ||
+		!MagazinePickup->IsMagazine())
 	{
 		return false;
 	}
-}
-
-
-bool UInventorySystemComponent::ObtainAmmo(AItemPickUp* MagazinePickUp)
-{
-	if (!IsValid(MagazinePickUp)) { return false; }
 
 	AWeapon* Weapon = nullptr;
 	EInventoryName FoundInventory = EInventoryName::PrimaryWeapon;
 	int32 FoundIndex = INDEX_NONE;
-	if (!FindOwnedWeapon(MagazinePickUp->GetItemName(), Weapon, FoundInventory, FoundIndex))
+	if (!FindOwnedWeapon(MagazinePickup->GetItemName(), Weapon, FoundInventory, FoundIndex))
 	{
 		return false;
 	}
 
-	if (!IsValid(Weapon) || !Weapon->AddAmmo(MagazinePickUp->GetAmmo()))
+	if (!IsValid(Weapon) || !Weapon->AddAmmo(MagazinePickup->GetAmmo()))
 	{
 		return false;
 	}
 
-	MagazinePickUp->DeactivateItemPickUp();
 	NotifyWeaponInventoriesChanged();
 	return true;
 }
-
 
 void UInventorySystemComponent::ZoomIn(bool bZoomIn)
 {
@@ -1644,7 +1467,7 @@ void UInventorySystemComponent::SwitchToNextThrowableWeapon()
 		OnWeaponSwitched.Broadcast(PrevIndex, CurrThrowableWeaponIdx);
 	}
 }
-void UInventorySystemComponent:: SwitchToIndexThrowableWeapon(int32 idx)
+void UInventorySystemComponent::SwitchToIndexThrowableWeapon(int32 idx)
 {
 	//if (CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Switching
 	//	|| CurrThrowableWeapon->GetCurrentState()->GetWeaponStateType() == EWeaponStateType::WeaponStateType_Unequipped) {

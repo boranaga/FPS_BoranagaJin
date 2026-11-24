@@ -61,6 +61,9 @@ public:
 
     void SetControlledCharacter(ACharacterPlayer* NewCharacter);
 
+    /** True whenever a modal UI must suppress world interaction and pickup prompts. */
+    bool IsWorldInteractionInputBlocked() const;
+
     // Exit-door UI is shared per local player, not instantiated by each door.
     void RegisterNearbyExitDoor(AExitDoor* Door);
     void UnregisterNearbyExitDoor(AExitDoor* Door);

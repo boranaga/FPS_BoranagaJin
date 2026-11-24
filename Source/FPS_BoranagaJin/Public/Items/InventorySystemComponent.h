@@ -29,7 +29,6 @@ class AWeapon;
 class AThrowableWeapon;
 class AItemPickUp;
 class AWeaponPickUp;
-class UInteractionWidget;
 
 struct FInputActionValue;
 struct FInventorySlot;
@@ -88,8 +87,6 @@ private:
 	class APlayerController* PlayerController;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputMappingContext* WeaponSystemMappingContext;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	class UInputAction* InteractAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* SwitchWeaponUpAction;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
@@ -167,27 +164,19 @@ public:
 	void DropItemInventorySlot(FName InventoryName, int32 SlotIndex);
 	void UseItemInventorySlot(FName InventoryName, int32 SlotIndex);
 #pragma endregion
-#pragma region PickUpItem
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchItemRadius = 150.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchItemViewportRatio_Width = 0.7;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponSystem")
-	float SearchItemViewportRatio_Height = 0.7;
-protected:
-	TTuple<FVector2D, bool> GetScreenPositionOfWorldLocation(const FVector& SearchLocation) const;
-	bool IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width = 0.0f, float ScreenRatio_Height = 0.0f) const;
-protected:
-	bool SearchItems();
-	void PickUpItem();
-	bool ObtainItem(AItemPickUp* NewItemPickUp);
+#pragma region PickupInventoryTransactions
 public:
-	bool ObtainAmmo(AItemPickUp* MagazinePickUp);
-protected:
-	UPROPERTY()
-	AItemPickUp* OverlappedItem;
+	/**
+	 * Commits an item/weapon/throwable pickup to the appropriate inventory.
+	 * Does NOT search the world, handle input, show UI, or deactivate the pickup actor.
+	 * UInteractionComponent finalizes a successful world pickup.
+	 */
+	bool TryStorePickup(AItemPickUp* Pickup);
+
+	/** Commits ammunition to an owned weapon without deactivating the world pickup. */
+	bool TryStoreMagazineAmmo(AItemPickUp* MagazinePickup);
 #pragma endregion
+
 #pragma region WeaponOwnership
 protected:
 	UPROPERTY(VisibleAnywhere)

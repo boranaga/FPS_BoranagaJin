@@ -7,6 +7,7 @@
 class ACharacterPlayer;
 class APlayerController;
 class UPlayerUISubsystem;
+class AItemPickUp;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     FOnInteractionTargetChanged,
@@ -24,6 +25,8 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+        FActorComponentTickFunction* ThisTickFunction) override;
 
 public:
     /** Called by CharacterPlayer when the interaction InputAction starts. */
@@ -52,6 +55,13 @@ public:
 
 protected:
     bool PerformInteractionTrace(FHitResult& OutHitResult) const;
+
+    /** Finds the closest active pickup within the old inventory search sphere/viewport. */
+    AItemPickUp* SearchItems() const;
+    bool IsPickupAvailable(AItemPickUp* Pickup) const;
+    bool TryPickUpItem(AItemPickUp* Pickup);
+    bool IsPointWithinPickupViewport(const FVector& WorldLocation) const;
+    void UpdateInteractionPrompt();
     void SetInteractionTarget(AActor* NewTarget);
     void ClearInteractionTarget();
     bool IsActorInteractable(AActor* TargetActor) const;
@@ -69,7 +79,7 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Trace",
         meta = (ClampMin = "0.01", Units = "s"))
-    float TraceInterval = 1.f;
+    float TraceInterval = 0.1f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Trace")
     TEnumAsByte<ECollisionChannel> InteractionTraceChannel = ECC_Visibility;
@@ -79,6 +89,24 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Debug")
     bool bDrawDebugTrace = false;
+
+    // Moved from InventorySystemComponent: detection and visual filtering
+    // now belong exclusively to interaction gameplay.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Pickup",
+        meta = (ClampMin = "0.0", Units = "cm"))
+    float SearchItemRadius = 150.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Pickup",
+        meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float SearchItemViewportRatio_Width = 0.7f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Pickup",
+        meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float SearchItemViewportRatio_Height = 0.7f;
+
+    // Retain the existing pickup object channel (GameTraceChannel6).
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Pickup")
+    TEnumAsByte<ECollisionChannel> PickupObjectChannel = ECC_GameTraceChannel6;
 
     UPROPERTY(BlueprintAssignable, Category = "Interaction")
     FOnInteractionTargetChanged OnInteractionTargetChanged;
