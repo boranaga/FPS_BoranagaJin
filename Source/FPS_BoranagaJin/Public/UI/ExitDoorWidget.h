@@ -16,12 +16,12 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnExitSlotClicked, int32 /*SlotIndex*/);
 UENUM(BlueprintType)
 enum class EExitSlotState : uint8
 {
-	Missing		UMETA(DisplayName = "Missing"),		// 플레이어가 갖고 있지 않음
-	Owned		UMETA(DisplayName = "Owned"),		// 인벤토리에 있음 (클릭해서 넣을 수 있음)
-	Inserted	UMETA(DisplayName = "Inserted")		// 탈출구에 넣음
+	Missing		UMETA(DisplayName = "Missing"),		// Not present in the player inventory
+	Owned		UMETA(DisplayName = "Owned"),		// Owned and available for insertion
+	Inserted	UMETA(DisplayName = "Inserted")		// Already inserted into the exit
 };
 
-/** 위젯에 표시할 슬롯 1칸의 정보 */
+/** View data for one required-item slot. */
 USTRUCT(BlueprintType)
 struct FPS_BORANAGAJIN_API FExitSlotViewData
 {
@@ -37,7 +37,7 @@ struct FPS_BORANAGAJIN_API FExitSlotViewData
 	EExitSlotState State = EExitSlotState::Missing;
 };
 
-/** 자기 번호를 알려 주는 슬롯 버튼 */
+/** Slot button that reports its own index. */
 UCLASS()
 class FPS_BORANAGAJIN_API UExitSlotButton : public UButton
 {
@@ -55,28 +55,30 @@ private:
 };
 
 /**
- * 탈출구 가까이 가면 화면 가운데에 표시되는 "필요한 아이템" UI.
+ * Required-item UI displayed when the player approaches an exit door.
  *
- * - 회색 반투명 배경 위에 아이템 칸이 나오고, 칸마다 0/1 (넣은 개수/필요 개수)이 표시됩니다.
- * - 플레이어가 갖고 있는 아이템의 칸만 마우스로 클릭할 수 있습니다.
- *
- * WBP 없이 이 클래스만으로 동작합니다. (위젯 트리를 C++에서 직접 만듭니다)
- * 모양을 바꾸고 싶으면 이 클래스를 부모로 WBP를 만들고,
- * TitleText / SlotBox / HintText 이름의 위젯을 배치하면 그 위젯을 대신 사용합니다.
+ * - Each slot shows inserted/required count (0/1 or 1/1).
+ * - Only owned items can be clicked for insertion.
+ * - The fallback WidgetTree is created in C++ if no WBP is assigned.
+ * - WBP subclasses can provide TitleText, SlotBox, and HintText widgets.
+ * - UPlayerUISubsystem owns one active instance shared across nearby exit doors.
  */
 UCLASS()
 class FPS_BORANAGAJIN_API UExitDoorWidget : public UBaseUIWidget
 {
 	GENERATED_BODY()
 public:
+	/** Classifies this widget for UPlayerUISubsystem registration and Z-order. */
+	virtual EUIType GetUIType() const override { return EUIType::ExitDoor; }
+
 	UFUNCTION(BlueprintCallable, Category = "Exit")
 	void SetExitData(const FText& Title, const TArray<FExitSlotViewData>& Slots, const FText& Hint, bool bUnlocked);
 
-	/** WBP에서 추가 연출(애니메이션 등)을 하고 싶을 때 사용 */
+	/** Optional Blueprint presentation event. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Exit")
 	void OnExitDataChanged(const TArray<FExitSlotViewData>& Slots, bool bUnlocked);
 
-	/** 슬롯을 마우스로 클릭했을 때 */
+	/** Raised when an item slot is clicked. */
 	FOnExitSlotClicked OnSlotClicked;
 
 protected:
@@ -98,14 +100,14 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> HintText;
 
-	/** 회색 반투명 배경 */
+	/** Semi-transparent panel background. */
 	UPROPERTY(EditDefaultsOnly, Category = "Exit|Style")
 	FLinearColor BackgroundColor = FLinearColor(0.2f, 0.2f, 0.2f, 0.6f);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Exit|Style")
 	FLinearColor MissingColor = FLinearColor(0.12f, 0.12f, 0.12f, 0.9f);
 
-	/** 갖고 있어서 클릭할 수 있는 칸 */
+	/** Available item slot. */
 	UPROPERTY(EditDefaultsOnly, Category = "Exit|Style")
 	FLinearColor OwnedColor = FLinearColor(0.85f, 0.85f, 0.85f, 1.f);
 

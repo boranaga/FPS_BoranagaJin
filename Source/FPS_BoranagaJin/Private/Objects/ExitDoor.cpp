@@ -8,6 +8,8 @@
 #include "Objects/DestructibleDoor.h"
 #include "Objects/MapEscapeTrigger.h"
 #include "UI/ExitDoorWidget.h"
+#include "PlayerUISubsystem.h"
+#include "Engine/LocalPlayer.h"
 
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
@@ -76,9 +78,6 @@ namespace
 	}
 
 	const int32 GExitRequiredItemCount = 3;
-
-	// Above other HUD elements, but below the pause and game-over menus.
-	const int32 GExitWidgetZOrder = 5;
 
 	template<typename TActor>
 	TActor* FindNearestActor(const AActor* Origin, float Radius)
@@ -228,13 +227,8 @@ void AExitDoor::BeginPlay()
 
 void AExitDoor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Unregister this door; the shared widget remains owned by PlayerUISubsystem.
 	ClearNearbyPlayer();
-	if (ExitWidget)
-	{
-		ExitWidget->RemoveFromParent();
-		ExitWidget = nullptr;
-	}
-
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -501,43 +495,51 @@ void AExitDoor::HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySl
 	}
 }
 
+UPlayerUISubsystem* AExitDoor::ResolvePlayerUISubsystem() const
+{
+	if (!IsValid(NearbyPlayer)) { return nullptr; }
+
+	const APlayerController* PlayerController = Cast<APlayerController>(NearbyPlayer->GetController());
+	ULocalPlayer* LocalPlayer = IsValid(PlayerController) ? PlayerController->GetLocalPlayer() : nullptr;
+	return IsValid(LocalPlayer) ? LocalPlayer->GetSubsystem<UPlayerUISubsystem>() : nullptr;
+}
+
 void AExitDoor::SetWidgetShown(bool bShown)
 {
-	if (bShown && !ExitWidget && WidgetClass && IsValid(NearbyPlayer))
-	{
-		if (APlayerController* PlayerController = Cast<APlayerController>(NearbyPlayer->GetController()))
-		{
-			ExitWidget = CreateWidget<UExitDoorWidget>(PlayerController, WidgetClass);
-			if (ExitWidget)
-			{
-				ExitWidget->OnSlotClicked.AddUObject(this, &AExitDoor::HandleSlotClicked);
-				ExitWidget->AddToViewport(GExitWidgetZOrder);
-			}
-		}
-	}
-
-	bWidgetShown = bShown;
-
-	if (ExitWidget)
-	{
-		// Use SelfHitTestInvisible so clicks pass through outside the panel.
-		ExitWidget->SetVisibility(bShown ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: UI %s (widget=%s)"), *GetName(), bShown ? TEXT("shown") : TEXT("hidden"), *GetNameSafe(ExitWidget));
-
 	if (bShown)
 	{
-		RefreshWidget();
+		if (!IsValid(NearbyPlayer)) { return; }
+		UPlayerUISubsystem* UISubsystem = ResolvePlayerUISubsystem();
+		if (!IsValid(UISubsystem))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ExitDoor %s: no local PlayerUISubsystem."), *GetName());
+			return;
+		}
+
+		// Registration selects this door as the currently displayed exit.
+		bWidgetShown = true;
+		RegisteredUISubsystem = UISubsystem;
+		UISubsystem->RegisterNearbyExitDoor(this);
+		return;
 	}
-	else
+
+	bWidgetShown = false;
+	if (UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get())
 	{
-		UpdateCursorMode(false);
+		UISubsystem->UnregisterNearbyExitDoor(this);
 	}
+	RegisteredUISubsystem.Reset();
 }
 
 void AExitDoor::RefreshWidget()
 {
+	// Multiple nearby exits share the UI registered under EUIType::ExitDoor.
+	// Only the active door is allowed to write its contents.
+	UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get();
+	if (!bWidgetShown || !IsValid(UISubsystem) || !UISubsystem->IsActiveExitDoor(this)) { return; }
+	UExitDoorWidget* Widget = Cast<UExitDoorWidget>(UISubsystem->GetUIWidget(EUIType::ExitDoor));
+	if (!IsValid(Widget)) { return; }
+
 	bool bHasInsertable = false;
 	TArray<FExitSlotViewData> ViewSlots;
 	ViewSlots.Reserve(RequiredSlots.Num());
@@ -566,43 +568,15 @@ void AExitDoor::RefreshWidget()
 		}
 	}
 
-	// Show the mouse cursor only when the player has an item that can be inserted.
-	UpdateCursorMode(bWidgetShown && !bUnlocked && bHasInsertable);
-
-	if (!IsValid(ExitWidget)) { return; }
-
 	const FText Title = ExitTitle.IsEmpty()
 		? FText::Format(FText::FromString(TEXT("{0}번 탈출구")), FText::AsNumber(ExitNumber))
 		: ExitTitle;
 
 	const FText& Hint = bUnlocked ? UnlockedHintText : (bHasInsertable ? InsertHintText : NoItemHintText);
+	Widget->SetExitData(Title, ViewSlots, Hint, bUnlocked);
 
-	ExitWidget->SetExitData(Title, ViewSlots, Hint, bUnlocked);
-}
-
-void AExitDoor::UpdateCursorMode(bool bWantCursor)
-{
-	if (bWantCursor)
-	{
-		APlayerController* PlayerController = IsValid(NearbyPlayer) ? Cast<APlayerController>(NearbyPlayer->GetController()) : nullptr;
-
-		// Do not interfere if another UI (inventory, pause menu, etc.) already shows the cursor.
-		if (PlayerController && !PlayerController->bShowMouseCursor)
-		{
-			FInputModeGameAndUI InputMode;
-			InputMode.SetHideCursorDuringCapture(false);
-			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-			PlayerController->SetInputMode(InputMode);
-			PlayerController->SetShowMouseCursor(true);
-			CursorController = PlayerController;
-		}
-	}
-	else if (APlayerController* PlayerController = CursorController.Get())
-	{
-		PlayerController->SetInputMode(FInputModeGameOnly());
-		PlayerController->SetShowMouseCursor(false);
-		CursorController = nullptr;
-	}
+	// Cursor and input mode are owned by the same subsystem as the widget.
+	UISubsystem->SetExitDoorCursorWanted(this, !bUnlocked && bHasInsertable);
 }
 
 bool AExitDoor::HasInsertableItem(const ACharacterPlayer* Player) const

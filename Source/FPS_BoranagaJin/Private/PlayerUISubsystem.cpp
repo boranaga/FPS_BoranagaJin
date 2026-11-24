@@ -13,6 +13,8 @@
 #include "UI/ThrowableWeaponInventoryWidget.h"
 #include "UI/InteractionWidget.h"
 #include "UI/QuickSlotWidget.h"
+#include "UI/ExitDoorWidget.h"
+#include "Objects/ExitDoor.h"
 
 #include "Instance/DefaultGameInstance.h"
 #include "Characters/Player/FPSPlayerController.h"
@@ -24,6 +26,7 @@
 #include "SoundSystem/GameAudioSubsystem.h"
 
 #include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 
@@ -37,6 +40,12 @@ void UPlayerUISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UPlayerUISubsystem::Deinitialize()
 {
     UnbindCharacterDelegates();
+
+    // Door actors may be ending play concurrently with the local-player subsystem.
+    ReleaseExitDoorCursor();
+    ActiveExitDoor.Reset();
+    NearbyExitDoors.Reset();
+    ReleaseExitDoorWidget();
 
     for (TPair<EUIType, FUIWidgetArray>& Pair : UIWidgets)
     {
@@ -71,11 +80,214 @@ void UPlayerUISubsystem::RegisterUIWidget(UBaseUIWidget* NewWidget)
 
     FUIWidgetArray& WidgetArray = UIWidgets.FindOrAdd(UIType);
 
-    WidgetArray.Widgets.Add(NewWidget);
+    WidgetArray.Widgets.AddUnique(NewWidget);
 
     if (!NewWidget->IsInViewport())
     {
         NewWidget->AddToPlayerScreen(Layer);
+    }
+}
+
+void UPlayerUISubsystem::UnregisterUIWidget(UBaseUIWidget* Widget)
+{
+    if (!IsValid(Widget)) { return; }
+
+    for (auto It = UIWidgets.CreateIterator(); It; ++It)
+    {
+        It.Value().Widgets.Remove(Widget);
+        if (It.Value().Widgets.IsEmpty())
+        {
+            It.RemoveCurrent();
+        }
+    }
+    Widget->RemoveFromParent();
+}
+
+void UPlayerUISubsystem::RegisterNearbyExitDoor(AExitDoor* Door)
+{
+    if (!IsValid(Door)) { return; }
+
+    // Last registered door has priority if proximity volumes overlap.
+    NearbyExitDoors.RemoveAll([Door](const TWeakObjectPtr<AExitDoor>& Entry)
+        {
+            return !Entry.IsValid() || Entry.Get() == Door;
+        });
+    NearbyExitDoors.Add(Door);
+    RefreshActiveExitDoor();
+}
+
+void UPlayerUISubsystem::UnregisterNearbyExitDoor(AExitDoor* Door)
+{
+    NearbyExitDoors.RemoveAll([Door](const TWeakObjectPtr<AExitDoor>& Entry)
+        {
+            return !Entry.IsValid() || Entry.Get() == Door;
+        });
+    RefreshActiveExitDoor();
+}
+
+bool UPlayerUISubsystem::IsActiveExitDoor(const AExitDoor* Door) const
+{
+    return IsValid(Door) && ActiveExitDoor.Get() == Door;
+}
+
+bool UPlayerUISubsystem::EnsureExitDoorWidget(TSubclassOf<UExitDoorWidget> WidgetClass)
+{
+    if (!WidgetClass) { WidgetClass = UExitDoorWidget::StaticClass(); }
+
+    // Like the other UIs, the widget lives only in the UIWidgets registry.
+    UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor));
+
+    // Different exits may use different WBP subclasses. Replace the registered widget.
+    if (IsValid(Widget) && Widget->GetClass() != WidgetClass.Get())
+    {
+        ReleaseExitDoorWidget();
+        Widget = nullptr;
+    }
+
+    if (!IsValid(Widget))
+    {
+        APlayerController* PlayerController = GetCustomPlayerController();
+        if (!IsValid(PlayerController)) { return false; }
+
+        Widget = CreateWidget<UExitDoorWidget>(PlayerController, WidgetClass);
+        if (!IsValid(Widget))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PlayerUISubsystem: failed to create ExitDoorWidget."));
+            return false;
+        }
+
+        // RegisterUIWidget stores it in UIWidgets[EUIType::ExitDoor] and adds it to the screen.
+        RegisterUIWidget(Widget);
+        if (GetUIWidget(EUIType::ExitDoor) != Widget)
+        {
+            UE_LOG(LogTemp, Error, TEXT("PlayerUISubsystem: failed to register ExitDoorWidget."));
+            Widget->RemoveFromParent();
+            return false;
+        }
+
+        Widget->OnSlotClicked.AddUObject(this, &UPlayerUISubsystem::HandleExitDoorSlotClicked);
+        HideUI(EUIType::ExitDoor);
+    }
+
+    return true;
+}
+
+void UPlayerUISubsystem::ReleaseExitDoorWidget()
+{
+    UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor));
+    if (!IsValid(Widget)) { return; }
+
+    Widget->OnSlotClicked.RemoveAll(this);
+    UnregisterUIWidget(Widget);
+}
+
+void UPlayerUISubsystem::RefreshActiveExitDoor()
+{
+    NearbyExitDoors.RemoveAll([](const TWeakObjectPtr<AExitDoor>& Entry)
+        {
+            return !Entry.IsValid();
+        });
+
+    AExitDoor* NextDoor = NearbyExitDoors.IsEmpty() ? nullptr : NearbyExitDoors.Last().Get();
+    if (ActiveExitDoor.Get() != NextDoor)
+    {
+        ReleaseExitDoorCursor();
+        ActiveExitDoor = NextDoor;
+    }
+
+    if (!IsValid(NextDoor))
+    {
+        HideUI(EUIType::ExitDoor);
+        return;
+    }
+
+    if (!EnsureExitDoorWidget(NextDoor->WidgetClass))
+    {
+        HideUI(EUIType::ExitDoor);
+        ReleaseExitDoorCursor();
+        return;
+    }
+
+    ShowUI(EUIType::ExitDoor);
+    if (UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor)))
+    {
+        // The root passes mouse clicks outside the actual item panel through to gameplay.
+        Widget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+    NextDoor->RefreshWidget();
+}
+
+void UPlayerUISubsystem::HandleExitDoorSlotClicked(int32 SlotIndex)
+{
+    AExitDoor* Door = ActiveExitDoor.Get();
+    if (!IsValid(Door) || !IsValid(Door->NearbyPlayer)) { return; }
+    Door->HandleSlotClicked(SlotIndex);
+}
+
+bool UPlayerUISubsystem::IsOtherModalUIVisible() const
+{
+    constexpr EUIType ModalTypes[] = {
+        EUIType::PauseMenu, EUIType::GameOver, EUIType::Inventory,
+        EUIType::ThrowableWeaponInventory, EUIType::MainMenu,
+        EUIType::MapSelectMenu, EUIType::SaveFileSlotMenu
+    };
+
+    for (EUIType Type : ModalTypes)
+    {
+        const UBaseUIWidget* Widget = GetUIWidget(Type);
+        if (IsValid(Widget) && Widget->IsInViewport() &&
+            Widget->GetVisibility() != ESlateVisibility::Collapsed &&
+            Widget->GetVisibility() != ESlateVisibility::Hidden)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void UPlayerUISubsystem::ReleaseExitDoorCursor()
+{
+    if (!bExitDoorOwnsCursor) { return; }
+    bExitDoorOwnsCursor = false;
+
+    APlayerController* PlayerController = ExitDoorCursorController.Get();
+    ExitDoorCursorController.Reset();
+    if (!IsValid(PlayerController) || IsOtherModalUIVisible()) { return; }
+
+    PlayerController->SetInputMode(FInputModeGameOnly());
+    PlayerController->SetShowMouseCursor(false);
+}
+
+void UPlayerUISubsystem::SetExitDoorCursorWanted(const AExitDoor* Door, bool bWantCursor)
+{
+    if (!IsValid(Door) || ActiveExitDoor.Get() != Door) { return; }
+    if (!bWantCursor)
+    {
+        ReleaseExitDoorCursor();
+        return;
+    }
+
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return; }
+
+    // Another menu may have restored GameOnly input after we originally owned it.
+    if (bExitDoorOwnsCursor && !PlayerController->bShowMouseCursor)
+    {
+        bExitDoorOwnsCursor = false;
+        ExitDoorCursorController.Reset();
+    }
+
+    // Never take over a modal UI or a cursor already owned by another widget.
+    if (IsOtherModalUIVisible()) { return; }
+    if (!bExitDoorOwnsCursor && !PlayerController->bShowMouseCursor)
+    {
+        FInputModeGameAndUI InputMode;
+        InputMode.SetHideCursorDuringCapture(false);
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        PlayerController->SetInputMode(InputMode);
+        PlayerController->SetShowMouseCursor(true);
+        ExitDoorCursorController = PlayerController;
+        bExitDoorOwnsCursor = true;
     }
 }
 
@@ -237,7 +449,7 @@ void UPlayerUISubsystem::SetGameOnlyInput()
 
 void UPlayerUISubsystem::Init_BeginPlay()
 {
-    
+
 }
 
 void UPlayerUISubsystem::InitMainMenuUI(TSubclassOf<UMainMenuWidget> WidgetClass)
@@ -340,9 +552,9 @@ bool UPlayerUISubsystem::IsPauseMenuOpened() const
 {
     const UBaseUIWidget* PauseMenuWidget = GetUIWidget(EUIType::PauseMenu);
 
-    if (!IsValid(PauseMenuWidget)) 
-    { 
-        return false; 
+    if (!IsValid(PauseMenuWidget))
+    {
+        return false;
         UE_LOG(LogTemp, Error, TEXT("UPlayerUISubsystem::IsPauseMenuOpened(): PauseMenuWidget is invalid"));
     }
 
@@ -509,6 +721,11 @@ void UPlayerUISubsystem::CloseGameOverUI()
 
     FInputModeGameOnly InputMode;
     PlayerController->SetInputMode(InputMode);
+    // Restore the proximity UI cursor if the exit is still active.
+    if (AExitDoor* Door = ActiveExitDoor.Get())
+    {
+        Door->RefreshWidget();
+    }
 }
 
 bool UPlayerUISubsystem::IsGameOverUIOpened() const
@@ -588,6 +805,11 @@ void UPlayerUISubsystem::ClosePauseMenu()
     //TODO: 근데 Inventory를 킨 상태에서 esc를 누르면 어떻게 동작되어야 하는지 정의가 필요함
     FInputModeGameOnly InputMode;
     PlayerController->SetInputMode(InputMode);
+    // Restore the proximity UI cursor if the exit is still active.
+    if (AExitDoor* Door = ActiveExitDoor.Get())
+    {
+        Door->RefreshWidget();
+    }
 }
 
 void UPlayerUISubsystem::HandlePauseMenuPlayRequested()
@@ -831,6 +1053,11 @@ void UPlayerUISubsystem::CloseInventory()
 
     HideUI(InventoryWidget);
     InventoryWidget->CloseInventory();
+    // Restore the proximity UI cursor if the exit is still active.
+    if (AExitDoor* Door = ActiveExitDoor.Get())
+    {
+        Door->RefreshWidget();
+    }
 }
 
 void UPlayerUISubsystem::RequestDropInventorySlot(FName InventoryName, int32 SlotIndex)
@@ -908,6 +1135,11 @@ void UPlayerUISubsystem::CloseThrowableWeaponInventory()
 
     //if (!ThrowableWeaponInventoryWidget) return;
     //ThrowableWeaponInventoryWidget->CloseUI();
+    // Restore the proximity UI cursor if the exit is still active.
+    if (AExitDoor* Door = ActiveExitDoor.Get())
+    {
+        Door->RefreshWidget();
+    }
 }
 
 void UPlayerUISubsystem::PlayPopUpInteractionWidgetAnim()

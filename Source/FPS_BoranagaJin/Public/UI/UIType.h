@@ -37,9 +37,10 @@ enum class EUIType : uint8
 	Inventory UMETA(DisplayName = "InventoryWidget"),
 	ThrowableWeaponInventory UMETA(DisplayName = "ThrowableWeaponInventoryWidget"),
 	QuickSlot UMETA(DisplayName = "QuickSlotWidget"),
-	Interaction UMETA(DisplayName = "InteractionWidget")
+	Interaction UMETA(DisplayName = "InteractionWidget"),
+	ExitDoor UMETA(DisplayName = "ExitDoor")
 };
-ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::Base, EUIType::Interaction);
+ENUM_RANGE_BY_FIRST_AND_LAST(EUIType, EUIType::Base, EUIType::ExitDoor);
 
 UCLASS()
 class FPS_BORANAGAJIN_API AUIType : public AActor

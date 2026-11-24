@@ -11,6 +11,7 @@ class APlayerController;
 class UBoxComponent;
 class UPrimitiveComponent;
 class UExitDoorWidget;
+class UPlayerUISubsystem;
 class UShapeComponent;
 class UStaticMeshComponent;
 class UTexture2D;
@@ -59,6 +60,7 @@ UCLASS()
 class FPS_BORANAGAJIN_API AExitDoor : public ADestructibleDoor
 {
 	GENERATED_BODY()
+	friend class UPlayerUISubsystem;
 public:
 	AExitDoor();
 
@@ -115,7 +117,8 @@ private:
 
 	void SetWidgetShown(bool bShown);
 	void RefreshWidget();
-	void UpdateCursorMode(bool bWantCursor);
+	/** Finds the local player UI manager, not the global game instance. */
+	UPlayerUISubsystem* ResolvePlayerUISubsystem() const;
 
 	void SetLinkedActorsLocked(bool bLocked);
 	/** Locks or unlocks Blueprint doors like ExitOpen that open via a timeline when a trigger box is entered. */
@@ -236,11 +239,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACharacterPlayer> NearbyPlayer;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UExitDoorWidget> ExitWidget;
-
-	/** Controller that enabled the mouse cursor, retained so the cursor can be restored later. */
-	TWeakObjectPtr<APlayerController> CursorController;
+	/** The local player's UI subsystem manages the shared ExitDoorWidget lifetime. */
+	TWeakObjectPtr<UPlayerUISubsystem> RegisteredUISubsystem;
 
 	bool bWidgetShown = false;
 

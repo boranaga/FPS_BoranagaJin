@@ -20,6 +20,9 @@ class UPlayerDisplayWidget; //Inventory Widget
 class UThrowableWeaponInventoryWidget;
 class UQuickSlotWidget;
 class UInteractionWidget;
+class UExitDoorWidget;
+class AExitDoor;
+class APlayerController;
 class AFPSPlayerController;
 class ACharacterPlayer;
 class UGameAudioSubsystem;
@@ -47,6 +50,7 @@ public:
 
 public:
     void RegisterUIWidget(UBaseUIWidget* NewWidget);
+    void UnregisterUIWidget(UBaseUIWidget* Widget);
 
     void ShowUI(EUIType UIType);
     void HideUI(EUIType UIType);
@@ -56,6 +60,13 @@ public:
     UBaseUIWidget* GetUIWidget(EUIType UIType) const;
 
     void SetControlledCharacter(ACharacterPlayer* NewCharacter);
+
+    // Exit-door UI is shared per local player, not instantiated by each door.
+    void RegisterNearbyExitDoor(AExitDoor* Door);
+    void UnregisterNearbyExitDoor(AExitDoor* Door);
+    // The active exit may update the shared widget returned by GetUIWidget(EUIType::ExitDoor).
+    bool IsActiveExitDoor(const AExitDoor* Door) const;
+    void SetExitDoorCursorWanted(const AExitDoor* Door, bool bWantCursor);
 
 private:
     AFPSPlayerController* GetFPSPlayerController() const;
@@ -79,6 +90,7 @@ private:
         case EUIType::Inventory: return 3;
         case EUIType::ThrowableWeaponInventory: return 3;
         case EUIType::QuickSlot: return 2;
+        case EUIType::ExitDoor: return 5;
         case EUIType::Base: return 0;
         default: return 0;
         }
@@ -100,7 +112,7 @@ public:
     void InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass);
     void InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass);
     void InitStaminaUI(TSubclassOf<UStaminaWidget> WidgetClass);
-    
+
     void InitInteractionWidget(TSubclassOf<UInteractionWidget> WidgetClass);
     void InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> WidgetClass);
     void InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass);
@@ -177,6 +189,19 @@ protected:
 
 
 private:
+    void RefreshActiveExitDoor();
+    bool EnsureExitDoorWidget(TSubclassOf<UExitDoorWidget> WidgetClass);
+    void ReleaseExitDoorWidget();
+    void ReleaseExitDoorCursor();
+    bool IsOtherModalUIVisible() const;
+    void HandleExitDoorSlotClicked(int32 SlotIndex);
+
+    // Weak actor references: level actors must not be kept alive by a local-player subsystem.
+    TArray<TWeakObjectPtr<AExitDoor>> NearbyExitDoors;
+    TWeakObjectPtr<AExitDoor> ActiveExitDoor;
+    TWeakObjectPtr<APlayerController> ExitDoorCursorController;
+    bool bExitDoorOwnsCursor = false;
+
     UPROPERTY()
     TMap<EUIType, FUIWidgetArray> UIWidgets;
 
@@ -221,7 +246,7 @@ TWidget* UPlayerUISubsystem::CreateAndRegisterWidget(TSubclassOf<TWidget> Widget
 
     RegisterUIWidget(NewWidget);
 
-    UE_LOG(LogTemp, Error, TEXT("TWidget* UPlayerUISubsystem::CreateAndRegisterWidget(TSubclassOf<TWidget> WidgetClass)"));
+    UE_LOG(LogTemp, Verbose, TEXT("PlayerUISubsystem: registered widget %s"), *GetNameSafe(NewWidget));
 
     return NewWidget;
 }

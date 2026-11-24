@@ -24,7 +24,7 @@ namespace
 		TextBlock->SetFont(Font);
 		TextBlock->SetJustification(ETextJustify::Center);
 		TextBlock->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-		// 글자가 버튼 클릭을 가로채지 않게 한다.
+		// Prevent text from intercepting button clicks.
 		TextBlock->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }
@@ -32,7 +32,7 @@ namespace
 void UExitSlotButton::InitSlot(int32 InSlotIndex)
 {
 	SlotIndex = InSlotIndex;
-	// 키보드 포커스를 가져가면 이동 입력이 끊기므로 포커스는 받지 않는다.
+	// Avoid taking keyboard focus away from player movement.
 	InitIsFocusable(false);
 	OnClicked.AddUniqueDynamic(this, &UExitSlotButton::HandleClicked);
 }
@@ -44,7 +44,7 @@ void UExitSlotButton::HandleClicked()
 
 TSharedRef<SWidget> UExitDoorWidget::RebuildWidget()
 {
-	// WBP 없이 C++ 클래스만으로 쓸 때는 위젯 트리가 비어 있으므로 직접 만든다.
+	// Build a fallback widget tree when no WBP provides one.
 	if (WidgetTree && !WidgetTree->RootWidget)
 	{
 		BuildDefaultTree();
@@ -55,7 +55,7 @@ TSharedRef<SWidget> UExitDoorWidget::RebuildWidget()
 
 void UExitDoorWidget::BuildDefaultTree()
 {
-	// 화면 전체를 덮는 루트. 패널만 가운데에 두고, 나머지 영역은 클릭을 통과시킨다.
+	// Full-screen root with a centered panel; clicks pass through outside the panel.
 	UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Root"));
 	Root->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	WidgetTree->RootWidget = Root;
@@ -180,14 +180,14 @@ void UExitDoorWidget::SetExitData(const FText& Title, const TArray<FExitSlotView
 		const bool bInserted = Data.State == EExitSlotState::Inserted;
 		const bool bOwned = Data.State == EExitSlotState::Owned;
 
-		// 갖고 있는 아이템의 칸만 클릭할 수 있다.
+		// Only owned items are clickable.
 		SlotButtons[Index]->SetIsEnabled(bOwned);
 		SlotButtons[Index]->SetBackgroundColor(GetStateColor(Data.State));
 
 		SlotNameTexts[Index]->SetText(Data.DisplayName);
 		SlotNameTexts[Index]->SetColorAndOpacity(FSlateColor(bOwned ? FLinearColor::Black : FLinearColor::White));
 
-		// 넣은 개수 / 필요 개수
+		// Inserted count / required count
 		SlotCountTexts[Index]->SetText(FText::FromString(bInserted ? TEXT("1/1") : TEXT("0/1")));
 		SlotCountTexts[Index]->SetColorAndOpacity(FSlateColor(bOwned ? FLinearColor::Black : FLinearColor::White));
 

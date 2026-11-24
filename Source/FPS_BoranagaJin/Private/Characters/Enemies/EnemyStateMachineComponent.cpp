@@ -1884,10 +1884,7 @@ void UEnemyStateMachineComponent::UpdateFlee(float DeltaTime)
 		return;
 	}
 
-	bHasValidHideLocation = FindHideLocation_Upgrade(
-		TargetActor,
-		HideLocation
-	);
+	bHasValidHideLocation = FindHideLocation_Upgrade(TargetActor, HideLocation);
 
 	if (bHasValidHideLocation)
 	{
