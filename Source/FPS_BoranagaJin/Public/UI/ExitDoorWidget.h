@@ -55,7 +55,7 @@ private:
 };
 
 /**
- * Required-item UI displayed when the player approaches an exit door.
+ * Required-item UI opened by interaction while the player is near an exit door.
  *
  * - Each slot shows inserted/required count (0/1 or 1/1).
  * - Only owned items can be clicked for insertion.
@@ -82,6 +82,8 @@ public:
 	FOnExitSlotClicked OnSlotClicked;
 
 protected:
+	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 private:

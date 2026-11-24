@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include "CoreMinimal.h"
 //#include "Subsystems/GameInstanceSubsystem.h"
@@ -64,6 +64,10 @@ public:
     // Exit-door UI is shared per local player, not instantiated by each door.
     void RegisterNearbyExitDoor(AExitDoor* Door);
     void UnregisterNearbyExitDoor(AExitDoor* Door);
+    /** The interaction key is the only way to show the puzzle panel. */
+    bool OpenExitDoorUI(AExitDoor* Door, ACharacterPlayer* InteractingPlayer);
+    void CloseExitDoorUI();
+    bool IsExitDoorUIOpen() const { return bExitDoorPanelOpen; }
     // The active exit may update the shared widget returned by GetUIWidget(EUIType::ExitDoor).
     bool IsActiveExitDoor(const AExitDoor* Door) const;
     void SetExitDoorCursorWanted(const AExitDoor* Door, bool bWantCursor);
@@ -118,7 +122,7 @@ public:
     void InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass);
     void InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetClass);
 
-    //void InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass); //TODO: ¼³Á¤
+    //void InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass); //TODO: ï¿½ï¿½ï¿½ï¿½
 
     // <PauseMenu>
 public:
@@ -189,7 +193,6 @@ protected:
 
 
 private:
-    void RefreshActiveExitDoor();
     bool EnsureExitDoorWidget(TSubclassOf<UExitDoorWidget> WidgetClass);
     void ReleaseExitDoorWidget();
     void ReleaseExitDoorCursor();
@@ -201,6 +204,9 @@ private:
     TWeakObjectPtr<AExitDoor> ActiveExitDoor;
     TWeakObjectPtr<APlayerController> ExitDoorCursorController;
     bool bExitDoorOwnsCursor = false;
+    bool bExitDoorPanelOpen = false;
+    // Prevent Escape from closing the panel and opening PauseMenu in the same frame.
+    uint64 LastExitDoorClosedFrame = MAX_uint64;
 
     UPROPERTY()
     TMap<EUIType, FUIWidgetArray> UIWidgets;

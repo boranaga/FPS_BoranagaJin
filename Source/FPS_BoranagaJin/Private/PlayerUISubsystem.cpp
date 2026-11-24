@@ -1,4 +1,4 @@
-#include "PlayerUISubsystem.h"
+ï»¿#include "PlayerUISubsystem.h"
 #include "GameFlowSubsystem.h"
 
 #include "UI/MainMenuWidget.h"
@@ -19,6 +19,7 @@
 #include "Instance/DefaultGameInstance.h"
 #include "Characters/Player/FPSPlayerController.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/InteractionComponent.h"
 #include "Characters/HealthComponent.h"
 #include "SaveSystem/SaveGameSubsystem.h"
 //#include "SaveSystem/SaveGameCustom.h"
@@ -42,6 +43,7 @@ void UPlayerUISubsystem::Deinitialize()
     UnbindCharacterDelegates();
 
     // Door actors may be ending play concurrently with the local-player subsystem.
+    CloseExitDoorUI();
     ReleaseExitDoorCursor();
     ActiveExitDoor.Reset();
     NearbyExitDoors.Reset();
@@ -107,27 +109,94 @@ void UPlayerUISubsystem::RegisterNearbyExitDoor(AExitDoor* Door)
 {
     if (!IsValid(Door)) { return; }
 
-    // Last registered door has priority if proximity volumes overlap.
     NearbyExitDoors.RemoveAll([Door](const TWeakObjectPtr<AExitDoor>& Entry)
         {
             return !Entry.IsValid() || Entry.Get() == Door;
         });
     NearbyExitDoors.Add(Door);
-    RefreshActiveExitDoor();
+
+    // Do NOT show the puzzle panel just because the player entered the volume.
 }
 
 void UPlayerUISubsystem::UnregisterNearbyExitDoor(AExitDoor* Door)
 {
+    if (ActiveExitDoor.Get() == Door)
+    {
+        CloseExitDoorUI();
+    }
     NearbyExitDoors.RemoveAll([Door](const TWeakObjectPtr<AExitDoor>& Entry)
         {
             return !Entry.IsValid() || Entry.Get() == Door;
         });
-    RefreshActiveExitDoor();
 }
 
 bool UPlayerUISubsystem::IsActiveExitDoor(const AExitDoor* Door) const
 {
-    return IsValid(Door) && ActiveExitDoor.Get() == Door;
+    return bExitDoorPanelOpen && IsValid(Door) && ActiveExitDoor.Get() == Door;
+}
+
+bool UPlayerUISubsystem::OpenExitDoorUI(AExitDoor* Door, ACharacterPlayer* InteractingPlayer)
+{
+    if (!IsValid(Door) || !IsValid(InteractingPlayer) ||
+        !Door->IsPlayerInExitRange(InteractingPlayer) ||
+        InteractingPlayer->GetController() != GetCustomPlayerController() ||
+        IsOtherModalUIVisible())
+    {
+        return false;
+    }
+
+    // Verify that the interaction key was pressed while actually targeting this door.
+    const UInteractionComponent* Interaction = InteractingPlayer->GetInteractionComponent();
+    if (!IsValid(Interaction) || Interaction->GetCurrentInteractionTarget() != Door)
+    {
+        return false;
+    }
+
+    if (!NearbyExitDoors.ContainsByPredicate([Door](const TWeakObjectPtr<AExitDoor>& Entry)
+        { return Entry.Get() == Door; }))
+    {
+        return false;
+    }
+
+    if (!EnsureExitDoorWidget(Door->WidgetClass)) { return false; }
+
+    // A different door can be opened only by explicitly interacting with it.
+    if (bExitDoorPanelOpen && ActiveExitDoor.Get() != Door)
+    {
+        CloseExitDoorUI();
+    }
+
+    ActiveExitDoor = Door;
+    bExitDoorPanelOpen = true;
+    UpdateInteractionUI(false, FVector::ZeroVector);
+    ShowUI(EUIType::ExitDoor);
+    if (UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor)))
+    {
+        Widget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+
+    Door->RefreshWidget();
+    SetExitDoorCursorWanted(Door, true);
+    return true;
+}
+
+void UPlayerUISubsystem::CloseExitDoorUI()
+{
+    if (!bExitDoorPanelOpen) { return; }
+
+    AExitDoor* PreviouslyOpenDoor = ActiveExitDoor.Get();
+    bExitDoorPanelOpen = false;
+    ActiveExitDoor.Reset();
+    LastExitDoorClosedFrame = GFrameCounter;
+
+    HideUI(EUIType::ExitDoor);
+    ReleaseExitDoorCursor();
+
+    // If the player is still looking at the exit, show its interaction prompt again.
+    if (IsValid(PreviouslyOpenDoor) && IsValid(PreviouslyOpenDoor->NearbyPlayer))
+    {
+        PreviouslyOpenDoor->RefreshInteractionPrompt(PreviouslyOpenDoor->NearbyPlayer);
+    }
 }
 
 bool UPlayerUISubsystem::EnsureExitDoorWidget(TSubclassOf<UExitDoorWidget> WidgetClass)
@@ -181,42 +250,6 @@ void UPlayerUISubsystem::ReleaseExitDoorWidget()
     UnregisterUIWidget(Widget);
 }
 
-void UPlayerUISubsystem::RefreshActiveExitDoor()
-{
-    NearbyExitDoors.RemoveAll([](const TWeakObjectPtr<AExitDoor>& Entry)
-        {
-            return !Entry.IsValid();
-        });
-
-    AExitDoor* NextDoor = NearbyExitDoors.IsEmpty() ? nullptr : NearbyExitDoors.Last().Get();
-    if (ActiveExitDoor.Get() != NextDoor)
-    {
-        ReleaseExitDoorCursor();
-        ActiveExitDoor = NextDoor;
-    }
-
-    if (!IsValid(NextDoor))
-    {
-        HideUI(EUIType::ExitDoor);
-        return;
-    }
-
-    if (!EnsureExitDoorWidget(NextDoor->WidgetClass))
-    {
-        HideUI(EUIType::ExitDoor);
-        ReleaseExitDoorCursor();
-        return;
-    }
-
-    ShowUI(EUIType::ExitDoor);
-    if (UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor)))
-    {
-        // The root passes mouse clicks outside the actual item panel through to gameplay.
-        Widget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-    }
-    NextDoor->RefreshWidget();
-}
-
 void UPlayerUISubsystem::HandleExitDoorSlotClicked(int32 SlotIndex)
 {
     AExitDoor* Door = ActiveExitDoor.Get();
@@ -260,7 +293,7 @@ void UPlayerUISubsystem::ReleaseExitDoorCursor()
 
 void UPlayerUISubsystem::SetExitDoorCursorWanted(const AExitDoor* Door, bool bWantCursor)
 {
-    if (!IsValid(Door) || ActiveExitDoor.Get() != Door) { return; }
+    if (!bExitDoorPanelOpen || !IsValid(Door) || ActiveExitDoor.Get() != Door) { return; }
     if (!bWantCursor)
     {
         ReleaseExitDoorCursor();
@@ -284,10 +317,18 @@ void UPlayerUISubsystem::SetExitDoorCursorWanted(const AExitDoor* Door, bool bWa
         FInputModeGameAndUI InputMode;
         InputMode.SetHideCursorDuringCapture(false);
         InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        if (UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor)))
+        {
+            InputMode.SetWidgetToFocus(Widget->TakeWidget());
+        }
         PlayerController->SetInputMode(InputMode);
         PlayerController->SetShowMouseCursor(true);
         ExitDoorCursorController = PlayerController;
         bExitDoorOwnsCursor = true;
+    }
+    else if (UExitDoorWidget* Widget = Cast<UExitDoorWidget>(GetUIWidget(EUIType::ExitDoor)))
+    {
+        Widget->SetUserFocus(PlayerController);
     }
 }
 
@@ -412,14 +453,14 @@ void UPlayerUISubsystem::BindCharacterDelegates()
 {
     if (!IsValid(CharacterPlayer)) { return; }
 
-    // Gameplay UI Delegate ¿¬°á
+    // Gameplay UI Delegate ï¿½ï¿½ï¿½ï¿½
 }
 
 void UPlayerUISubsystem::UnbindCharacterDelegates()
 {
     if (!IsValid(CharacterPlayer)) { return; }
 
-    // Gameplay UI Delegate ÇØÁ¦
+    // Gameplay UI Delegate ï¿½ï¿½ï¿½ï¿½
 }
 
 void UPlayerUISubsystem::SetUIOnlyInput(UBaseUIWidget* FocusWidget)
@@ -508,7 +549,7 @@ void UPlayerUISubsystem::InitSaveFileSlotUI(TSubclassOf<USaveFileSlotMenuWidget>
 //    HideUI(EUIType::MainMenu);
 //    HideUI(EUIType::SaveFileSlotMenu);
 //
-//    // Health, Stamina, AmmoCounter µîÀÇ Gameplay UI ÃÊ±âÈ­
+//    // Health, Stamina, AmmoCounter ï¿½ï¿½ï¿½ï¿½ Gameplay UI ï¿½Ê±ï¿½È­
 //}
 
 void UPlayerUISubsystem::InitPauseMenuUI(TSubclassOf<UPauseMenuWidget> WidgetClass)
@@ -542,7 +583,7 @@ void UPlayerUISubsystem::InitGameOverUI(TSubclassOf<UGameOverWidget> WidgetClass
     RegisterUIWidget(GameOverWidget);
 
     GameOverWidget->OnMainMenuRequested.AddUObject(this, &UPlayerUISubsystem::HandleBackToMainMenuRequested);
-    //TODO: ÇöÀç °ÔÀÓ slot¿¡ ´ëÇÑ Ã³¸®¸¦ ¿Ï·áÇÏ°í °ÔÀÓÀ» Á¾·áÇØ¾ßÇÔ.
+    //TODO: ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ slotï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Ï·ï¿½ï¿½Ï°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ï¿½ï¿½.
     GameOverWidget->OnExitRequested.AddUObject(this, &UPlayerUISubsystem::HandleExitRequested);
 
     HideUI(EUIType::GameOver);
@@ -615,7 +656,7 @@ void UPlayerUISubsystem::InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> Widge
     RegisterUIWidget(InventoryWidget);
     HideUI(InventoryWidget);
 
-    //TODO: nullptr ¹æ¾î ÄÚµå
+    //TODO: nullptr ï¿½ï¿½ï¿½ ï¿½Úµï¿½
     if (InventoryWidget->GetItemInventoryUIWidget())
     {
         InventoryWidget->GetItemInventoryUIWidget()->OnDropInventorySlotRequestedDelegate.AddUObject(this, &UPlayerUISubsystem::RequestDropInventorySlot);
@@ -674,7 +715,7 @@ void UPlayerUISubsystem::InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetCla
 
     CharacterPlayer->OnQuickSlotUpdatedDelegate.AddUObject(QuickSlotWidget, &UQuickSlotWidget::UpdateQuickSlots);
 
-    CharacterPlayer->OnQuickSlotSelectionChanged.AddUObject(QuickSlotWidget, &UQuickSlotWidget::HandleQuickSlotSelectionChanged); //TODO: ÇÊ¿äÇÑ°¡?
+    CharacterPlayer->OnQuickSlotSelectionChanged.AddUObject(QuickSlotWidget, &UQuickSlotWidget::HandleQuickSlotSelectionChanged); //TODO: ï¿½Ê¿ï¿½ï¿½Ñ°ï¿½?
 }
 
 //void UPlayerUISubsystem::InitGameplayUI(TSubclassOf<UBaseUIWidget> WidgetClass)
@@ -684,6 +725,7 @@ void UPlayerUISubsystem::InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetCla
 
 void UPlayerUISubsystem::OpenGameOverUI(EGameEndReason EndReason)
 {
+    if (IsExitDoorUIOpen()) { CloseExitDoorUI(); }
     UGameOverWidget* GameOverWidget = Cast<UGameOverWidget>(GetUIWidget(EUIType::GameOver));
     if (!IsValid(GameOverWidget)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
@@ -740,6 +782,13 @@ bool UPlayerUISubsystem::IsGameOverUIOpened() const
 
 void UPlayerUISubsystem::TogglePauseMenu()
 {
+    if (IsExitDoorUIOpen())
+    {
+        CloseExitDoorUI();
+        return;
+    }
+    if (LastExitDoorClosedFrame == GFrameCounter) { return; }
+
     UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::TogglePauseMenu()"));
 
     if (IsPauseMenuOpened())
@@ -754,6 +803,9 @@ void UPlayerUISubsystem::TogglePauseMenu()
 
 void UPlayerUISubsystem::OpenPauseMenu()
 {
+    if (IsExitDoorUIOpen()) { CloseExitDoorUI(); return; }
+    if (LastExitDoorClosedFrame == GFrameCounter) { return; }
+
     UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::OpenPauseMenu()"));
 
     UPauseMenuWidget* PauseMenuWidget = Cast<UPauseMenuWidget>(GetUIWidget(EUIType::PauseMenu));
@@ -764,7 +816,7 @@ void UPlayerUISubsystem::OpenPauseMenu()
 
     if (!IsValid(PlayerController)) { return; }
 
-    //TODO: GamePause´Â ¾ÈÇÏ´Â ¹æ½ÄÀÌ ÁÁÀ» µíÇÔ
+    //TODO: GamePauseï¿½ï¿½ ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     //UGameplayStatics::SetGamePaused(this, true);
 
     ShowUI(EUIType::PauseMenu);
@@ -797,12 +849,12 @@ void UPlayerUISubsystem::ClosePauseMenu()
     HideUI(EUIType::PauseMenu);
     PlayUISound(ESoundID::UI_Close);
 
-    //TODO: ÀÏ½ÃÁ¤Áö¿¡ ´ëÇÑ °í·Á ÇÊ¿ä
+    //TODO: ï¿½Ï½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½
     //UGameplayStatics::SetGamePaused(this, false);
 
     PlayerController->SetShowMouseCursor(false);
 
-    //TODO: ±Ùµ¥ Inventory¸¦ Å² »óÅÂ¿¡¼­ esc¸¦ ´©¸£¸é ¾î¶»°Ô µ¿ÀÛµÇ¾î¾ß ÇÏ´ÂÁö Á¤ÀÇ°¡ ÇÊ¿äÇÔ
+    //TODO: ï¿½Ùµï¿½ Inventoryï¿½ï¿½ Å² ï¿½ï¿½ï¿½Â¿ï¿½ï¿½ï¿½ escï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½î¶»ï¿½ï¿½ ï¿½ï¿½ï¿½ÛµÇ¾ï¿½ï¿½ ï¿½Ï´ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ç°ï¿½ ï¿½Ê¿ï¿½ï¿½ï¿½
     FInputModeGameOnly InputMode;
     PlayerController->SetInputMode(InputMode);
     // Restore the proximity UI cursor if the exit is still active.
@@ -1040,6 +1092,7 @@ void UPlayerUISubsystem::UpdateStaminaBar(float maxstamina, float currstamina)
 
 void UPlayerUISubsystem::OpenInventory()
 {
+    if (IsExitDoorUIOpen()) { CloseExitDoorUI(); }
     UPlayerDisplayWidget* InventoryWidget = Cast<UPlayerDisplayWidget>(GetUIWidget(EUIType::Inventory));
     if (!IsValid(InventoryWidget)) { return; }
 
@@ -1095,6 +1148,7 @@ void UPlayerUISubsystem::HandleThrowableWeaponEquipRequested(int32 SlotIndex)
 
 void UPlayerUISubsystem::OpenThrowableWeaponInventory()
 {
+    if (IsExitDoorUIOpen()) { CloseExitDoorUI(); }
     UThrowableWeaponInventoryWidget* ThrowableWeaponInventoryWidget = Cast<UThrowableWeaponInventoryWidget>(GetUIWidget(EUIType::ThrowableWeaponInventory));
     if (!IsValid(ThrowableWeaponInventoryWidget)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
@@ -1157,29 +1211,22 @@ void UPlayerUISubsystem::UpdateInteractionUI(bool bFlag, FVector NewLocation)
     UInteractionWidget* InteractionWidget = Cast<UInteractionWidget>(GetUIWidget(EUIType::Interaction));
     if (!IsValid(InteractionWidget)) { return; }
 
-    FVector2D TargetScreenPosition = GetScreenPositionOfWorldLocation(NewLocation).Get<0>();
-
-    if (bFlag)
+    // The interaction button and the item panel should never overlap.
+    if (!bFlag || IsExitDoorUIOpen() || IsOtherModalUIVisible())
     {
-        if (IsInViewport(TargetScreenPosition, 1.f, 1.f))
-        {
-            InteractionWidget->SetPositionInViewport(TargetScreenPosition);
-
-            if (InteractionWidget->Visibility == ESlateVisibility::Hidden)
-            {
-                InteractionWidget->SetVisibility(ESlateVisibility::Visible);
-            }
-        }
-    }
-    else
-    {
-        if (InteractionWidget->Visibility == ESlateVisibility::Visible)
-        {
-            InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
-        }
+        InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+        return;
     }
 
-    //UE_LOG(LogTemp, Error, TEXT("void UPlayerUISubsystem::UpdateInteractionUI(bool bFlag, FVector NewLocation)"));
+    const TTuple<FVector2D, bool> Projected = GetScreenPositionOfWorldLocation(NewLocation);
+    if (!Projected.Get<1>() || !IsInViewport(Projected.Get<0>(), 1.f, 1.f))
+    {
+        InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
+        return;
+    }
+
+    InteractionWidget->SetPositionInViewport(Projected.Get<0>());
+    InteractionWidget->SetVisibility(ESlateVisibility::Visible);
 }
 
 
@@ -1193,6 +1240,7 @@ TTuple<FVector2D, bool> UPlayerUISubsystem::GetScreenPositionOfWorldLocation(con
 
 bool UPlayerUISubsystem::IsInViewport(FVector2D ActorScreenPosition, float ScreenRatio_Width, float ScreenRatio_Height) const
 {
+    if (!GEngine || !GEngine->GameViewport || !GEngine->GameViewport->Viewport) { return false; }
     FVector2D ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
 
     bool bIsInWidth = true;

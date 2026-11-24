@@ -45,8 +45,9 @@ struct FPS_BORANAGAJIN_API FExitRequirementSlot
  *     Exit 2: Battery / Fuse / Chip      (no KeyCard)
  *     Exit 3: Fuse / Chip / KeyCard      (no Battery)
  *     Exit 4: Chip / KeyCard / Battery   (no Fuse)
- * - The UI appears when the player comes within ShowDistance (default: 1 m) of DoorVolume.
- * - Players can click slots for items they own to insert them. (The mouse cursor appears only then.)
+ * - The interaction prompt appears only while the player is close AND targeting the door.
+ * - Pressing Interact opens the shared ExitDoorWidget; clicking owned item slots inserts them.
+ * - Leaving the proximity volume or pressing Escape closes the panel.
  * - Once all three items are inserted, the inherited physical door opens, any
  *   optional LinkedDoor opens, and LinkedEscapeTrigger is enabled.
  *
@@ -94,6 +95,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Exit")
 	static FText GetDefaultItemDisplayName(FName ItemID);
+
+	/** Used by the interaction trace and shared UI to validate proximity. */
+	bool IsPlayerInExitRange(const ACharacterPlayer* Player) const;
+
+	/** Anchor above the door bounds for the world-space interaction prompt. */
+	FVector GetInteractionPromptLocation() const;
+
+	/** Update the existing interaction HUD prompt while the door is focused. */
+	void RefreshInteractionPrompt(ACharacterPlayer* Player);
 
 	UPROPERTY(BlueprintAssignable, Category = "Exit")
 	FOnExitDoorUnlocked OnExitDoorUnlocked;
@@ -242,6 +252,7 @@ private:
 	/** The local player's UI subsystem manages the shared ExitDoorWidget lifetime. */
 	TWeakObjectPtr<UPlayerUISubsystem> RegisteredUISubsystem;
 
+	// True while this door is registered as nearby, not while its panel is open.
 	bool bWidgetShown = false;
 
 	/** Door trigger boxes disabled during locking and their original collision settings. */

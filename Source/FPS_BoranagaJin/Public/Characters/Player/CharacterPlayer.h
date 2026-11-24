@@ -334,10 +334,17 @@ protected:
 	)
 	TObjectPtr<UInputAction> InteractInputAction;
 
+	// Enhanced Input: IA_Escape (Digital / bool), mapped to Escape in IMC.
+	// UI routing belongs to InteractionComponent, not CharacterPlayer.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> EscapeInputAction;
+
 protected:
 	void InputInteract(
 		const FInputActionValue& InputActionValue
 	);
+
+	void InputEscape(const FInputActionValue& InputActionValue);
 
 public:
 	UFUNCTION(BlueprintPure, Category = "Component")

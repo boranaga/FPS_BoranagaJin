@@ -1,6 +1,7 @@
 ﻿#include "Objects/ExitDoor.h"
 
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/InteractionComponent.h"
 #include "Items/InventoryName.h"
 #include "Items/InventorySlot.h"
 #include "Items/InventorySystemComponent.h"
@@ -195,7 +196,7 @@ void AExitDoor::BeginPlay()
 	ProximityVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	ProximityVolume->SetCollisionObjectType(ECC_WorldDynamic);
 	ProximityVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
-	ProximityVolume->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	ProximityVolume->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Overlap);
 	ProximityVolume->SetGenerateOverlapEvents(true);
 
 	// Match DoorVolume expanded by ShowDistance. (Account for scale in the box extent.)
@@ -426,7 +427,7 @@ AActor* AExitDoor::FindNearestDoorActor() const
 
 void AExitDoor::HandleProximityBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: proximity begin overlap with %s"), *GetName(), *GetNameSafe(OtherActor));
+	UE_LOG(LogTemp, Error, TEXT("ExitDoor %s: proximity begin overlap with %s"), *GetName(), *GetNameSafe(OtherActor));
 
 	ACharacterPlayer* Player = Cast<ACharacterPlayer>(OtherActor);
 	if (IsValid(Player) && Player->IsLocallyControlled())
@@ -439,7 +440,7 @@ void AExitDoor::HandleProximityEndOverlap(UPrimitiveComponent* OverlappedCompone
 {
 	if (OtherActor && OtherActor == NearbyPlayer)
 	{
-		UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: proximity end overlap"), *GetName());
+		UE_LOG(LogTemp, Error, TEXT("ExitDoor %s: proximity end overlap"), *GetName());
 		ClearNearbyPlayer();
 	}
 }
@@ -468,22 +469,41 @@ void AExitDoor::SetNearbyPlayer(ACharacterPlayer* Player)
 	// Reflect inventory changes in the UI while the player is nearby.
 	InventoryUpdatedHandle = NearbyPlayer->OnInventoryUpdatedDelegate.AddUObject(this, &AExitDoor::HandleInventoryUpdated);
 
+	// Proximity only registers the door. The panel is opened via Interact.
 	SetWidgetShown(true);
+	if (UInteractionComponent* Interaction = Player->GetInteractionComponent())
+	{
+		Interaction->UpdateInteractionTarget();
+	}
 }
 
 void AExitDoor::ClearNearbyPlayer()
 {
-	if (IsValid(NearbyPlayer) && InventoryUpdatedHandle.IsValid())
+	ACharacterPlayer* Player = NearbyPlayer.Get();
+	if (IsValid(Player) && InventoryUpdatedHandle.IsValid())
 	{
-		NearbyPlayer->OnInventoryUpdatedDelegate.Remove(InventoryUpdatedHandle);
+		Player->OnInventoryUpdatedDelegate.Remove(InventoryUpdatedHandle);
 	}
 	InventoryUpdatedHandle.Reset();
 
-	const bool bWasShown = bWidgetShown;
+	const bool bWasRegistered = bWidgetShown;
 	NearbyPlayer = nullptr;
-	if (bWasShown)
+	if (bWasRegistered)
 	{
-		SetWidgetShown(false);
+		SetWidgetShown(false); // Also closes the panel if this door owned it.
+	}
+
+	// Remove the interaction prompt immediately, without waiting for the next trace.
+	if (IsValid(Player))
+	{
+		if (UInteractionComponent* Interaction = Player->GetInteractionComponent())
+		{
+			if (Interaction->GetCurrentInteractionTarget() == this)
+			{
+				Player->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
+				Interaction->UpdateInteractionTarget();
+			}
+		}
 	}
 }
 
@@ -492,6 +512,34 @@ void AExitDoor::HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySl
 	if (bWidgetShown)
 	{
 		RefreshWidget();
+	}
+}
+
+bool AExitDoor::IsPlayerInExitRange(const ACharacterPlayer* Player) const
+{
+	return IsValid(Player) && IsValid(NearbyPlayer) && NearbyPlayer.Get() == Player && bWidgetShown;
+}
+
+FVector AExitDoor::GetInteractionPromptLocation() const
+{
+	if (IsValid(DoorVolume))
+	{
+		const FBoxSphereBounds& Bounds = DoorVolume->Bounds;
+		return Bounds.Origin + FVector(0.f, 0.f, Bounds.BoxExtent.Z + 35.f);
+	}
+	return GetActorLocation() + FVector(0.f, 0.f, 150.f);
+}
+
+void AExitDoor::RefreshInteractionPrompt(ACharacterPlayer* Player)
+{
+	if (!IsPlayerInExitRange(Player)) { return; }
+	const UInteractionComponent* Interaction = Player->GetInteractionComponent();
+	if (!IsValid(Interaction) || Interaction->GetCurrentInteractionTarget() != this) { return; }
+
+	UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get();
+	if (IsValid(UISubsystem) && !UISubsystem->IsExitDoorUIOpen())
+	{
+		Player->OnInteractionUIUpdatedDelegate.Broadcast(true, GetInteractionPromptLocation());
 	}
 }
 
@@ -576,7 +624,8 @@ void AExitDoor::RefreshWidget()
 	Widget->SetExitData(Title, ViewSlots, Hint, bUnlocked);
 
 	// Cursor and input mode are owned by the same subsystem as the widget.
-	UISubsystem->SetExitDoorCursorWanted(this, !bUnlocked && bHasInsertable);
+	// Keep Escape and the slot buttons usable even when no insertable items remain.
+	UISubsystem->SetExitDoorCursorWanted(this, true);
 }
 
 bool AExitDoor::HasInsertableItem(const ACharacterPlayer* Player) const
@@ -593,6 +642,13 @@ bool AExitDoor::HasInsertableItem(const ACharacterPlayer* Player) const
 
 void AExitDoor::HandleSlotClicked(int32 SlotIndex)
 {
+	UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get();
+	if (!IsValid(UISubsystem) || !UISubsystem->IsActiveExitDoor(this) ||
+		!IsPlayerInExitRange(NearbyPlayer))
+	{
+		return;
+	}
+
 	if (TryInsertSlot(SlotIndex, NearbyPlayer))
 	{
 		CheckUnlock();
@@ -633,12 +689,14 @@ void AExitDoor::Unlock()
 	OnExitDoorUnlocked.Broadcast(this);
 }
 
-// Items can also be inserted using the interaction key. (DoorVolume is hit by traces while locked.)
+// The interaction key opens the puzzle UI. Insertion is handled by slot buttons.
 void AExitDoor::Interact_Implementation(AActor* Interactor)
 {
+	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Interactor);
+	if (!IsPlayerInExitRange(Player)) { return; }
+
 	if (bUnlocked)
 	{
-		// Optional normal door interaction after the exit has been unlocked.
 		if (bAllowManualDoorInteractionAfterUnlock && !bKeepDoorOpenAfterUnlock &&
 			Super::CanInteract_Implementation(Interactor))
 		{
@@ -647,32 +705,24 @@ void AExitDoor::Interact_Implementation(AActor* Interactor)
 		return;
 	}
 
-	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Interactor);
-	if (!IsValid(Player)) { return; }
+	// The InteractionComponent already checked both its camera trace and reach.
+	const UInteractionComponent* Interaction = Player->GetInteractionComponent();
+	if (!IsValid(Interaction) || Interaction->GetCurrentInteractionTarget() != this) { return; }
 
-	bool bInsertedAny = false;
-	for (int32 Index = 0; Index < RequiredSlots.Num(); ++Index)
+	if (UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get())
 	{
-		bInsertedAny |= TryInsertSlot(Index, Player);
+		UISubsystem->OpenExitDoorUI(this, Player);
 	}
-
-	if (bInsertedAny)
-	{
-		CheckUnlock();
-	}
-	RefreshWidget();
 }
 
 bool AExitDoor::CanInteract_Implementation(AActor* Interactor) const
 {
-	if (!IsValid(Cast<ACharacterPlayer>(Interactor)))
-	{
-		return false;
-	}
+	const ACharacterPlayer* Player = Cast<ACharacterPlayer>(Interactor);
+	if (!IsPlayerInExitRange(Player)) { return false; }
 
 	if (!bUnlocked)
 	{
-		// The exit requirements remain usable even if the physical door broke.
+		// The puzzle remains interactive even when the physical door has broken.
 		return true;
 	}
 
@@ -689,15 +739,22 @@ FText AExitDoor::GetInteractionText_Implementation(AActor* Interactor) const
 			: UnlockedHintText;
 	}
 
-	return HasInsertableItem(Cast<ACharacterPlayer>(Interactor)) ? InteractionText : NoItemHintText;
+	// Allow opening the requirements panel even if no required item is owned.
+	return InteractionText;
 }
 
 void AExitDoor::BeginFocus_Implementation(AActor* Interactor)
 {
 	Super::BeginFocus_Implementation(Interactor);
+	RefreshInteractionPrompt(Cast<ACharacterPlayer>(Interactor));
 }
 
 void AExitDoor::EndFocus_Implementation(AActor* Interactor)
 {
 	Super::EndFocus_Implementation(Interactor);
+	ACharacterPlayer* Player = Cast<ACharacterPlayer>(Interactor);
+	if (IsValid(Player) && IsPlayerInExitRange(Player))
+	{
+		Player->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
+	}
 }

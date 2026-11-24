@@ -1,4 +1,9 @@
 ﻿#include "UI/ExitDoorWidget.h"
+#include "PlayerUISubsystem.h"
+#include "Engine/LocalPlayer.h"
+#include "InputCoreTypes.h"
+#include "Input/Events.h"
+#include "Input/Reply.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -40,6 +45,28 @@ void UExitSlotButton::InitSlot(int32 InSlotIndex)
 void UExitSlotButton::HandleClicked()
 {
 	OnSlotButtonClicked.Broadcast(SlotIndex);
+}
+
+void UExitDoorWidget::NativeOnInitialized()
+{
+	Super::NativeOnInitialized();
+	SetIsFocusable(true); // Needed for Escape while using GameAndUI input mode.
+}
+
+FReply UExitDoorWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (InKeyEvent.GetKey() == EKeys::Escape)
+	{
+		ULocalPlayer* LocalPlayer = GetOwningLocalPlayer();
+		UPlayerUISubsystem* UISubsystem = IsValid(LocalPlayer)
+			? LocalPlayer->GetSubsystem<UPlayerUISubsystem>() : nullptr;
+		if (IsValid(UISubsystem) && UISubsystem->IsExitDoorUIOpen())
+		{
+			UISubsystem->CloseExitDoorUI();
+			return FReply::Handled();
+		}
+	}
+	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
 TSharedRef<SWidget> UExitDoorWidget::RebuildWidget()

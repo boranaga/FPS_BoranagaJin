@@ -458,6 +458,16 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 				&ACharacterPlayer::InputInteract
 			);
 		}
+
+		if (EscapeInputAction)
+		{
+			EnhancedInputComponent->BindAction(
+				EscapeInputAction,
+				ETriggerEvent::Started,
+				this,
+				&ACharacterPlayer::InputEscape
+			);
+		}
 	}
 }
 
@@ -1007,4 +1017,13 @@ void ACharacterPlayer::InputInteract(const FInputActionValue& InputActionValue)
 	}
 
 	InteractionComponent->TryInteract();
+}
+
+void ACharacterPlayer::InputEscape(const FInputActionValue& InputActionValue)
+{
+	// The Pawn owns input bindings but knows nothing about UI subsystem state.
+	if (IsValid(InteractionComponent))
+	{
+		InteractionComponent->HandleEscapeInput();
+	}
 }

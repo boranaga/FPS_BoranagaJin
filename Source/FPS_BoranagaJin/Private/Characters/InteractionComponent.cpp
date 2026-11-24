@@ -1,333 +1,256 @@
-#include "Characters/InteractionComponent.h"
+癤�#include "Characters/InteractionComponent.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "PlayerUISubsystem.h"
 
 #include "DrawDebugHelpers.h"
-#include "GameFramework/Character.h"
+#include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/InteractableInterface.h"
 #include "TimerManager.h"
 
 UInteractionComponent::UInteractionComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UInteractionComponent::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	OwnerCharacter = Cast<ACharacterPlayer>(GetOwner());
+    OwnerCharacter = Cast<ACharacterPlayer>(GetOwner());
+    if (!IsValid(OwnerCharacter))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("UInteractionComponent must be owned by ACharacterPlayer. Owner: %s"),
+            *GetNameSafe(GetOwner()));
+        return;
+    }
 
-	if (!OwnerCharacter)
-	{
-		UE_LOG(
-			LogTemp,
-			Error,
-			TEXT(
-				"UInteractionComponent must be attached to an ACharacter. Owner: %s"
-			),
-			*GetNameSafe(GetOwner())
-		);
-
-		return;
-	}
-
-	OwnerPlayerController = Cast<APlayerController>(
-		OwnerCharacter->GetController()
-	);
-
-	/*
-	 * BeginPlay 시점에 Controller가 아직 할당되지 않은 상황을 대비해
-	 * UpdateInteractionTarget()에서도 다시 가져옵니다.
-	 */
-	GetWorld()->GetTimerManager().SetTimer(
-		InteractionTraceTimerHandle,
-		this,
-		&UInteractionComponent::UpdateInteractionTarget,
-		TraceInterval,
-		true,
-		0.f
-	);
+    OwnerPlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().SetTimer(
+            InteractionTraceTimerHandle, this,
+            &UInteractionComponent::UpdateInteractionTarget,
+            FMath::Max(0.01f, TraceInterval), true, 0.f);
+    }
 }
 
-void UInteractionComponent::EndPlay(
-	const EEndPlayReason::Type EndPlayReason
-)
+void UInteractionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().ClearTimer(
-			InteractionTraceTimerHandle
-		);
-	}
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(InteractionTraceTimerHandle);
+    }
+    ClearInteractionTarget();
+    Super::EndPlay(EndPlayReason);
+}
 
-	ClearInteractionTarget();
+UPlayerUISubsystem* UInteractionComponent::ResolvePlayerUISubsystem() const
+{
+    // Prefer the live controller to the cached one (possession can happen after BeginPlay).
+    const APlayerController* PC = IsValid(OwnerCharacter)
+        ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+    if (!IsValid(PC))
+    {
+        PC = OwnerPlayerController.Get();
+    }
+    if (!IsValid(PC)) { return nullptr; }
 
-	Super::EndPlay(EndPlayReason);
+    const ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    return LocalPlayer ? LocalPlayer->GetSubsystem<UPlayerUISubsystem>() : nullptr;
+}
+
+bool UInteractionComponent::IsWorldInteractionBlocked() const
+{
+    const UPlayerUISubsystem* UI = ResolvePlayerUISubsystem();
+    return IsValid(UI) && UI->IsExitDoorUIOpen();
 }
 
 void UInteractionComponent::TryInteract()
 {
-	//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::TryInteract()"));
+    // CharacterPlayer does not inspect UI; this component rejects world interactions.
+    if (IsWorldInteractionBlocked()) { return; }
 
-	if (!IsValid(CurrentInteractionTarget))
-	{
-		//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::TryInteract() 1"));
-		return;
-	}
+    if (!IsValid(CurrentInteractionTarget)) { return; }
+    if (!CanInteractWithActor(CurrentInteractionTarget))
+    {
+        ClearInteractionTarget();
+        return;
+    }
 
-	if (!CanInteractWithActor(CurrentInteractionTarget))
-	{
-		ClearInteractionTarget();
-		//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::TryInteract() 2"));
-		return;
-	}
+    IInteractableInterface::Execute_Interact(CurrentInteractionTarget, GetOwner());
+}
 
-	IInteractableInterface::Execute_Interact(CurrentInteractionTarget, GetOwner());
+void UInteractionComponent::HandleEscapeInput()
+{
+    UPlayerUISubsystem* UI = ResolvePlayerUISubsystem();
+    if (!IsValid(UI)) { return; }
+
+    // ExitDoor editing has precedence over PauseMenu.
+    if (UI->IsExitDoorUIOpen())
+    {
+        UI->CloseExitDoorUI();
+        return;
+    }
+
+    // Preserve any existing game-over UI rather than stacking PauseMenu on top.
+    if (UI->IsGameOverUIOpened()) { return; }
+
+    UI->TogglePauseMenu();
 }
 
 void UInteractionComponent::UpdateInteractionTarget()
 {
-	if (!IsValid(OwnerCharacter))
-	{
-		return;
-	}
+    if (!IsValid(OwnerCharacter)) { return; }
 
-	if (!IsValid(OwnerPlayerController))
-	{
-		OwnerPlayerController = Cast<APlayerController>(
-			OwnerCharacter->GetController()
-		);
-	}
+    if (!IsValid(OwnerPlayerController))
+    {
+        OwnerPlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+    }
 
-	FHitResult HitResult;
+    // A modal ExitDoor widget owns interaction while visible.
+    if (IsWorldInteractionBlocked())
+    {
+        ClearInteractionTarget();
+        return;
+    }
 
-	if (!PerformInteractionTrace(HitResult))
-	{
-		//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::UpdateInteractionTarget() 1"));
-		ClearInteractionTarget();
-		return;
-	}
+    FHitResult HitResult;
+    if (!PerformInteractionTrace(HitResult))
+    {
+        ClearInteractionTarget();
+        return;
+    }
 
-	AActor* HitActor = HitResult.GetActor();
+    AActor* HitActor = HitResult.GetActor();
+    if (!IsActorInteractable(HitActor) || !CanInteractWithActor(HitActor))
+    {
+        ClearInteractionTarget();
+        return;
+    }
 
-	if (!IsActorInteractable(HitActor))
-	{
-		//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::UpdateInteractionTarget() 2"));
-		ClearInteractionTarget();
-		return;
-	}
-
-	if (!CanInteractWithActor(HitActor))
-	{
-		//UE_LOG(LogTemp, Error, TEXT("void UInteractionComponent::UpdateInteractionTarget() 3"));
-		ClearInteractionTarget();
-		return;
-	}
-
-	SetInteractionTarget(HitActor);
+    SetInteractionTarget(HitActor);
 }
 
 bool UInteractionComponent::PerformInteractionTrace(FHitResult& OutHitResult) const
 {
-	if (!GetWorld() || !IsValid(OwnerCharacter))
-	{
-		return false;
-	}
+    if (!GetWorld() || !IsValid(OwnerCharacter)) { return false; }
 
-	const FVector TraceStart = GetTraceStart();
-	const FVector TraceEnd =
-		TraceStart + GetTraceDirection() * InteractionDistance;
+    const FVector TraceStart = GetTraceStart();
+    const FVector TraceEnd = TraceStart + GetTraceDirection() * InteractionDistance;
 
-	FCollisionQueryParams QueryParams(
-		SCENE_QUERY_STAT(InteractionTrace),
-		bTraceComplex,
-		GetOwner()
-	);
+    FCollisionQueryParams QueryParams(
+        SCENE_QUERY_STAT(InteractionTrace), bTraceComplex, GetOwner());
+    QueryParams.AddIgnoredActor(GetOwner());
 
-	QueryParams.AddIgnoredActor(GetOwner());
-
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(
-		OutHitResult,
-		TraceStart,
-		TraceEnd,
-		InteractionTraceChannel,
-		QueryParams
-	);
+    const bool bHit = GetWorld()->LineTraceSingleByChannel(
+        OutHitResult, TraceStart, TraceEnd, InteractionTraceChannel, QueryParams);
 
 #if ENABLE_DRAW_DEBUG
-	if (bDrawDebugTrace)
-	{
-		const FColor DebugColor = bHit
-			? FColor::Green
-			: FColor::Red;
-
-		DrawDebugLine(
-			GetWorld(),
-			TraceStart,
-			TraceEnd,
-			DebugColor,
-			false,
-			TraceInterval,
-			0,
-			1.5f
-		);
-
-		if (bHit)
-		{
-			DrawDebugSphere(
-				GetWorld(),
-				OutHitResult.ImpactPoint,
-				8.f,
-				12,
-				DebugColor,
-				false,
-				TraceInterval
-			);
-		}
-	}
+    if (bDrawDebugTrace)
+    {
+        const FColor Color = bHit ? FColor::Green : FColor::Red;
+        DrawDebugLine(GetWorld(), TraceStart, TraceEnd, Color,
+            false, TraceInterval, 0, 1.5f);
+        if (bHit)
+        {
+            DrawDebugSphere(GetWorld(), OutHitResult.ImpactPoint, 8.f,
+                12, Color, false, TraceInterval);
+        }
+    }
 #endif
 
-	return bHit;
+    return bHit;
 }
 
-void UInteractionComponent::SetInteractionTarget(
-	AActor* NewTarget
-)
+void UInteractionComponent::SetInteractionTarget(AActor* NewTarget)
 {
-	if (CurrentInteractionTarget == NewTarget)
-	{
-		return;
-	}
+    if (CurrentInteractionTarget == NewTarget) { return; }
 
-	if (IsValid(CurrentInteractionTarget))
-	{
-		IInteractableInterface::Execute_EndFocus(
-			CurrentInteractionTarget,
-			GetOwner()
-		);
-	}
+    if (IsValid(CurrentInteractionTarget))
+    {
+        IInteractableInterface::Execute_EndFocus(CurrentInteractionTarget, GetOwner());
+    }
 
-	CurrentInteractionTarget = NewTarget;
+    CurrentInteractionTarget = NewTarget;
 
-	if (IsValid(CurrentInteractionTarget))
-	{
-		IInteractableInterface::Execute_BeginFocus(
-			CurrentInteractionTarget,
-			GetOwner()
-		);
-	}
+    if (IsValid(CurrentInteractionTarget))
+    {
+        IInteractableInterface::Execute_BeginFocus(CurrentInteractionTarget, GetOwner());
+    }
 
-	OnInteractionTargetChanged.Broadcast(
-		CurrentInteractionTarget
-	);
+    OnInteractionTargetChanged.Broadcast(CurrentInteractionTarget);
 }
 
 void UInteractionComponent::ClearInteractionTarget()
 {
-	if (!IsValid(CurrentInteractionTarget))
-	{
-		CurrentInteractionTarget = nullptr;
-		return;
-	}
+    if (!IsValid(CurrentInteractionTarget))
+    {
+        CurrentInteractionTarget = nullptr;
+        return;
+    }
 
-	IInteractableInterface::Execute_EndFocus(
-		CurrentInteractionTarget,
-		GetOwner()
-	);
-
-	CurrentInteractionTarget = nullptr;
-
-	OnInteractionTargetChanged.Broadcast(nullptr);
+    IInteractableInterface::Execute_EndFocus(CurrentInteractionTarget, GetOwner());
+    CurrentInteractionTarget = nullptr;
+    OnInteractionTargetChanged.Broadcast(nullptr);
 }
 
-bool UInteractionComponent::IsActorInteractable(
-	AActor* TargetActor
-) const
+bool UInteractionComponent::IsActorInteractable(AActor* TargetActor) const
 {
-	return IsValid(TargetActor)
-		&& TargetActor->Implements<UInteractableInterface>();
+    return IsValid(TargetActor) && TargetActor->Implements<UInteractableInterface>();
 }
 
-bool UInteractionComponent::CanInteractWithActor(
-	AActor* TargetActor
-) const
+bool UInteractionComponent::CanInteractWithActor(AActor* TargetActor) const
 {
-	if (!IsActorInteractable(TargetActor))
-	{
-		return false;
-	}
-
-	return IInteractableInterface::Execute_CanInteract(
-		TargetActor,
-		GetOwner()
-	);
+    return IsActorInteractable(TargetActor) &&
+        IInteractableInterface::Execute_CanInteract(TargetActor, GetOwner());
 }
 
 FVector UInteractionComponent::GetTraceStart() const
 {
-	if (IsValid(OwnerPlayerController))
-	{
-		FVector ViewLocation;
-		FRotator ViewRotation;
-
-		OwnerPlayerController->GetPlayerViewPoint(
-			ViewLocation,
-			ViewRotation
-		);
-
-		return ViewLocation;
-	}
-
-	return OwnerCharacter
-		? OwnerCharacter->GetPawnViewLocation()
-		: GetOwner()->GetActorLocation();
+    if (IsValid(OwnerPlayerController))
+    {
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        OwnerPlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+        return ViewLocation;
+    }
+    return IsValid(OwnerCharacter)
+        ? OwnerCharacter->GetPawnViewLocation() : GetOwner()->GetActorLocation();
 }
 
 FVector UInteractionComponent::GetTraceDirection() const
 {
-	if (IsValid(OwnerPlayerController))
-	{
-		FVector ViewLocation;
-		FRotator ViewRotation;
-
-		OwnerPlayerController->GetPlayerViewPoint(
-			ViewLocation,
-			ViewRotation
-		);
-
-		return ViewRotation.Vector();
-	}
-
-	return OwnerCharacter
-		? OwnerCharacter->GetBaseAimRotation().Vector()
-		: GetOwner()->GetActorForwardVector();
+    if (IsValid(OwnerPlayerController))
+    {
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        OwnerPlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+        return ViewRotation.Vector();
+    }
+    return IsValid(OwnerCharacter)
+        ? OwnerCharacter->GetBaseAimRotation().Vector()
+        : GetOwner()->GetActorForwardVector();
 }
 
 AActor* UInteractionComponent::GetCurrentInteractionTarget() const
 {
-	return CurrentInteractionTarget;
+    return CurrentInteractionTarget.Get();
 }
 
 bool UInteractionComponent::HasInteractionTarget() const
 {
-	return IsValid(CurrentInteractionTarget);
+    return IsValid(CurrentInteractionTarget);
 }
 
 FText UInteractionComponent::GetCurrentInteractionText() const
 {
-	if (!IsValid(CurrentInteractionTarget))
-	{
-		return FText::GetEmpty();
-	}
-
-	if (!CurrentInteractionTarget->Implements<UInteractableInterface>())
-	{
-		return FText::GetEmpty();
-	}
-
-	return IInteractableInterface::Execute_GetInteractionText(
-		CurrentInteractionTarget,
-		GetOwner()
-	);
+    if (!IsValid(CurrentInteractionTarget) ||
+        !CurrentInteractionTarget->Implements<UInteractableInterface>())
+    {
+        return FText::GetEmpty();
+    }
+    return IInteractableInterface::Execute_GetInteractionText(
+        CurrentInteractionTarget, GetOwner());
 }
