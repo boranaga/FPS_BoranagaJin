@@ -1,6 +1,7 @@
 #include "Objects/DestructibleDoor.h"
 
 #include "Components/SceneComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
 
@@ -12,6 +13,27 @@ ADestructibleDoor::ADestructibleDoor()
 	DoorPivot = CreateDefaultSubobject<USceneComponent>(TEXT("DoorPivot"));
 	DoorPivot->SetupAttachment(SceneRoot);
 
+	// Physical doors default to keeping all destruction states aligned.
+	bSynchronizeMeshTransforms = true;
+
+	// A physical door must be movable, including its simulated debris.
+	DoorPivot->SetMobility(EComponentMobility::Movable);
+	IntactMesh->SetMobility(EComponentMobility::Movable);
+	BrokenMesh->SetMobility(EComponentMobility::Movable);
+	FracturedMesh->SetMobility(EComponentMobility::Movable);
+
+	// An additional interaction hit area, independent of the moving door mesh.
+	InteractionVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionVolume"));
+	InteractionVolume->SetupAttachment(SceneRoot);
+	InteractionVolume->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
+	InteractionVolume->SetBoxExtent(FVector(35.f, 110.f, 110.f));
+	InteractionVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	InteractionVolume->SetCollisionObjectType(ECC_WorldDynamic);
+	InteractionVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
+	InteractionVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	InteractionVolume->SetGenerateOverlapEvents(false);
+	InteractionVolume->SetCanEverAffectNavigation(false);
+
 	/*
 	 * 기존 ADestructibleObject에서는 IntactMesh와 BrokenMesh가
 	 * SceneRoot에 붙어 있습니다.
@@ -21,11 +43,64 @@ ADestructibleDoor::ADestructibleDoor()
 	 */
 	IntactMesh->SetupAttachment(DoorPivot);
 	BrokenMesh->SetupAttachment(DoorPivot);
+	FracturedMesh->SetupAttachment(DoorPivot);
+}
+
+void ADestructibleDoor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// Rebuild old Blueprints that still keep FracturedMesh under SceneRoot.
+	// All three meshes must inherit DoorPivot movement, even without sync.
+	if (IsValid(FracturedMesh) && IsValid(DoorPivot) &&
+		FracturedMesh->GetAttachParent() != DoorPivot &&
+		!FracturedMesh->IsSimulatingPhysics())
+	{
+		FracturedMesh->AttachToComponent(
+			DoorPivot, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	SynchronizeDestructionMeshTransforms();
+	UpdateInteractionVolumeCollision();
+}
+
+void ADestructibleDoor::SetInteractionVolumeEnabled(bool bEnabled)
+{
+	bEnableInteractionVolume = bEnabled;
+	UpdateInteractionVolumeCollision();
+}
+
+void ADestructibleDoor::UpdateInteractionVolumeCollision()
+{
+	if (!IsValid(InteractionVolume)) { return; }
+
+	// The box participates only in interaction raycasts. It never blocks
+	// player movement, projectiles on other channels, or overlap detection.
+	InteractionVolume->SetCollisionObjectType(ECC_WorldDynamic);
+	InteractionVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
+	InteractionVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	InteractionVolume->SetGenerateOverlapEvents(false);
+
+	const bool bShouldTrace = bEnableInteractionVolume && !bDestroyed &&
+		(bInteractionVolumeActiveWhenOpen || !bIsOpen);
+	InteractionVolume->SetCollisionEnabled(
+		bShouldTrace ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 }
 
 void ADestructibleDoor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Native components and pre-existing Blueprint instances should both
+	// use the same moving pivot. Avoid attaching an active Chaos simulation.
+	if (IsValid(FracturedMesh) && IsValid(DoorPivot) &&
+		FracturedMesh->GetAttachParent() != DoorPivot &&
+		!FracturedMesh->IsSimulatingPhysics())
+	{
+		FracturedMesh->AttachToComponent(
+			DoorPivot, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	SynchronizeDestructionMeshTransforms();
+
 	if (IsValid(IntactMesh))
 	{
 		bInitialIntactNavigationRelevant = IntactMesh->CanEverAffectNavigation();
@@ -63,6 +138,8 @@ void ADestructibleDoor::BeginPlay()
 	}
 
 	SetActorTickEnabled(false);
+	SynchronizeDestructionMeshTransforms();
+	UpdateInteractionVolumeCollision();
 }
 
 void ADestructibleDoor::Tick(float DeltaTime)
@@ -124,6 +201,7 @@ void ADestructibleDoor::SetDoorOpen(bool bOpen)
 	bIsOpen = bOpen;
 	bIsMoving = true;
 
+	UpdateInteractionVolumeCollision();
 	SetActorTickEnabled(true);
 }
 
@@ -173,6 +251,7 @@ void ADestructibleDoor::OnAfterLoad()
 			FracturedMesh->SetCanEverAffectNavigation(false);
 		}
 	}
+	UpdateInteractionVolumeCollision();
 }
 
 void ADestructibleDoor::RestoreDestructibleObject()
@@ -182,6 +261,7 @@ void ADestructibleDoor::RestoreDestructibleObject()
 		IntactMesh->SetCanEverAffectNavigation(bInitialIntactNavigationRelevant);
 	if (IsValid(BrokenMesh)) BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	if (IsValid(FracturedMesh)) FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	UpdateInteractionVolumeCollision();
 }
 
 FVector ADestructibleDoor::GetEnemyBreachSurfacePoint(const FVector& FromLocation) const
@@ -226,6 +306,7 @@ void ADestructibleDoor::BreakObject(
 		HitLocation,
 		HitDirection
 	);
+	UpdateInteractionVolumeCollision();
 
 	if (bClearBrokenDoorPath)
 	{

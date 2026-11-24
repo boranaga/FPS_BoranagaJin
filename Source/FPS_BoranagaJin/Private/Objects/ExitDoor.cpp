@@ -15,13 +15,11 @@
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/ShapeComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "Components/TimelineComponent.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
-#include "Materials/MaterialInterface.h"
 #include "TimerManager.h"
 
 namespace
@@ -104,11 +102,6 @@ AExitDoor::AExitDoor()
 	// Parent ADestructibleDoor owns the root, pivot, and destructive mesh components.
 	// Keep ticking available for the inherited open/close interpolation.
 
-	DoorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DoorMesh"));
-	DoorMesh->SetupAttachment(SceneRoot);
-	DoorMesh->SetVisibility(false);
-	DoorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
 	DoorVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("DoorVolume"));
 	DoorVolume->SetupAttachment(SceneRoot);
 	DoorVolume->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
@@ -134,36 +127,9 @@ AExitDoor::AExitDoor()
 	ApplyExitPreset();
 }
 
-void AExitDoor::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-
-	// Migration bridge for Blueprints that populated the old DoorMesh component.
-	// New levels should assign their mesh directly to inherited IntactMesh.
-	if (IsValid(DoorMesh) && IsValid(IntactMesh))
-	{
-		if (!IntactMesh->GetStaticMesh() && DoorMesh->GetStaticMesh())
-		{
-			IntactMesh->SetStaticMesh(DoorMesh->GetStaticMesh());
-			IntactMesh->SetWorldTransform(DoorMesh->GetComponentTransform());
-
-			for (int32 Index = 0; Index < DoorMesh->GetNumMaterials(); ++Index)
-			{
-				if (UMaterialInterface* Material = DoorMesh->GetMaterial(Index))
-				{
-					IntactMesh->SetMaterial(Index, Material);
-				}
-			}
-		}
-
-		DoorMesh->SetVisibility(false);
-		DoorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
-}
-
 void AExitDoor::BeginPlay()
 {
-	// Ignore bStartsOpen on legacy Blueprints: exit requirements must be met first.
+	// The exit puzzle always starts closed, regardless of Blueprint defaults.
 	bStartsOpen = false;
 	Super::BeginPlay();
 
@@ -180,9 +146,8 @@ void AExitDoor::BeginPlay()
 
 	if (bAutoLinkNearby)
 	{
-		// An exit without an intact physical mesh can still use a legacy external door.
-		const bool bNeedsExternalDoor = bAutoLinkExternalDoor || !IsValid(IntactMesh) || !IntactMesh->GetStaticMesh();
-		if (bNeedsExternalDoor && !LinkedDoor) { LinkedDoor = FindNearestDoorActor(); }
+		// IntactMesh is the primary physical door. Additional door linking is opt-in.
+		if (bAutoLinkExternalDoor && !LinkedDoor) { LinkedDoor = FindNearestDoorActor(); }
 		if (!LinkedEscapeTrigger) { LinkedEscapeTrigger = FindNearestActor<AMapEscapeTrigger>(this, AutoLinkRadius); }
 	}
 

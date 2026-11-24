@@ -13,7 +13,6 @@ class UPrimitiveComponent;
 class UExitDoorWidget;
 class UPlayerUISubsystem;
 class UShapeComponent;
-class UStaticMeshComponent;
 class UTexture2D;
 struct FInventorySlot;
 
@@ -51,7 +50,7 @@ struct FPS_BORANAGAJIN_API FExitRequirementSlot
  * - Once all three items are inserted, the inherited physical door opens, any
  *   optional LinkedDoor opens, and LinkedEscapeTrigger is enabled.
  *
- * Inherits physical door movement, damage, and destruction from ADestructibleDoor.
+ * Uses the inherited IntactMesh for the physical door, movement, damage, and destruction.
  * Uses the existing inventory, door, and escape trigger APIs.
  * - Items are identified by ItemID (FName), not EItemName.
  * - While locked, DoorVolume intercepts interaction traces and the overridden
@@ -66,7 +65,6 @@ public:
 	AExitDoor();
 
 protected:
-	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 #if WITH_EDITOR
@@ -143,14 +141,6 @@ private:
 
 protected:
 	/**
-	 * Legacy mesh retained for existing ExitDoor Blueprints.
-	 * When IntactMesh is unset, copy this mesh into inherited IntactMesh.
-	 * The legacy component itself does not render or collide.
-	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
-	TObjectPtr<UStaticMeshComponent> DoorMesh;
-
-	/**
 	 * Area occupied by the door. The UI appears within ShowDistance of this box surface.
 	 * While locked, this component blocks interaction traces (Visibility) for this actor.
 	 * Adjust Box Extent to cover the entire door with a small margin.
@@ -214,7 +204,7 @@ protected:
 
 	/**
 	 * Automatically links the nearest escape trigger when unassigned.
-	 * External door auto-linking is opt-in unless no physical door mesh is assigned.
+	 * Linking an additional external door requires bAutoLinkExternalDoor.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit|Link")
 	bool bAutoLinkNearby = true;

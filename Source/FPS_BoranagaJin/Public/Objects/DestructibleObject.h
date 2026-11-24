@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/SceneComponent.h"
 #include "Objects/DestructionMeshType.h"
 #include "Interface/DamageInterface.h"
 #include "Interface/SaveableActorInterface.h"
@@ -21,6 +22,33 @@ class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageabl
 	GENERATED_BODY()
 public:
 	ADestructibleObject();
+
+	/** Synchronizes inactive destruction meshes to IntactMesh. */
+	UFUNCTION(BlueprintCallable, Category = "Destruction|Mesh Transform")
+	void SynchronizeDestructionMeshTransforms();
+
+	/** Enable or disable transform synchronization at runtime. */
+	UFUNCTION(BlueprintCallable, Category = "Destruction|Mesh Transform")
+	void SetMeshTransformSynchronizationEnabled(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category = "Destruction|Mesh Transform")
+	bool IsMeshTransformSynchronizationEnabled() const { return bSynchronizeMeshTransforms; }
+
+protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
+	/** Called whenever IntactMesh's component transform changes. */
+	void HandleIntactMeshTransformUpdated(USceneComponent* UpdatedComponent,
+		EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport);
+
+	/** Sync a single inactive output mesh, including immediately before activation. */
+	void SynchronizeOneDestructionMesh(USceneComponent* TargetMesh);
 
 #pragma region SaveableActorInterface
 #if WITH_EDITOR
@@ -100,6 +128,21 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Component")
 	UStaticMeshComponent* BrokenMesh;
+
+	/**
+	 * If enabled, IntactMesh drives the transforms of inactive BrokenMesh and
+	 * FracturedMesh. Turn this off to keep individual Blueprint offsets.
+	 * Defaults to off for existing DestructibleObject assets; DestructibleDoor
+	 * enables it by default so its three meshes move together.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Mesh Transform")
+	bool bSynchronizeMeshTransforms = false;
+
+private:
+	/** Prevents nested transform updates from rewriting simulated debris. */
+	bool bSynchronizingMeshTransforms = false;
+
+protected:
 
 	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Destruction")
 	float MaxHealth = 10.f;

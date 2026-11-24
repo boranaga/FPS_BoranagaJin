@@ -2,6 +2,8 @@
 #include "Objects/FireAreaComponent.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
@@ -47,6 +49,122 @@ ADestructibleObject::ADestructibleObject()
 	{
 		InstanceID = FGuid::NewGuid();
 	}
+}
+
+
+void ADestructibleObject::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+
+	// This delegate also detects direct edits to the IntactMesh component
+	// in a Blueprint viewport and runtime changes made by gameplay code.
+	if (IsValid(IntactMesh))
+	{
+		IntactMesh->TransformUpdated.RemoveAll(this);
+		IntactMesh->TransformUpdated.AddUObject(
+			this, &ADestructibleObject::HandleIntactMeshTransformUpdated);
+	}
+}
+
+void ADestructibleObject::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	SynchronizeDestructionMeshTransforms();
+}
+
+void ADestructibleObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (IsValid(IntactMesh))
+	{
+		IntactMesh->TransformUpdated.RemoveAll(this);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+#if WITH_EDITOR
+void ADestructibleObject::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	// Called when bSynchronizeMeshTransforms changes in actor Details.
+	// Component transform edits also reach the TransformUpdated delegate.
+	SynchronizeDestructionMeshTransforms();
+}
+#endif
+
+void ADestructibleObject::HandleIntactMeshTransformUpdated(
+	USceneComponent* UpdatedComponent,
+	EUpdateTransformFlags UpdateTransformFlags,
+	ETeleportType Teleport)
+{
+	if (UpdatedComponent == IntactMesh)
+	{
+
+		UE_LOG(LogTemp, Error, TEXT("void ADestructibleObject::HandleIntactMeshTransformUpdated !!!"));
+		SynchronizeDestructionMeshTransforms();
+	}
+}
+
+void ADestructibleObject::SetMeshTransformSynchronizationEnabled(bool bEnabled)
+{
+	bSynchronizeMeshTransforms = bEnabled;
+	SynchronizeDestructionMeshTransforms();
+}
+
+void ADestructibleObject::SynchronizeOneDestructionMesh(USceneComponent* TargetMesh)
+{
+	if (!bSynchronizeMeshTransforms || !IsValid(IntactMesh) || !IsValid(TargetMesh) ||
+		TargetMesh == IntactMesh || bSynchronizingMeshTransforms)
+	{
+		return;
+	}
+
+	// Never teleport a running Chaos collection or a simulated broken mesh.
+	if (const UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(TargetMesh))
+	{
+		if (Primitive->IsSimulatingPhysics()) { return; }
+	}
+
+	TGuardValue<bool> SyncGuard(bSynchronizingMeshTransforms, true);
+
+	// Matching parents: make the editable relative transforms identical.
+	// Different parents: preserve an identical world transform instead.
+	if (TargetMesh->GetAttachParent() == IntactMesh->GetAttachParent() &&
+		TargetMesh->IsUsingAbsoluteLocation() == IntactMesh->IsUsingAbsoluteLocation() &&
+		TargetMesh->IsUsingAbsoluteRotation() == IntactMesh->IsUsingAbsoluteRotation() &&
+		TargetMesh->IsUsingAbsoluteScale() == IntactMesh->IsUsingAbsoluteScale())
+	{
+		const FTransform SourceRelative = IntactMesh->GetRelativeTransform();
+		if (!TargetMesh->GetRelativeTransform().Equals(SourceRelative))
+		{
+			TargetMesh->SetRelativeTransform(SourceRelative, false, nullptr,
+				ETeleportType::TeleportPhysics);
+		}
+	}
+	else
+	{
+		const FTransform SourceWorld = IntactMesh->GetComponentTransform();
+		if (!TargetMesh->GetComponentTransform().Equals(SourceWorld))
+		{
+			TargetMesh->SetWorldTransform(SourceWorld, false, nullptr,
+				ETeleportType::TeleportPhysics);
+		}
+	}
+}
+
+void ADestructibleObject::SynchronizeDestructionMeshTransforms()
+{
+	// Once fractured, Chaos owns the fragment transforms until restoration.
+	// BreakStaticMesh/BreakGeometryCollection explicitly position their mesh
+	// just before enabling physics, including during save-game load.
+	if (!bSynchronizeMeshTransforms || bDestroyed || bSynchronizingMeshTransforms)
+	{
+		return;
+	}
+
+	SynchronizeOneDestructionMesh(BrokenMesh);
+	SynchronizeOneDestructionMesh(FracturedMesh);
 }
 
 #if WITH_EDITOR
@@ -96,7 +214,23 @@ void ADestructibleObject::OnAfterLoad()
 			FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			FracturedMesh->SetSimulatePhysics(false);
 		}
+		// Sync only after any previously simulated debris is deactivated.
+		SynchronizeDestructionMeshTransforms();
 		return;
+	}
+
+	// Clear previous simulation before aligning the newly loaded broken state.
+	if (BrokenMesh)
+	{
+		BrokenMesh->SetSimulatePhysics(false);
+		BrokenMesh->SetVisibility(false);
+		BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+	if (FracturedMesh)
+	{
+		FracturedMesh->SetSimulatePhysics(false);
+		FracturedMesh->SetVisibility(false);
+		FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
 	if (IntactMesh)
@@ -137,6 +271,8 @@ void ADestructibleObject::SetRuntimeSpawned(bool bIsRuntimeSpawned)
 void ADestructibleObject::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SynchronizeDestructionMeshTransforms();
 
 	CurrentHealth = MaxHealth;
 	CurrentDurability = CurrentHealth;
@@ -260,6 +396,8 @@ void ADestructibleObject::BreakObject(const FVector& HitLocation, const FVector&
 
 	StopBurning();
 
+	// Capture any last runtime/editor transform before the intact state disappears.
+	SynchronizeDestructionMeshTransforms();
 	bDestroyed = true;
 	bBrokenMeshHidden = false;
 	CurrentHealth = 0.f;
@@ -465,12 +603,9 @@ void ADestructibleObject::BreakStaticMesh(
 		return;
 	}
 
-	if (IntactMesh)
-	{
-		BrokenMesh->SetWorldTransform(
-			IntactMesh->GetComponentTransform()
-		);
-	}
+	// Position exactly at the intact mesh before enabling rigid-body physics.
+	// Disabled synchronization preserves the designer's independent offset.
+	SynchronizeOneDestructionMesh(BrokenMesh);
 
 	BrokenMesh->SetVisibility(true);
 	BrokenMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -496,10 +631,8 @@ void ADestructibleObject::BreakGeometryCollection(
 		return;
 	}
 
-	if (IntactMesh)
-	{
-		FracturedMesh->SetWorldTransform(IntactMesh->GetComponentTransform());
-	}
+	// Align the collection's initial transform before Chaos simulates pieces.
+	SynchronizeOneDestructionMesh(FracturedMesh);
 
 	FracturedMesh->SetVisibility(true);
 	FracturedMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -639,6 +772,8 @@ void ADestructibleObject::RestoreDestructibleObject()
 	CurrentDurability = CurrentHealth;
 	bDestroyed = false;
 	bBrokenMeshHidden = false;
+	// Physics is off; restore the authored mesh alignment for the next break.
+	SynchronizeDestructionMeshTransforms();
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
 	if (IntactMesh)

@@ -6,6 +6,7 @@
 #include "DestructibleDoor.generated.h"
 
 class USceneComponent;
+class UBoxComponent;
 
 UENUM(BlueprintType)
 enum class EDoorOpenType : uint8
@@ -29,6 +30,7 @@ class FPS_BORANAGAJIN_API ADestructibleDoor : public ADestructibleObject, public
 public:
 	ADestructibleDoor();
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 public:
@@ -44,6 +46,14 @@ public:
 	bool IsDoorOpen() const;
 	UFUNCTION(BlueprintPure, Category = "Door")
 	bool IsDoorMoving() const;
+
+	/** The extra traceable region; the intact door mesh remains independently traceable. */
+	UFUNCTION(BlueprintPure, Category = "Door|Interaction")
+	UBoxComponent* GetInteractionVolume() const { return InteractionVolume; }
+
+	/** Enable/disable the additional interaction region without changing mesh collision. */
+	UFUNCTION(BlueprintCallable, Category = "Door|Interaction")
+	void SetInteractionVolumeEnabled(bool bEnabled);
 
 	/** Only closed, intact, weakened doors can be breached by Enemy AI. */
 	UFUNCTION(BlueprintPure, Category = "Door|Enemy AI")
@@ -78,6 +88,9 @@ protected:
 protected:
 	virtual void BreakObject(const FVector& HitLocation, const FVector& HitDirection) override;
 
+	/** Keeps the extra trace collision in sync with destruction and door state. */
+	void UpdateInteractionVolumeCollision();
+
 	void UpdateSlidingDoor(float DeltaTime);
 	void UpdateRotatingDoor(float DeltaTime);
 
@@ -93,6 +106,27 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door|Component")
 	TObjectPtr<USceneComponent> DoorPivot;
+
+	/**
+	 * Optional box hit by the same Visibility trace as IntactMesh.
+	 * Attached to SceneRoot so the doorway region does not move with DoorPivot.
+	 * Resize/reposition this component in the Blueprint editor.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door|Interaction")
+	TObjectPtr<UBoxComponent> InteractionVolume;
+
+	/** Enables Visibility trace hits on InteractionVolume. Does not affect IntactMesh. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Interaction")
+	bool bEnableInteractionVolume = true;
+
+	/**
+	 * When true, InteractionVolume also blocks Visibility traces while the door is open.
+	 * This allows interacting with an open door's empty doorway, but can occlude
+	 * unrelated Visibility traces (such as AI sight). Disable if undesired.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Interaction",
+		meta = (EditCondition = "bEnableInteractionVolume"))
+	bool bInteractionVolumeActiveWhenOpen = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
 	EDoorOpenType DoorOpenType = EDoorOpenType::Rotate;
