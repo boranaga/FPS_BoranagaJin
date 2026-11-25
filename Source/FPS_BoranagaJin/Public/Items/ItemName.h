@@ -19,7 +19,10 @@ enum class EItemName : uint8
 	ItemName_FlashLight UMETA(DisplayName = "FlashLight"),
 	ItemName_Battery UMETA(DisplayName = "Battery"),
 	ItemName_Dummy UMETA(DisplayName = "DummyItem"),
-	ItemName_Dummy_2 UMETA(DisplayName = "DummyItem_2"),
+	//ItemName_ExitDoorBattery UMETA(DisplayName = "Battery"),
+	ItemName_ExitDoor_KeyCard UMETA(DisplayName = "KeyCard"),
+	ItemName_ExitDoor_Fuse UMETA(DisplayName = "Fuse"),
+	ItemName_ExitDoor_Chip UMETA(DisplayName = "Chip"),
 	ItemName_None UMETA(DisplayName = "None")
 };
 ENUM_RANGE_BY_FIRST_AND_LAST(EItemName, EItemName::ItemName_Base, EItemName::ItemName_None);

@@ -28,10 +28,10 @@ namespace
 	// Names must match the ItemID values in the item Blueprints.
 	const TCHAR* const GExitItemOrder[] =
 	{
-		TEXT("KeyCard"),
+		TEXT("ExitDoor_KeyCard"),
 		TEXT("Battery"),
-		TEXT("Fuse"),
-		TEXT("Chip")
+		TEXT("ExitDoor_Fuse"),
+		TEXT("ExitDoor_Chip")
 	};
 
 	// Read and modify only the publicly exposed slot array; do not change the inventory class.
@@ -237,10 +237,10 @@ int32 AExitDoor::GetInsertedCount() const
 
 FText AExitDoor::GetDefaultItemDisplayName(FName ItemID)
 {
-	if (ItemID == FName(TEXT("KeyCard"))) { return FText::FromString(TEXT("키카드")); }
+	if (ItemID == FName(TEXT("ExitDoor_KeyCard"))) { return FText::FromString(TEXT("키카드")); }
 	if (ItemID == FName(TEXT("Battery"))) { return FText::FromString(TEXT("배터리")); }
-	if (ItemID == FName(TEXT("Fuse"))) { return FText::FromString(TEXT("퓨즈")); }
-	if (ItemID == FName(TEXT("Chip"))) { return FText::FromString(TEXT("칩")); }
+	if (ItemID == FName(TEXT("ExitDoor_Fuse"))) { return FText::FromString(TEXT("퓨즈")); }
+	if (ItemID == FName(TEXT("ExitDoor_Chip"))) { return FText::FromString(TEXT("칩")); }
 	return FText::FromName(ItemID);
 }
 
