@@ -72,6 +72,10 @@ protected:
 #endif
 
 public:
+	// WorldActorData owns this actor's transform. DestructibleDoor owns the
+	// DoorPivot pose; DestructibleObject owns destruction and burning state.
+	virtual bool ShouldSaveTransform() const override { return true; }
+
 	/** Enforces the exit puzzle when opening the physical door. */
 	virtual void SetDoorOpen(bool bOpen) override;
 
@@ -128,7 +132,8 @@ private:
 	/** Finds the local player UI manager, not the global game instance. */
 	UPlayerUISubsystem* ResolvePlayerUISubsystem() const;
 
-	void SetLinkedActorsLocked(bool bLocked);
+	void SetLinkedActorsLocked(bool bLocked, bool bUpdateOwnPhysicalDoor = true,
+		bool bUpdateLinkedPhysicalDoor = true);
 	/** Locks or unlocks Blueprint doors like ExitOpen that open via a timeline when a trigger box is entered. */
 	void SetTriggeredDoorLocked(AActor* DoorActor, bool bLocked);
 	AActor* FindNearestDoorActor() const;
@@ -153,11 +158,11 @@ protected:
 	TObjectPtr<UBoxComponent> ProximityVolume;
 
 	/** Exit number (1-4). Changing it automatically repopulates RequiredSlots. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Exit", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Exit", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 ExitNumber = 1;
 
 	/** If empty, displays a default title equivalent to "Exit N". */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Exit")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Exit")
 	FText ExitTitle;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Exit")
@@ -234,6 +239,7 @@ protected:
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, SaveGame, Category = "Exit")
 	bool bUnlocked = false;
+
 
 private:
 	UPROPERTY(Transient)

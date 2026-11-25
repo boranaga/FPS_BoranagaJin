@@ -95,7 +95,7 @@ bool USaveGameSubsystem::SaveGameAsync()
 	bIsSaving = true;
 
 	FAsyncSaveGameToSlotDelegate SaveDelegate;
-	SaveDelegate.BindUObject(this,&USaveGameSubsystem::HandleAsyncSaveCompleted);
+	SaveDelegate.BindUObject(this, &USaveGameSubsystem::HandleAsyncSaveCompleted);
 
 	UGameplayStatics::AsyncSaveGameToSlot(NewSaveGame, CurrSaveSlotName, SaveUserIndex, SaveDelegate);
 
@@ -341,8 +341,8 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 	 * 예를 들어 발전기, 문, 체크포인트가 플레이어 상태에 영향을 준다면
 	 * 월드 상태가 먼저 준비되는 편이 안전합니다.
 	 */
-	//TODO: Map에 설치되어 있는 ItemPickUp의 경우는 어떻게 처리해야하나? 
-	// ItemPickUp과 생성된 Itme과의 매칭을 어떻게 처리해야할지 고려해야함
+	 //TODO: Map에 설치되어 있는 ItemPickUp의 경우는 어떻게 처리해야하나? 
+	 // ItemPickUp과 생성된 Itme과의 매칭을 어떻게 처리해야할지 고려해야함
 	RestoreRuntimeSpawnedWorldActorData(*LoadedSaveGame);
 	RestoreWorldActorData(*LoadedSaveGame);
 	RestorePlayerData(*LoadedSaveGame);
@@ -683,9 +683,9 @@ void USaveGameSubsystem::UpdateCurrentSlotInfo(const UFPSGameSave& SaveObject)
 	if (CurrSaveSlotName.IsEmpty()) { return; }
 
 	FSaveSlotInfo* ExistingSlot = SlotIndex->Slots.FindByPredicate([this](const FSaveSlotInfo& Info)
-	{
-		return Info.SlotName == CurrSaveSlotName;
-	});
+		{
+			return Info.SlotName == CurrSaveSlotName;
+		});
 
 	if (ExistingSlot)
 	{
@@ -971,43 +971,52 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	UWorld* World = GetWorld();
 	if (!IsValid(World)) { return; }
 
-	//TODO: Iterator 문법 이해 필요
+	// Phase 1: deserialize EVERY saved world actor before applying side effects.
+	// ExitDoor can unlock another door or enable an escape trigger in OnAfterLoad.
+	// Doing that while other actors are still being deserialized may overwrite
+	// their restored state, depending on TActorIterator order.
+	TArray<TWeakObjectPtr<AActor>> RestoredActors;
+
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (!IsValid(Actor)) { 
-			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 1"));
-			continue; }
+		if (!IsValid(Actor)) { continue; }
+
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
-		if (!SaveableActor) { 
-			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 2"));
-			continue; }
+		if (!SaveableActor) { continue; }
 
 		const FGuid SaveID = SaveableActor->GetInstanceID();
-		if (!SaveID.IsValid()) { 
-			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 3"));
-			continue; }
+		if (!SaveID.IsValid()) { continue; }
 
 		const FWorldActorSaveData* ActorSaveData = SaveObject.FindActorData(SaveID);
-		if (!ActorSaveData) { 
-			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) 4"));
-			continue; }
+		if (!ActorSaveData) { continue; }
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
-			UE_LOG(LogSaveGameSubsystem, Error, TEXT("void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject) Restore Location"));
-			Actor->SetActorTransform(ActorSaveData->ActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
+			Actor->SetActorTransform(
+				ActorSaveData->ActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 
 		FMemoryReader MemoryReader(ActorSaveData->ActorData, true);
-
 		FSaveGameArchive Archive(MemoryReader);
-
 		Actor->Serialize(Archive);
-
 		MemoryReader.Close();
 
-		SaveableActor->OnAfterLoad();
+		RestoredActors.Add(Actor);
+	}
+
+	// Phase 2: all serialized properties are now available to OnAfterLoad.
+	// World references (including ExitDoor's LinkedDoor) remain level-configured;
+	// only the saveable actor state is deserialized.
+	for (const TWeakObjectPtr<AActor>& ActorEntry : RestoredActors)
+	{
+		AActor* Actor = ActorEntry.Get();
+		if (!IsValid(Actor)) { continue; }
+
+		if (ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor))
+		{
+			SaveableActor->OnAfterLoad();
+		}
 	}
 }
 

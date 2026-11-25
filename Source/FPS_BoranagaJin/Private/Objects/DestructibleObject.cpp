@@ -187,79 +187,181 @@ void ADestructibleObject::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 }
 #endif
 
+void ADestructibleObject::OnBeforeSave()
+{
+	// Called once through the virtual SaveableActorInterface hierarchy.
+	// Health, destruction, burning and hidden state already have SaveGame UPROPERTYs.
+	CurrentDurability = FMath::Max(0.f, CurrentHealth);
+	SavedObjectRuntimeState.Version = 1;
+
+	// Some derived actors (e.g. ExitDoor/ItemPickUp) already use
+	// FWorldActorSaveData.ActorTransform via ShouldSaveTransform() == true.
+	// Do not serialize the actor transform a second time for those actors.
+	SavedObjectRuntimeState.bHasActorWorldTransform = !ShouldSaveTransform();
+	SavedObjectRuntimeState.ActorWorldTransform =
+		SavedObjectRuntimeState.bHasActorWorldTransform
+		? GetActorTransform() : FTransform::Identity;
+
+	FTimerManager& Timers = GetWorldTimerManager();
+	SavedObjectRuntimeState.BrokenMeshHideTimeRemaining =
+		bDestroyed && !bBrokenMeshHidden
+		? Timers.GetTimerRemaining(HideBrokenMeshTimerHandle) : -1.f;
+	SavedObjectRuntimeState.ActorLifeSpanRemaining =
+		bDestroyed && bDestroyActorAfterBreak && GetLifeSpan() > 0.f
+		? GetLifeSpan() : -1.f;
+	SavedObjectRuntimeState.BurnDurationTimeRemaining =
+		bBurning && !bDestroyed
+		? Timers.GetTimerRemaining(BurnDurationTimerHandle) : -1.f;
+	SavedObjectRuntimeState.BurnDamageTimeRemaining =
+		bBurning && !bDestroyed
+		? Timers.GetTimerRemaining(BurnDamageTimerHandle) : -1.f;
+
+	const bool bSaveStaticDebris = bDestroyed && !bBrokenMeshHidden &&
+		DestructionMeshType == EDestructionMeshType::StaticMesh &&
+		IsValid(BrokenMesh) && BrokenMesh->IsSimulatingPhysics();
+	SavedObjectRuntimeState.bHasBrokenStaticMeshPhysics = bSaveStaticDebris;
+	SavedObjectRuntimeState.BrokenStaticMeshWorldTransform =
+		bSaveStaticDebris ? BrokenMesh->GetComponentTransform() : FTransform::Identity;
+	SavedObjectRuntimeState.BrokenStaticMeshLinearVelocity =
+		bSaveStaticDebris ? BrokenMesh->GetPhysicsLinearVelocity() : FVector::ZeroVector;
+	SavedObjectRuntimeState.BrokenStaticMeshAngularVelocity =
+		bSaveStaticDebris ? BrokenMesh->GetPhysicsAngularVelocityInRadians() : FVector::ZeroVector;
+}
+
 void ADestructibleObject::OnAfterLoad()
 {
-	CurrentDurability = FMath::Max(0.f, CurrentHealth);
-	StopZeroGravityFracture();
-	GetWorldTimerManager().ClearTimer(HideBrokenMeshTimerHandle);
+	const bool bHasRuntimeSnapshot = SavedObjectRuntimeState.Version >= 1;
+	const bool bShouldResumeFire = bBurning && !bDestroyed && bCanBurn;
 
-	if (!bDestroyed)
+	FTimerManager& Timers = GetWorldTimerManager();
+	StopBurning(); // Clear stale fire effects/timers even when the loaded flag is false.
+	StopZeroGravityFracture();
+	Timers.ClearTimer(HideBrokenMeshTimerHandle);
+	SetLifeSpan(0.f); // Clear a previous destruction countdown if reloading in-place.
+
+	// The save subsystem restores ActorTransform only for ShouldSaveTransform()==true.
+	// Other destructible objects persist their world transform exactly once here.
+	if (bHasRuntimeSnapshot && SavedObjectRuntimeState.bHasActorWorldTransform &&
+		!ShouldSaveTransform())
 	{
-		SetActorHiddenInGame(false);
-		SetActorEnableCollision(true);
-		if (IntactMesh)
-		{
-			IntactMesh->SetVisibility(true);
-			IntactMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		}
-		if (BrokenMesh)
-		{
-			BrokenMesh->SetVisibility(false);
-			BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			BrokenMesh->SetSimulatePhysics(false);
-		}
-		if (FracturedMesh)
-		{
-			FracturedMesh->SetVisibility(false);
-			FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			FracturedMesh->SetSimulatePhysics(false);
-		}
-		// Sync only after any previously simulated debris is deactivated.
-		SynchronizeDestructionMeshTransforms();
-		return;
+		SetActorTransform(SavedObjectRuntimeState.ActorWorldTransform,
+			false, nullptr, ETeleportType::TeleportPhysics);
 	}
 
-	// Clear previous simulation before aligning the newly loaded broken state.
-	if (BrokenMesh)
+	CurrentHealth = FMath::Clamp(CurrentHealth, 0.f, FMath::Max(0.f, MaxHealth));
+	if (bDestroyed) { CurrentHealth = 0.f; }
+	CurrentDurability = CurrentHealth;
+
+	if (IsValid(BrokenMesh))
 	{
 		BrokenMesh->SetSimulatePhysics(false);
 		BrokenMesh->SetVisibility(false);
 		BrokenMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
-	if (FracturedMesh)
+	if (IsValid(FracturedMesh))
 	{
 		FracturedMesh->SetSimulatePhysics(false);
 		FracturedMesh->SetVisibility(false);
 		FracturedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
-	if (IntactMesh)
+	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
+
+	if (!bDestroyed)
+	{
+		if (IsValid(IntactMesh))
+		{
+			IntactMesh->SetSimulatePhysics(false);
+			IntactMesh->SetVisibility(true);
+			IntactMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		}
+		SynchronizeDestructionMeshTransforms();
+
+		if (bShouldResumeFire)
+		{
+			// The saved bBurning bool is an authoritative state flag; effects
+			// and timer handles are runtime-only and must be recreated.
+			StartBurning(nullptr);
+
+			if (bBurning && bHasRuntimeSnapshot)
+			{
+				const float BurnTime = SavedObjectRuntimeState.BurnDurationTimeRemaining;
+				if (BurnTime >= 0.f)
+				{
+					Timers.SetTimer(BurnDurationTimerHandle, this,
+						&ADestructibleObject::StopBurning,
+						FMath::Max(0.01f, BurnTime), false);
+				}
+
+				const float DamageTime = SavedObjectRuntimeState.BurnDamageTimeRemaining;
+				if (DamageTime >= 0.f)
+				{
+					const float Rate = FMath::Max(0.01f, BurnDamageInterval);
+					Timers.SetTimer(BurnDamageTimerHandle, this,
+						&ADestructibleObject::ApplyBurnDamage, Rate, true,
+						FMath::Max(0.01f, DamageTime));
+				}
+			}
+		}
+		return;
+	}
+
+	if (IsValid(IntactMesh))
 	{
 		IntactMesh->SetVisibility(false);
 		IntactMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		IntactMesh->SetSimulatePhysics(false);
 	}
 
+	// Recreate the destroyed visual state. No break sound/effect or new damage.
 	if (!bBrokenMeshHidden && bIsDestructible)
 	{
-		if (DestructionMeshType == EDestructionMeshType::StaticMesh)
+		switch (DestructionMeshType)
 		{
+		case EDestructionMeshType::StaticMesh:
 			BreakStaticMesh(GetActorLocation(), FVector::ZeroVector);
-		}
-		else if (DestructionMeshType == EDestructionMeshType::GeometryCollection)
-		{
+			if (bHasRuntimeSnapshot &&
+				SavedObjectRuntimeState.bHasBrokenStaticMeshPhysics &&
+				IsValid(BrokenMesh) && BrokenMesh->IsSimulatingPhysics())
+			{
+				BrokenMesh->SetWorldTransform(
+					SavedObjectRuntimeState.BrokenStaticMeshWorldTransform,
+					false, nullptr, ETeleportType::TeleportPhysics);
+				BrokenMesh->SetPhysicsLinearVelocity(
+					SavedObjectRuntimeState.BrokenStaticMeshLinearVelocity);
+				BrokenMesh->SetPhysicsAngularVelocityInRadians(
+					SavedObjectRuntimeState.BrokenStaticMeshAngularVelocity);
+			}
+			break;
+
+		case EDestructionMeshType::GeometryCollection:
+			// Current Chaos APIs do not restore independent shard positions here.
 			BreakGeometryCollection(GetActorLocation(), FVector::UpVector, false);
+			break;
+		default:
+			break;
 		}
 	}
 
 	if (bDestroyActorAfterBreak)
 	{
-		SetLifeSpan(BrokenMeshLifeTime);
+		// Actors already removed from the level cannot be rediscovered by the
+		// current WorldActorData actor iterator; only existing actors reach here.
+		const float SavedRemaining = bHasRuntimeSnapshot
+			? SavedObjectRuntimeState.ActorLifeSpanRemaining : -1.f;
+		const float Remaining = SavedRemaining > 0.f
+			? SavedRemaining : BrokenMeshLifeTime;
+		if (Remaining > 0.f) { SetLifeSpan(Remaining); }
 	}
 	else if (!bBrokenMeshHidden && bHideBrokenMeshAfterDelay && BrokenMeshLifeTime > 0.f)
 	{
-		GetWorldTimerManager().SetTimer(HideBrokenMeshTimerHandle, this,
-			&ADestructibleObject::HideBrokenMesh, BrokenMeshLifeTime, false);
+		const float SavedRemaining = bHasRuntimeSnapshot
+			? SavedObjectRuntimeState.BrokenMeshHideTimeRemaining : -1.f;
+		const float Remaining = SavedRemaining >= 0.f
+			? FMath::Max(0.01f, SavedRemaining) : BrokenMeshLifeTime;
+		Timers.SetTimer(HideBrokenMeshTimerHandle, this,
+			&ADestructibleObject::HideBrokenMesh, Remaining, false);
 	}
 }
 
@@ -548,7 +650,7 @@ void ADestructibleObject::StartBurning(AActor* FireCauser)
 
 void ADestructibleObject::StopBurning()
 {
-	if (!bBurning) return;
+	// Also cleans up when deserialization overwrote bBurning with false.
 
 	bBurning = false;
 	BurnCauser = nullptr;

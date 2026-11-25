@@ -16,6 +16,54 @@ class UNiagaraSystem;
 class USoundBase;
 class UGeometryCollectionComponent;
 
+/** Only runtime state missing from the regular SaveGame UPROPERTYs.
+ *  CurrentHealth/bDestroyed/bBrokenMeshHidden/bBurning are saved independently,
+ *  exactly once. This struct deliberately does not duplicate them.
+ */
+USTRUCT(BlueprintType)
+struct FPS_BORANAGAJIN_API FDestructibleObjectRuntimeSaveState
+{
+	GENERATED_BODY()
+
+	/** Zero for old saves created before the hierarchical save system. */
+	UPROPERTY(SaveGame)
+	int32 Version = 0;
+
+	/** Used only when ISaveableActorInterface::ShouldSaveTransform() is false. */
+	UPROPERTY(SaveGame)
+	bool bHasActorWorldTransform = false;
+
+	UPROPERTY(SaveGame)
+	FTransform ActorWorldTransform = FTransform::Identity;
+
+	/** Timer snapshots use -1 when no timer is running. */
+	UPROPERTY(SaveGame)
+	float BrokenMeshHideTimeRemaining = -1.f;
+
+	/** Remaining actor destruction lifespan, only for bDestroyActorAfterBreak. */
+	UPROPERTY(SaveGame)
+	float ActorLifeSpanRemaining = -1.f;
+
+	UPROPERTY(SaveGame)
+	float BurnDurationTimeRemaining = -1.f;
+
+	UPROPERTY(SaveGame)
+	float BurnDamageTimeRemaining = -1.f;
+
+	/** Rigid-body state only; Chaos per-fragment state is not reconstructed. */
+	UPROPERTY(SaveGame)
+	bool bHasBrokenStaticMeshPhysics = false;
+
+	UPROPERTY(SaveGame)
+	FTransform BrokenStaticMeshWorldTransform = FTransform::Identity;
+
+	UPROPERTY(SaveGame)
+	FVector BrokenStaticMeshLinearVelocity = FVector::ZeroVector;
+
+	UPROPERTY(SaveGame)
+	FVector BrokenStaticMeshAngularVelocity = FVector::ZeroVector;
+};
+
 UCLASS()
 class FPS_BORANAGAJIN_API ADestructibleObject : public AActor, public IDamageableInterface, public ISaveableActorInterface
 {
@@ -69,6 +117,7 @@ public:
 	{
 		return bRuntimeSpawned;
 	}
+	virtual void OnBeforeSave() override;
 	virtual void OnAfterLoad() override;
 	virtual void SetRuntimeSpawned(bool bIsRuntimeSpawned) override;
 protected:
@@ -76,10 +125,14 @@ protected:
 	FGuid InstanceID;
 	UPROPERTY(Transient)
 	bool bRuntimeSpawned = false;
-	UPROPERTY(EditAnywhere, SaveGame, Category = "Destructible")
-	// Legacy SaveGame field retained for compatibility. Mirrored to the live
-	// health-based durability after load, damage and restoration.
-	float CurrentDurability = 100.0f;
+	// Legacy runtime mirror. Not saved: CurrentHealth is the one authoritative
+	// durability value, including in older SaveGame data.
+	UPROPERTY(VisibleAnywhere, Category = "Destructible|Legacy")
+	float CurrentDurability = 100.f;
+
+	/** Missing dynamic information captured immediately before Actor::Serialize. */
+	UPROPERTY(VisibleInstanceOnly, SaveGame, Category = "Destruction|Save")
+	FDestructibleObjectRuntimeSaveState SavedObjectRuntimeState;
 #pragma endregion
 protected:
 	virtual void BeginPlay() override;
@@ -135,7 +188,7 @@ protected:
 	 * Defaults to off for existing DestructibleObject assets; DestructibleDoor
 	 * enables it by default so its three meshes move together.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction|Mesh Transform")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Destruction|Mesh Transform")
 	bool bSynchronizeMeshTransforms = false;
 
 private:
@@ -150,7 +203,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, SaveGame, BlueprintReadOnly, Category = "Destruction")
 	float CurrentHealth = 10.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Destruction")
 	bool bIsDestructible = true;
 
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Destruction")
@@ -180,7 +233,7 @@ protected:
 	FTimerHandle HideBrokenMeshTimerHandle;
 
 	// <Burning>
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Fire")
 	bool bCanBurn = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fire")

@@ -24,6 +24,28 @@ enum class EDoorRotationAxis : uint8
 	Z	UMETA(DisplayName = "Z Axis")
 };
 
+/** Runtime movement is owned by DestructibleDoor, not ExitDoor.
+ *  Static door design settings remain in Blueprint assets.
+ */
+USTRUCT(BlueprintType)
+struct FPS_BORANAGAJIN_API FDestructibleDoorRuntimeSaveState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame)
+	int32 Version = 0;
+
+	UPROPERTY(SaveGame)
+	FTransform DoorPivotRelativeTransform = FTransform::Identity;
+
+	/** Current requested open/closed target, not necessarily the completed pose. */
+	UPROPERTY(SaveGame)
+	bool bTargetOpen = false;
+
+	UPROPERTY(SaveGame)
+	bool bMoving = false;
+};
+
 UCLASS()
 class FPS_BORANAGAJIN_API ADestructibleDoor : public ADestructibleObject, public IInteractableInterface
 {
@@ -61,6 +83,7 @@ public:
 	bool CanEnemyBreachDoor() const;
 
 	virtual void RestoreDestructibleObject() override;
+	virtual void OnBeforeSave() override;
 	virtual void OnAfterLoad() override;
 
 	/** Closest surface point of intact mesh, useful with off-center door pivots. */
@@ -88,6 +111,9 @@ protected:
 
 protected:
 	virtual void BreakObject(const FVector& HitLocation, const FVector& HitDirection) override;
+
+	/** Used by ExitDoor to decide whether this door's position came from save. */
+	bool HasSavedDoorRuntimeState() const { return SavedDoorRuntimeState.Version >= 1; }
 
 	/** Keeps the extra trace collision in sync with destruction and door state. */
 	void UpdateInteractionVolumeCollision();
@@ -121,7 +147,7 @@ protected:
 	TObjectPtr<UBoxComponent> InteractionVolume;
 
 	/** Enables Visibility trace hits on InteractionVolume. Does not affect IntactMesh. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Interaction")
+	UPROPERTY(EditAnywhere, SaveGame, BlueprintReadWrite, Category = "Door|Interaction")
 	bool bEnableInteractionVolume = true;
 
 	/**
@@ -215,6 +241,10 @@ protected:
 		Category = "Door"
 	)
 	bool bIsMoving = false;
+
+	// The only serialized owner of DoorPivot pose and door movement state.
+	UPROPERTY(VisibleInstanceOnly, SaveGame, Category = "Door|Save")
+	FDestructibleDoorRuntimeSaveState SavedDoorRuntimeState;
 
 private:
 	FVector ClosedRelativeLocation = FVector::ZeroVector;

@@ -241,23 +241,69 @@ bool ADestructibleDoor::CanEnemyBreachDoor() const
 	return Remaining <= Threshold;
 }
 
+void ADestructibleDoor::OnBeforeSave()
+{
+	Super::OnBeforeSave();
+
+	SavedDoorRuntimeState.Version = 1;
+	SavedDoorRuntimeState.DoorPivotRelativeTransform = IsValid(DoorPivot)
+		? DoorPivot->GetRelativeTransform() : FTransform::Identity;
+	SavedDoorRuntimeState.bTargetOpen = bIsOpen;
+	SavedDoorRuntimeState.bMoving = bIsMoving && !bDestroyed;
+}
+
 void ADestructibleDoor::OnAfterLoad()
 {
-	Super::OnAfterLoad();
-	if (bClearBrokenDoorPath && bDestroyed)
+	const bool bHasPose = HasSavedDoorRuntimeState() && IsValid(DoorPivot);
+
+	// Set the moving pivot BEFORE parent restores fractured/broken visuals:
+	// their initial transforms must be based on the saved pose, not BeginPlay.
+	if (bHasPose)
 	{
-		if (IsValid(IntactMesh)) IntactMesh->SetCanEverAffectNavigation(false);
-		if (IsValid(BrokenMesh))
+		DoorPivot->SetRelativeTransform(
+			SavedDoorRuntimeState.DoorPivotRelativeTransform,
+			false, nullptr, ETeleportType::TeleportPhysics);
+		bIsOpen = SavedDoorRuntimeState.bTargetOpen;
+		bIsMoving = SavedDoorRuntimeState.bMoving && !bDestroyed;
+	}
+
+	Super::OnAfterLoad();
+
+	if (bHasPose)
+	{
+		bIsOpen = SavedDoorRuntimeState.bTargetOpen;
+		bIsMoving = SavedDoorRuntimeState.bMoving && !bDestroyed;
+	}
+	else
+	{
+		// Saves predating door movement snapshots use the authored start pose.
+		bIsMoving = false;
+	}
+
+	SetActorTickEnabled(bIsMoving && !bDestroyed && IsValid(DoorPivot));
+
+	if (bClearBrokenDoorPath)
+	{
+		if (bDestroyed)
 		{
-			BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-			BrokenMesh->SetCanEverAffectNavigation(false);
+			if (IsValid(IntactMesh)) IntactMesh->SetCanEverAffectNavigation(false);
+			if (IsValid(BrokenMesh))
+			{
+				BrokenMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+				BrokenMesh->SetCanEverAffectNavigation(false);
+			}
+			if (IsValid(FracturedMesh))
+			{
+				FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+				FracturedMesh->SetCanEverAffectNavigation(false);
+			}
 		}
-		if (IsValid(FracturedMesh))
+		else if (IsValid(IntactMesh))
 		{
-			FracturedMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-			FracturedMesh->SetCanEverAffectNavigation(false);
+			IntactMesh->SetCanEverAffectNavigation(bInitialIntactNavigationRelevant);
 		}
 	}
+
 	UpdateInteractionVolumeCollision();
 }
 

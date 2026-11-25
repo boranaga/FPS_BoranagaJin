@@ -272,21 +272,39 @@ void AExitDoor::RestoreDestructibleObject()
 
 void AExitDoor::OnAfterLoad()
 {
+	// DestructibleDoor restores its pivot pose, target and movement; the base
+	// restores durability, destruction, fire, and any physics visual state.
+	const bool bHasDoorPose = HasSavedDoorRuntimeState();
 	Super::OnAfterLoad();
 
-	// The SaveGame properties restore both unlock state and inserted items.
-	// Reapply it to the inherited door and to the optional linked actors.
-	SetLinkedActorsLocked(!bUnlocked);
+	// Restore ONLY ExitDoor-owned puzzle side effects. Do not overwrite this
+	// door's saved movement state. A linked ADestructibleDoor is itself a
+	// SaveableActor: its own OnAfterLoad is authoritative for open/close.
+	// Unsaveable timeline Blueprint doors still need the old lock/unlock API.
+	const bool bUpdateLegacyLinkedDoor =
+		IsValid(LinkedDoor) && LinkedDoor != this &&
+		!LinkedDoor->IsA(ADestructibleDoor::StaticClass());
+
+	// Legacy saves lack the parent's movement snapshot: reconstruct the old
+	// puzzle-controlled open/closed target from bUnlocked as a fallback.
+	SetLinkedActorsLocked(!bUnlocked,
+		!bHasDoorPose && !bDestroyed,
+		bUpdateLegacyLinkedDoor);
+
 	if (bWidgetShown) { RefreshWidget(); }
 }
 
-void AExitDoor::SetLinkedActorsLocked(bool bLocked)
+void AExitDoor::SetLinkedActorsLocked(
+	bool bLocked, bool bUpdateOwnPhysicalDoor, bool bUpdateLinkedPhysicalDoor)
 {
-	// The query-only box intercepts interaction traces, never physical movement.
-	DoorVolume->SetCollisionEnabled(bLocked ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	// The query-only box intercepts interaction traces, never player movement.
+	if (IsValid(DoorVolume))
+	{
+		DoorVolume->SetCollisionEnabled(
+			bLocked ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	}
 
-	// This physical door is the inherited ADestructibleDoor, not LinkedDoor.
-	if (!bDestroyed)
+	if (bUpdateOwnPhysicalDoor && !bDestroyed)
 	{
 		if (bLocked) { CloseDoor(); }
 		else { OpenDoor(); }
@@ -297,21 +315,17 @@ void AExitDoor::SetLinkedActorsLocked(bool bLocked)
 		LinkedEscapeTrigger->SetActorEnableCollision(!bLocked);
 	}
 
-	// Legacy levels may still configure an additional external door.
-	if (!IsValid(LinkedDoor) || LinkedDoor == this) { return; }
-
-	if (ADestructibleDoor* DestructibleDoor = Cast<ADestructibleDoor>(LinkedDoor))
+	if (!bUpdateLinkedPhysicalDoor || !IsValid(LinkedDoor) || LinkedDoor == this)
 	{
-		if (bLocked)
-		{
-			DestructibleDoor->CloseDoor();
-		}
-		else
-		{
-			DestructibleDoor->OpenDoor();
-		}
+		return;
 	}
-	else if (LinkedDoor)
+
+	if (ADestructibleDoor* ExternalDoor = Cast<ADestructibleDoor>(LinkedDoor))
+	{
+		if (bLocked) { ExternalDoor->CloseDoor(); }
+		else { ExternalDoor->OpenDoor(); }
+	}
+	else
 	{
 		SetTriggeredDoorLocked(LinkedDoor, bLocked);
 	}
@@ -321,6 +335,20 @@ void AExitDoor::SetTriggeredDoorLocked(AActor* DoorActor, bool bLocked)
 {
 	if (bLocked)
 	{
+		// Already locked in BeginPlay: do not discard the original collision
+		// settings, or a later Unlock would be unable to restore them.
+		if (!LockedTriggers.IsEmpty())
+		{
+			for (const TWeakObjectPtr<UShapeComponent>& ShapeEntry : LockedTriggers)
+			{
+				if (UShapeComponent* Shape = ShapeEntry.Get())
+				{
+					Shape->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+			}
+			return;
+		}
+
 		// Disable the door Blueprint detection boxes so it cannot open automatically when approached.
 		LockedTriggers.Reset();
 		LockedTriggerCollision.Reset();
