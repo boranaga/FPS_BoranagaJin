@@ -1230,6 +1230,9 @@ void UPlayerUISubsystem::UpdateInteractionUI(bool bFlag, FVector NewLocation)
         return;
     }
 
+    // Bottom-center of the widget sits exactly on the selected world point;
+    // the body of the widget is drawn above it, irrespective of widget size.
+    InteractionWidget->SetAlignmentInViewport(FVector2D(0.5f, 1.f));
     InteractionWidget->SetPositionInViewport(Projected.Get<0>());
     InteractionWidget->SetVisibility(ESlateVisibility::Visible);
 }

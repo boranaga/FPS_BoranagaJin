@@ -4,6 +4,7 @@
 #include "Items/ItemPickUp.h"
 #include "Items/Item.h"
 #include "Items/PickUpComponent.h"
+#include "Components/InteractionPointComponent.h"
 #include "ObjectPoolSubsystem.h"
 
 AItemPickUp::AItemPickUp()
@@ -22,6 +23,11 @@ AItemPickUp::AItemPickUp()
 	PickUpComponent = CreateDefaultSubobject<UPickUpComponent>(TEXT("PickUpComponent"));
 	PickUpComponent->SetupAttachment(SceneRoot);
 	PickUpComponent->SetCollisionProfileName(FName("ItemPickUp"));
+
+	DefaultPickupInteractionPoint = CreateDefaultSubobject<UInteractionPointComponent>(
+		TEXT("DefaultPickupInteractionPoint"));
+	DefaultPickupInteractionPoint->SetupAttachment(IntactMesh);
+	DefaultPickupInteractionPoint->SetRelativeLocation(FVector(0.f, 0.f, 25.f));
 
 	bDestroyActorAfterBreak = false;
 	bHideBrokenMeshAfterDelay = false;

@@ -5,8 +5,10 @@
 #include "Items/ItemPickUp.h"
 #include "Items/Weapons/Weapon.h"
 #include "Objects/ExitDoor.h"
+#include "Components/InteractionPointComponent.h"
 
 #include "DrawDebugHelpers.h"
+#include "GameFramework/Actor.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
@@ -242,9 +244,29 @@ bool UInteractionComponent::IsPickupAvailable(AItemPickUp* Pickup) const
         return false;
     }
 
-    return FVector::DistSquared(OwnerCharacter->GetActorLocation(),
-        Pickup->GetActorLocation()) <= FMath::Square(SearchItemRadius)
-        && IsPointWithinPickupViewport(Pickup->GetActorLocation());
+    if (FVector::DistSquared(OwnerCharacter->GetActorLocation(),
+        Pickup->GetActorLocation()) > FMath::Square(SearchItemRadius))
+    {
+        return false;
+    }
+
+    // A long pickup mesh may have its origin off-screen while one of its
+    // intentionally placed interaction points is in the eligible view area.
+    TInlineComponentArray<UInteractionPointComponent*> Points(Pickup);
+    bool bHasEnabledPoint = false;
+    for (const UInteractionPointComponent* Point : Points)
+    {
+        if (!IsValid(Point) || !Point->IsRegistered() || !Point->IsInteractionPointEnabled())
+        {
+            continue;
+        }
+        bHasEnabledPoint = true;
+        if (IsPointWithinPickupViewport(Point->GetInteractionWidgetLocation()))
+        {
+            return true;
+        }
+    }
+    return !bHasEnabledPoint && IsPointWithinPickupViewport(Pickup->GetActorLocation());
 }
 
 bool UInteractionComponent::IsPointWithinPickupViewport(const FVector& WorldLocation) const
@@ -280,6 +302,134 @@ bool UInteractionComponent::IsPointWithinPickupViewport(const FVector& WorldLoca
         && WithinAxis(ScreenLocation.Y, static_cast<float>(Height), SearchItemViewportRatio_Height);
 }
 
+void UInteractionComponent::RefreshInteractionPrompt()
+{
+    UpdateInteractionPrompt();
+}
+
+bool UInteractionComponent::IsPointVisibleFromCamera(
+    const FVector& WorldLocation, AActor* Target) const
+{
+    if (!GetWorld() || !IsValid(Target) || !IsValid(OwnerCharacter)) { return false; }
+
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(InteractionPointOcclusion), false);
+    Params.AddIgnoredActor(OwnerCharacter.Get());
+
+    FHitResult Hit;
+    // A hit on the target's mesh or interaction volume is expected and does
+    // not count as an occluder. Other actors block this specific point.
+    return !GetWorld()->LineTraceSingleByChannel(
+        Hit, GetTraceStart(), WorldLocation, PromptOcclusionTraceChannel, Params)
+        || Hit.GetActor() == Target;
+}
+
+bool UInteractionComponent::FindBestInteractionPoint(AActor* Target, FVector& OutLocation)
+{
+    if (!IsValid(Target)) { SelectedInteractionPoint.Reset(); return false; }
+
+    TInlineComponentArray<UInteractionPointComponent*> Points(Target);
+    bool bHasEnabledPoint = false;
+    for (const UInteractionPointComponent* Point : Points)
+    {
+        if (IsValid(Point) && Point->IsRegistered() && Point->IsInteractionPointEnabled())
+        {
+            bHasEnabledPoint = true;
+            break;
+        }
+    }
+
+    if (!bHasEnabledPoint)
+    {
+        SelectedInteractionPoint.Reset();
+        // Preserve legacy behavior if the actor has no enabled anchors.
+        if (const AExitDoor* ExitDoor = Cast<AExitDoor>(Target))
+        {
+            OutLocation = ExitDoor->GetInteractionPromptLocation();
+        }
+        else
+        {
+            OutLocation = Target->GetActorLocation();
+        }
+        return true;
+    }
+
+    APlayerController* Controller = IsValid(OwnerCharacter)
+        ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+    if (!IsValid(Controller)) { SelectedInteractionPoint.Reset(); return false; }
+
+    int32 Width = 0;
+    int32 Height = 0;
+    Controller->GetViewportSize(Width, Height);
+    if (Width <= 0 || Height <= 0) { SelectedInteractionPoint.Reset(); return false; }
+
+    UInteractionPointComponent* Best = nullptr;
+    float BestScore = -BIG_NUMBER;
+    UInteractionPointComponent* Previous = SelectedInteractionPoint.Get();
+    float PreviousScore = -BIG_NUMBER;
+
+    const FVector CameraLocation = GetTraceStart();
+    const FVector CameraForward = GetTraceDirection();
+
+    for (UInteractionPointComponent* Point : Points)
+    {
+        if (!IsValid(Point) || !Point->IsRegistered() || !Point->IsInteractionPointEnabled())
+        {
+            continue;
+        }
+
+        const FVector WorldLocation = Point->GetInteractionWidgetLocation();
+        const FVector ToPoint = WorldLocation - CameraLocation;
+        if (FVector::DotProduct(CameraForward, ToPoint) <= 0.f) { continue; }
+
+        FVector2D Screen;
+        if (!Controller->ProjectWorldLocationToScreen(WorldLocation, Screen)) { continue; }
+        if (Screen.X < 0.f || Screen.X > Width || Screen.Y < 0.f || Screen.Y > Height)
+        {
+            continue;
+        }
+        if (Point->RequiresClearLineOfSight() &&
+            !IsPointVisibleFromCamera(WorldLocation, Target))
+        {
+            continue;
+        }
+
+        // Priority + proximity to the screen center + slightly shorter camera
+        // distance. All values are normalized so the choice is predictable.
+        const float X = (Screen.X / static_cast<float>(Width) - 0.5f) * 2.f;
+        const float Y = (Screen.Y / static_cast<float>(Height) - 0.5f) * 2.f;
+        const float CenterPenalty = FVector2D(X, Y).Size();
+        const float DistancePenalty = FMath::Clamp(ToPoint.Size() / 1500.f, 0.f, 1.f);
+        const float Score = Point->GetSelectionPriority() * 0.25f
+            - CenterPenalty - 0.2f * DistancePenalty;
+
+        if (Score > BestScore)
+        {
+            Best = Point;
+            BestScore = Score;
+        }
+        if (Point == Previous)
+        {
+            PreviousScore = Score;
+        }
+    }
+
+    if (!IsValid(Best))
+    {
+        SelectedInteractionPoint.Reset();
+        return false; // Explicit anchors exist, but none can be shown.
+    }
+
+    if (IsValid(Previous) && Previous != Best &&
+        PreviousScore >= BestScore - PromptPointSwitchHysteresis)
+    {
+        Best = Previous;
+    }
+
+    SelectedInteractionPoint = Best;
+    OutLocation = Best->GetInteractionWidgetLocation();
+    return true;
+}
+
 void UInteractionComponent::UpdateInteractionPrompt()
 {
     if (!IsValid(OwnerCharacter)) { return; }
@@ -287,16 +437,18 @@ void UInteractionComponent::UpdateInteractionPrompt()
     AActor* Target = CurrentInteractionTarget.Get();
     if (!IsValid(Target) || IsWorldInteractionBlocked())
     {
+        SelectedInteractionPoint.Reset();
         OwnerCharacter->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
         return;
     }
 
-    FVector PromptLocation = Target->GetActorLocation();
-    if (const AExitDoor* Door = Cast<AExitDoor>(Target))
+    FVector PromptLocation;
+    if (!FindBestInteractionPoint(Target, PromptLocation))
     {
-        PromptLocation = Door->GetInteractionPromptLocation();
+        OwnerCharacter->OnInteractionUIUpdatedDelegate.Broadcast(false, FVector::ZeroVector);
+        return;
     }
-    // Items keep their original location as the screen-space widget anchor.
+
     OwnerCharacter->OnInteractionUIUpdatedDelegate.Broadcast(true, PromptLocation);
 }
 
@@ -341,6 +493,7 @@ void UInteractionComponent::SetInteractionTarget(AActor* NewTarget)
     }
 
     CurrentInteractionTarget = NewTarget;
+    SelectedInteractionPoint.Reset();
 
     if (IsActorInteractable(NewTarget))
     {

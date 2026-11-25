@@ -7,6 +7,7 @@
 
 class USceneComponent;
 class UBoxComponent;
+class UInteractionPointComponent;
 
 UENUM(BlueprintType)
 enum class EDoorOpenType : uint8
@@ -106,6 +107,10 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door|Component")
 	TObjectPtr<USceneComponent> DoorPivot;
+
+	/** Default HUD anchor follows the moving door; add more points in Blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door|Interaction")
+	TObjectPtr<UInteractionPointComponent> DefaultDoorInteractionPoint;
 
 	/**
 	 * Optional box hit by the same Visibility trace as IntactMesh.

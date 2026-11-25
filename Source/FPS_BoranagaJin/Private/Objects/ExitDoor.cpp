@@ -504,7 +504,13 @@ void AExitDoor::RefreshInteractionPrompt(ACharacterPlayer* Player)
 	UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get();
 	if (IsValid(UISubsystem) && !UISubsystem->IsExitDoorUIOpen())
 	{
-		Player->OnInteractionUIUpdatedDelegate.Broadcast(true, GetInteractionPromptLocation());
+		// Use the same multi-point selection as all other interactables.
+		// The legacy door-bounds anchor remains the fallback when no points
+		// are enabled on this actor.
+		if (UInteractionComponent* MutableInteraction = Player->GetInteractionComponent())
+		{
+			MutableInteraction->RefreshInteractionPrompt();
+		}
 	}
 }
 

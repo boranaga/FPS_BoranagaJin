@@ -1,6 +1,7 @@
 #include "Objects/DestructibleDoor.h"
 
 #include "Components/SceneComponent.h"
+#include "Components/InteractionPointComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
@@ -12,6 +13,12 @@ ADestructibleDoor::ADestructibleDoor()
 
 	DoorPivot = CreateDefaultSubobject<USceneComponent>(TEXT("DoorPivot"));
 	DoorPivot->SetupAttachment(SceneRoot);
+
+	// Follows door rotation/slide, without participating in collisions.
+	DefaultDoorInteractionPoint = CreateDefaultSubobject<UInteractionPointComponent>(
+		TEXT("DefaultDoorInteractionPoint"));
+	DefaultDoorInteractionPoint->SetupAttachment(DoorPivot);
+	DefaultDoorInteractionPoint->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
 
 	// Physical doors default to keeping all destruction states aligned.
 	bSynchronizeMeshTransforms = true;

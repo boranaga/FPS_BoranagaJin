@@ -13,6 +13,7 @@
 class AItem;
 class ACharacterPlayer;
 class UPickUpComponent;
+class UInteractionPointComponent;
 
 UCLASS()
 class FPS_BORANAGAJIN_API AItemPickUp : public ADestructibleObject, public IPoolableActorInterface
@@ -57,6 +58,10 @@ protected:
 	EWeaponName WeaponName;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Item, meta = (AllowPrivateAccess = "true"))
 	UPickUpComponent* PickUpComponent = nullptr;
+
+	/** Default HUD anchor; extra UInteractionPointComponents can be added in BP. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Interaction")
+	TObjectPtr<UInteractionPointComponent> DefaultPickupInteractionPoint;
 	UPROPERTY()
 	TObjectPtr<AItem> ItemPtr = nullptr;
 	UPROPERTY(SaveGame)
