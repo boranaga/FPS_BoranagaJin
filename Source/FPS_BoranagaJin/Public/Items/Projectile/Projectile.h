@@ -83,7 +83,7 @@ protected:
 	float InitialRadius = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CustomProjectile")
-	float ProjectileRadius;
+	float ProjectileRadius = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Explosive")
 	bool bIsExplosive = false;
@@ -137,6 +137,20 @@ public:
 	void ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation);
 	void ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType = SurfaceType1, const FVector ImpulseDirection = FVector::ZeroVector, const FVector ImpactPoint = FVector::ZeroVector);
 	bool SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors);
+
+private:
+	/** Preserve the actual impact position and outward surface normal for gas pipes. */
+	FVector GetImpactTravelDirection(const FHitResult& Hit) const;
+	bool ResolveGasPipeImpact(AActor* Target, UPrimitiveComponent* Component,
+		const FHitResult& Candidate, bool bHasSweep, const FVector& IncomingDirection,
+		FHitResult& OutHit) const;
+	void ApplyGasPipeHit(AActor* Target, const FHitResult& Hit, const FVector& IncomingDirection);
+	bool HandlePhysicalGasPipeImpact(AActor* Target, UPrimitiveComponent* Component,
+		const FHitResult& Candidate, bool bHasSweep);
+	bool IsAutoAimPathBlockedByGasPipe(const FVector& Start, const FVector& End,
+		const AActor* Target) const;
+
+public:
 
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -292,6 +306,8 @@ protected:
 	FVector PM_Dir_d_To_Muzzle;
 
 	FVector PM_Muzzle_Start_Pos;
+	FTransform MeshRelativeTransformBeforeCustomMovement = FTransform::Identity;
+	bool bHasDetachedMeshTransform = false;
 
 public:
 	void InitProjectileMovement(FVector StartPos, FVector Direction, FVector MuzzlePos);

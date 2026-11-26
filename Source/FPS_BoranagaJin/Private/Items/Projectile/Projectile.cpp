@@ -2,6 +2,10 @@
 
 
 #include "Items/Projectile/Projectile.h"
+#include "Objects/Gas/GasPipe.h"
+#include "Objects/Gas/GasImpactLibrary.h"
+#include "Components/PrimitiveComponent.h"
+#include "Engine/World.h"
 #include "Items/Weapons/Weapon.h"
 
 #include "Characters/Enemies/EnemyBase.h"
@@ -112,6 +116,8 @@ void AProjectile::StopLifeTimer()
 
 void AProjectile::DeactiveProjectile()
 {
+	// Mark inactive before collision/FX cleanup; the pool may also call this for initial setup.
+	bIsActivated = false;
 	StopLifeTimer();
 
 	// <StuckCount>
@@ -144,18 +150,26 @@ void AProjectile::DeactiveProjectile()
 	ProjectileMovement->bIsHomingProjectile = false;
 
 	// <Damage Decay>
-	DefaultDamage = ProjectileData->DefaultDamage;
+	if (ProjectileData) DefaultDamage = ProjectileData->DefaultDamage;
 	GetWorldTimerManager().ClearTimer(DamageDecayTimer);
 
 	// <Custom Projectile Movement>
 	bUseCustomProjectieMovement = false;
+	if (bHasDetachedMeshTransform && ProjectileMesh && CollisionComp)
+	{
+		ProjectileMesh->AttachToComponent(CollisionComp, FAttachmentTransformRules::KeepRelativeTransform);
+		ProjectileMesh->SetRelativeTransform(MeshRelativeTransformBeforeCustomMovement);
+		bHasDetachedMeshTransform = false;
+	}
 
 	// <Trail Effect>
 	if (TrailEffectComponent)
 	{
 		TrailEffectComponent->Deactivate();
 		TrailEffectComponent->DestroyComponent();
+		TrailEffectComponent = nullptr;
 	}
+	bShouldUpdateTrailEffect = false;
 
 	// <Radius>
 	ProjectileRadius = InitialRadius;
@@ -191,6 +205,7 @@ void AProjectile::InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon
 	//UE_LOG(LogTemp, Error, TEXT("InitProjectile_Pool"));
 
 	bIsActivated = true;
+	ProjectileMovement->SetUpdatedComponent(CollisionComp);
 	SetActorHiddenInGame(false);
 	//SetActorEnableCollision(true);
 	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -424,6 +439,7 @@ void AProjectile::ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterL
 void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage,
 	const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType, const FVector ImpulseDirection, const FVector ImpactPoint)
 {
+	if (!IsValid(OtherActor) || !FMath::IsFinite(DamageAmount) || DamageAmount <= 0.f) return;
 	FDamageParams Damage; //TODO: 착탄 위치
 	Damage.DamageAmount = DamageAmount;
 	Damage.DamageType = DamageType;
@@ -435,10 +451,9 @@ void AProjectile::ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamag
 
 	Damage.DamageCauser = this->ProjectileOwner;
 
-	if (OtherActor->GetClass()->ImplementsInterface(UDamageableInterface::StaticClass()))
+	if (IDamageableInterface* Receiver = Cast<IDamageableInterface>(OtherActor))
 	{
-		//Cast<IDamageInterface>(OtherActor)->TakeDamage(Damage, this->ProjectileOwner);
-		Cast<IDamageableInterface>(OtherActor)->ReceiveDamage(Damage);
+		Receiver->ReceiveDamage(Damage);
 	}
 }
 bool AProjectile::SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors)
@@ -453,8 +468,132 @@ bool AProjectile::SearchOverlappedActor(FVector CenterLocation, float SearchRadi
 	return bIsAnyActorExist;
 }
 
+FVector AProjectile::GetImpactTravelDirection(const FHitResult& Hit) const
+{
+	FVector Direction = (Hit.TraceEnd - Hit.TraceStart).GetSafeNormal();
+	if (Direction.IsNearlyZero() && bUseCustomProjectieMovement) Direction = PM_Dir.GetSafeNormal();
+	if (Direction.IsNearlyZero() && ProjectileMovement) Direction = ProjectileMovement->Velocity.GetSafeNormal();
+	if (Direction.IsNearlyZero()) Direction = GetActorForwardVector();
+	return Direction;
+}
+
+bool AProjectile::ResolveGasPipeImpact(AActor* Target, UPrimitiveComponent* Component,
+	const FHitResult& Candidate, bool bHasSweep, const FVector& IncomingDirection,
+	FHitResult& OutHit) const
+{
+	if (!IsValid(Target) || !IsValid(Component) || Component->GetOwner() != Target) return false;
+	const auto IsSurfaceHit = [Component](const FHitResult& Hit)
+		{
+			return Hit.GetComponent() == Component && !Hit.bStartPenetrating &&
+				!Hit.ImpactPoint.ContainsNaN() && !Hit.ImpactNormal.ContainsNaN() &&
+				!Hit.ImpactNormal.IsNearlyZero();
+		};
+	if (bHasSweep && IsSurfaceHit(Candidate))
+	{
+		OutHit = Candidate;
+		return true;
+	}
+
+	// Overlap without a sweep or initial penetration has no reliable contact.
+	// Probe along the incoming path against this component only. Never use
+	// the actor origin as a fabricated hole position (world origin is valid).
+	const FVector Direction = IncomingDirection.GetSafeNormal();
+	if (Direction.IsNearlyZero() || Direction.ContainsNaN()) return false;
+	const FVector Reference = bHasSweep
+		? static_cast<FVector>(Candidate.Location)
+		: GetActorLocation();
+	if (Reference.ContainsNaN()) return false;
+	const float Radius = CollisionComp ? CollisionComp->GetScaledSphereRadius() : ProjectileRadius;
+	const double Reach = 2.0 * FMath::Max(1.f, Radius) + 5.0;
+	const FVector Start = Reference - Direction * Reach;
+	const FVector End = Reference + Direction * Reach;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(ProjectileGasPipeImpact), true);
+	Query.bReturnPhysicalMaterial = true;
+	if (Component->LineTraceComponent(OutHit, Start, End, Query) && IsSurfaceHit(OutHit)) return true;
+	Query.bTraceComplex = false;
+	return Component->LineTraceComponent(OutHit, Start, End, Query) && IsSurfaceHit(OutHit);
+}
+
+void AProjectile::ApplyGasPipeHit(AActor* Target, const FHitResult& Hit, const FVector& IncomingDirection)
+{
+	if (!HasAuthority() || !IsValid(Target) || Target == ProjectileOwner) return;
+	FDamageParams Damage;
+	Damage.DamageAmount = DefaultDamage + AdditionalDamage;
+	if (!FMath::IsFinite(Damage.DamageAmount) || Damage.DamageAmount <= 0.f) return;
+	Damage.DamageType = EGameDamageType::Bullet;
+	Damage.DamageCauser = ProjectileOwner;
+	if (const APawn* PawnOwner = Cast<APawn>(ProjectileOwner))
+		Damage.InstigatorController = PawnOwner->GetController();
+	Damage.ImpactPoint = Hit.ImpactPoint;
+	Damage.HitDirection = IncomingDirection.GetSafeNormal();
+	Damage.ImpulseDirection = Hit.ImpactNormal;
+	Damage.HitBoneName = Hit.BoneName;
+	Damage.SurfaceType = UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get());
+	// This REPLACES ApplyDamage for a pipe. The helper calls ReceiveDamageAtHit once.
+	FGasImpactLibrary::ApplyHitDamage(Target, Damage, Hit);
+}
+
+bool AProjectile::HandlePhysicalGasPipeImpact(AActor* Target, UPrimitiveComponent* Component,
+	const FHitResult& Candidate, bool bHasSweep)
+{
+	if (!Cast<AGasPipe>(Target)) return false;
+	if (!bIsActivated || bIsHitScan || Target == ProjectileOwner) return true;
+	if (!bHasSweep && !bUseCustomProjectieMovement &&
+		(!ProjectileMovement || !ProjectileMovement->IsActive() || ProjectileMovement->Velocity.IsNearlyZero())) return true;
+	const FVector IncomingDirection = GetImpactTravelDirection(Candidate);
+	FHitResult Impact;
+	if (!ResolveGasPipeImpact(Target, Component, Candidate, bHasSweep, IncomingDirection, Impact))
+	{
+		// A blocking contact still stops the projectile, but no false hole is created.
+		if (Candidate.bBlockingHit) DeactiveProjectile();
+		return true;
+	}
+
+	ReportImpactNoiseToAI(Impact.ImpactPoint, IncomingDirection);
+	SpawnImpactEffect(Impact.ImpactPoint, Impact.ImpactNormal.Rotation());
+	PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Impact.PhysMaterial.Get()), Impact.ImpactPoint);
+	ApplyGasPipeHit(Target, Impact, IncomingDirection);
+	// AGasPipe owns the persistent hole decal. Do not stack a second bullet decal.
+	ApplyExplosiveDamage(bIsExplosive, Impact.ImpactPoint);
+
+	// Penetration is for Pawn overlaps; the intact pipe is solid. Only an
+	// actual blocking movement-component collision can use its existing bounce.
+	if (Candidate.bBlockingHit && !bUseCustomProjectieMovement && bCanSimpleBounce &&
+		ProjectileMovement && ProjectileMovement->bShouldBounce &&
+		CurrentRicochetCount < MaxRicochetCount && CheckRicochetAngle(Impact.ImpactNormal, IncomingDirection))
+	{
+		++CurrentRicochetCount;
+	}
+	else
+	{
+		DeactiveProjectile();
+	}
+	return true;
+}
+
+bool AProjectile::IsAutoAimPathBlockedByGasPipe(const FVector& Start, const FVector& End,
+	const AActor* Target) const
+{
+	if (!GetWorld()) return false;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(AutoAimGasPipe), false, this);
+	if (ProjectileOwner) Query.AddIgnoredActor(ProjectileOwner);
+	if (Target) Query.AddIgnoredActor(Target);
+	if (Weapon && Weapon->GetWeaponMesh()) Query.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	FCollisionResponseParams Responses;
+	Responses.CollisionResponse.SetResponse(ECC_Pawn, ECR_Overlap);
+	Responses.CollisionResponse.SetResponse(ECC_GameTraceChannel6, ECR_Overlap);
+	TArray<FHitResult> Hits;
+	GetWorld()->SweepMultiByChannel(Hits, Start, End, FQuat::Identity, ECC_GameTraceChannel3,
+		FCollisionShape::MakeSphere(FMath::Max(0.1f, ProjectileRadius)), Query, Responses);
+	for (const FHitResult& Hit : Hits)
+		if (Cast<AGasPipe>(Hit.GetActor())) return true;
+	return false;
+}
+
 void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	if (!bIsActivated || bIsHitScan || (OtherActor && OtherActor == ProjectileOwner)) return;
+	if (HandlePhysicalGasPipeImpact(OtherActor, OtherComp, Hit, true)) return;
 	if (bIsActivated && Hit.bBlockingHit && OtherActor != ProjectileOwner && !Cast<APawn>(OtherActor))
 	{
 		FVector TravelDir = ProjectileMovement ? ProjectileMovement->Velocity.GetSafeNormal() : FVector::ZeroVector;
@@ -576,6 +715,8 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 
 void AProjectile::OnComponentBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	if (!bIsActivated || bIsHitScan || !IsValid(OtherActor) || OtherActor == ProjectileOwner) return;
+	if (HandlePhysicalGasPipeImpact(OtherActor, OtherComp, SweepResult, bFromSweep)) return;
 	//UE_LOG(LogTemp, Error, TEXT("Projectile Overlapped!!!"));
 	if (NumPenetrableObjects > 0)
 	{
@@ -632,7 +773,7 @@ void AProjectile::OnComponentBeginOverlap(UPrimitiveComponent* OverlappedCompone
 					ResetPenetration();
 
 
-					if (bShouldUpdateTrailEffect)
+					if (bShouldUpdateTrailEffect && IsValid(TrailEffectComponent))
 					{
 						TrailEffectComponent->Deactivate();
 						TrailEffectComponent->DestroyComponent();
@@ -789,14 +930,14 @@ void AProjectile::LaunchHitScan(FVector StartLocation, FVector TraceDirection, F
 void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, float MaxDistance, float SphereRadius, TArray<FVector>& OutHitLocations)
 {
 	FVector Start = StartLocation;
-	FVector Direction = TraceDirection;
-	FVector End = StartLocation + TraceDirection * MaxDistance;
+	FVector Direction = TraceDirection.GetSafeNormal();
+	FVector End = StartLocation + Direction * MaxDistance;
 
 	TArray<FVector> HitStaticLocations;
 
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(ProjectileOwner);
-	Params.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	if (Weapon && Weapon->GetWeaponMesh()) Params.AddIgnoredComponent(Weapon->GetWeaponMesh());
 	Params.AddIgnoredComponent(ProjectileMesh);
 	Params.AddIgnoredActor(this);
 	Params.bReturnPhysicalMaterial = true;
@@ -810,7 +951,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 	{
 		TArray<FHitResult> TempHitResults;
 
-		bool bHit = GetWorld()->SweepMultiByChannel(
+		GetWorld()->SweepMultiByChannel(
 			TempHitResults,
 			Start,
 			End,
@@ -825,11 +966,41 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 
 		bool bIsBlockedByWorldStatic = false;
 
-		if (bHit)
+		if (!TempHitResults.IsEmpty())
 		{
 			TArray<AActor*> OnceDamagedEnemies;
 			for (const FHitResult& HitResult : TempHitResults)
 			{
+				if (AGasPipe* Pipe = Cast<AGasPipe>(HitResult.GetActor()))
+				{
+					FHitResult Impact;
+					const bool bResolved = ResolveGasPipeImpact(Pipe, HitResult.GetComponent(), HitResult, true, Direction, Impact);
+					const FVector StopPoint = bResolved ? Impact.ImpactPoint : HitResult.Location;
+					if (bResolved)
+					{
+						ReportImpactNoiseToAI(Impact.ImpactPoint, Direction);
+						PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Impact.PhysMaterial.Get()), Impact.ImpactPoint);
+						SpawnImpactEffect(Impact.ImpactPoint, Impact.ImpactNormal.Rotation());
+						ApplyGasPipeHit(Pipe, Impact, Direction);
+						ApplyExplosiveDamage(bIsExplosive, Impact.ImpactPoint);
+					}
+					HitStaticLocations.Add(StopPoint);
+					bIsBlockedByWorldStatic = true; // A pipe is a solid obstacle regardless of object type.
+					if (bResolved && HitResult.bBlockingHit && RicochetCount < MaxRicochetCount &&
+						CheckRicochetAngle(Impact.ImpactNormal, Direction))
+					{
+						Direction = GetReflectionAngle(Impact.ImpactNormal, Direction).GetSafeNormal();
+						Start = StopPoint + Direction * (SphereRadius + 1.f);
+						End = Start + Direction * MaxDistance;
+						++CurrentRicochetCount;
+					}
+					else
+					{
+						RicochetCount = MaxRicochetCount + 1;
+					}
+					break; // Never fall through to Character damage / world-static effects.
+				}
+				if (!IsValid(HitResult.GetComponent())) continue;
 				if (NumPenetratedObjects <= NumPenetrableObjects)
 				{
 					ACharacter* Enemy = Cast<ACharacter>(HitResult.GetActor());
@@ -894,7 +1065,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 			}
 		}
 
-		if (!bHit || !bIsBlockedByWorldStatic)
+		if (!bIsBlockedByWorldStatic)
 		{
 			HitStaticLocations.Add(End);
 			break;
@@ -905,6 +1076,13 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 }
 void AProjectile::InitHitScanProjectileMovement(FVector StartLocation)
 {
+	if (HitScanEndPoints.IsEmpty()) { DeactiveProjectile(); return; }
+	// Damage is already applied by the query, not by the travelling tracer.
+	CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ProjectileMovement->StopMovementImmediately();
+	ProjectileMovement->Deactivate();
+	bUseCustomProjectieMovement = false;
+	DistanceMoved = 0.f;
 	bActivatedMeshMovementForHitScan = true;
 
 	if (!HitScanEndPoints.IsEmpty())
@@ -920,6 +1098,7 @@ void AProjectile::InitHitScanProjectileMovement(FVector StartLocation)
 }
 void AProjectile::UpdateHitScanProjectileMovement(float DeltaTime)
 {
+	if (!HitScanEndPoints.IsValidIndex(CurrEndPointIdx)) { DeactiveProjectile(); return; }
 	FVector CurrLocation = GetActorLocation();
 	FVector TargetLocation = HitScanEndPoints[CurrEndPointIdx];
 
@@ -967,7 +1146,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 
 	FCollisionQueryParams BaseParams(SCENE_QUERY_STAT(WeaponSphereSweep), /*bTraceComplex=*/false);
 	if (ProjectileOwner) BaseParams.AddIgnoredActor(ProjectileOwner);
-	if (Weapon->GetWeaponMesh()) BaseParams.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	if (Weapon && Weapon->GetWeaponMesh()) BaseParams.AddIgnoredComponent(Weapon->GetWeaponMesh());
 	if (ProjectileMesh) BaseParams.AddIgnoredComponent(ProjectileMesh);
 	BaseParams.AddIgnoredActor(this);
 	BaseParams.bReturnPhysicalMaterial = true; //TODO: ???
@@ -990,6 +1169,35 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 
 	if (bHit)
 	{
+		// A real pipe hit takes priority over aim assistance, even for WorldDynamic pipes.
+		if (AGasPipe* Pipe = Cast<AGasPipe>(HitResult.GetActor()))
+		{
+			FHitResult Impact;
+			const FVector IncomingDirection = TraceDir.GetSafeNormal();
+			const bool bResolved = ResolveGasPipeImpact(Pipe, HitResult.GetComponent(), HitResult,
+				true, IncomingDirection, Impact);
+			const FVector StopPoint = bResolved ? Impact.ImpactPoint : HitResult.Location;
+			if (bResolved)
+			{
+				ReportImpactNoiseToAI(Impact.ImpactPoint, IncomingDirection);
+				SpawnImpactEffect(Impact.ImpactPoint, Impact.ImpactNormal.Rotation());
+				PlaySoundAtLocationByMaterial(UPhysicalMaterial::DetermineSurfaceType(Impact.PhysMaterial.Get()), Impact.ImpactPoint);
+				ApplyGasPipeHit(Pipe, Impact, IncomingDirection);
+				ApplyExplosiveDamage(bIsExplosive, Impact.ImpactPoint);
+			}
+			HitScanEndPoints.Reset();
+			HitScanEndPoints.Add(StopPoint);
+			bIsHitScan = true;
+			InitHitScan();
+			InitHitScanProjectileMovement(MuzzleLoc);
+			return;
+		}
+		if (!IsValid(HitResult.GetComponent()))
+		{
+			InitPhysicsProjectile();
+			InitProjectileMovement(StartLocation, TraceDir, MuzzleLoc);
+			return;
+		}
 		//TODO: Set ProjectileMesh Movement
 
 		if (HitResult.GetComponent()->GetCollisionObjectType() == ECC_WorldStatic)
@@ -1029,7 +1237,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 		}
 	}
 
-	if (!bHit || bIsBlockedByWorldStatic)
+	if (!bHit || bIsBlockedByWorldStatic || !bIsHitByHitScan)
 	{
 		FHitResult AutoAimHitResult;
 
@@ -1066,7 +1274,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 		TSet<const AActor*> Seen;
 		Seen.Reserve(HitResults.Num());
 
-		const FVector CharLoc = ProjectileOwner->GetActorLocation();
+		const FVector CharLoc = IsValid(ProjectileOwner) ? ProjectileOwner->GetActorLocation() : StartLocation;
 
 		AActor* AutoAimHitEnemy = nullptr;
 		FVector AutoAimHitLocation;
@@ -1075,7 +1283,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 		for (const FHitResult& Hr : HitResults)
 		{
 			AActor* HitActor = Hr.GetActor();
-			if (!HitActor || Seen.Contains(HitActor)) continue;
+			if (!IsValid(HitActor) || !Cast<ACharacter>(HitActor) || Seen.Contains(HitActor)) continue;
 			Seen.Add(HitActor);
 
 			const FVector CandidateLoc = HitActor->GetActorLocation();
@@ -1097,7 +1305,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 				BaseParams,
 				WorldStaticResponseParams);
 
-			if (bBlocked) continue;
+			if (bBlocked || IsAutoAimPathBlockedByGasPipe(StartLocation, CandidateLoc, HitActor)) continue;
 
 			const float DistSq = FVector::DistSquared(CharLoc, CandidateLoc);
 			if (DistSq < BestDistSq)
@@ -1116,7 +1324,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 
 			//TODO: Impact Point 설정하기
 			ApplyDamage(AutoAimHitEnemy, DefaultDamage + AdditionalDamage,
-				EGameDamageType::Melee, false, AutoAimHitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(AutoAimHitResult.PhysMaterial.Get()), TraceDirection);
+				EGameDamageType::Melee, false, AutoAimHitResult.BoneName, UPhysicalMaterial::DetermineSurfaceType(AutoAimHitResult.PhysMaterial.Get()), TraceDirection, AutoAimHitResult.ImpactPoint);
 
 			if (OnBodyShot.IsBound())
 			{
@@ -1234,7 +1442,7 @@ void AProjectile::AddImpulseToEnemy(AActor* OtherActor, FVector Force)
 }
 bool AProjectile::CheckRicochetAngle(FVector normal, FVector vel)
 {
-	return FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(-normal.GetSafeNormal(), vel.GetSafeNormal()))) > MinIncidenceAngle;
+	return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(-normal.GetSafeNormal(), vel.GetSafeNormal()), -1.0, 1.0))) > MinIncidenceAngle;
 }
 FVector AProjectile::GetReflectionAngle(FVector normal, FVector input)
 {
@@ -1258,6 +1466,11 @@ void AProjectile::InitProjectileMovement(FVector StartPos, FVector Direction, FV
 {
 	bUseCustomProjectieMovement = true;
 
+	if (ProjectileMesh->GetAttachParent() == CollisionComp)
+	{
+		MeshRelativeTransformBeforeCustomMovement = ProjectileMesh->GetRelativeTransform();
+		bHasDetachedMeshTransform = true;
+	}
 	ProjectileMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 	//ProjectileMesh->SetUsing
 
@@ -1310,6 +1523,7 @@ void AProjectile::UpdateProjectileMovement(float DeltaTime)
 
 	//SetActorLocation(CollisionTargetLocation);
 	AddActorWorldOffset(DeltaPos, /*bSweep=*/true);
+	if (!bIsActivated || !bUseCustomProjectieMovement) return;
 
 	if (DistanceMoved < PM_Start_To_d_Len)
 	{
@@ -1378,9 +1592,11 @@ void AProjectile::ReportImpactNoiseToAI(const FVector& ImpactLocation, const FVe
 void AProjectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (!bIsActivated) return;
 
 	UpdateTrailEffect();
 	UpdateTargetInfo();
+	if (!bIsActivated) return;
 
 	if (bIsHitScan)
 	{

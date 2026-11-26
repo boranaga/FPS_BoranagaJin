@@ -53,6 +53,17 @@ private:
     void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 
     void HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus);
+    void ApplyGasFilteredSight(AActor* Actor, bool bVisible);
+    void PollGasFilteredSight();
+    /** Raw Sight remains owned by AIPerception; this cache tracks only gas occlusion. */
+    TSet<TWeakObjectPtr<AActor>> GasBlockedSightActors;
+    bool IsSightBlockedByGas(AActor* Actor) const;
+    bool bObservationEnabled = false;
+    UPROPERTY(EditAnywhere, Category = "Perception - Gas", meta = (ClampMin = "0.01"))
+    float GasSightOpticalDepthThreshold = 1.6f;
+    /** A lower recovery threshold avoids sight flicker near the blocking threshold. */
+    UPROPERTY(EditAnywhere, Category = "Perception - Gas", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+    float GasSightRecoveryRatio = 0.8f;
     void HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus);
 
     /** Push sight/hearing config changes to UAIPerceptionComponent. */

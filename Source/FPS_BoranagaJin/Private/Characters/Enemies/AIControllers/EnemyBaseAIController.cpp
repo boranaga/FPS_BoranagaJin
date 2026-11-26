@@ -5,6 +5,7 @@
 #include "Characters/Enemies/EnemyCombatNoiseSubsystem.h"
 #include "Characters/Enemies/EnemyLightSourceSubsystem.h"
 #include "Characters/Player/CharacterPlayer.h"
+#include "Objects/Gas/GasSystemSubsystem.h"
 
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISense.h"
@@ -199,45 +200,98 @@ void AEnemyBaseAIController::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulu
     }
 }
 
-void AEnemyBaseAIController::HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus)
+// AIPerception owns the raw sight result (range, FOV, affiliation and geometry).
+// Gas only filters successful raw sight; it never manufactures a new sight stimulus.
+bool AEnemyBaseAIController::IsSightBlockedByGas(AActor* Actor) const
+{
+    if (!IsValid(Actor) || !IsValid(GetPawn())) return false;
+    const bool bWasBlocked = GasBlockedSightActors.Contains(TWeakObjectPtr<AActor>(Actor));
+    const float Threshold = FMath::Max(0.01f, GasSightOpticalDepthThreshold);
+    const float EffectiveThreshold = bWasBlocked
+        ? Threshold * FMath::Clamp(GasSightRecoveryRatio, 0.1f, 1.f) : Threshold;
+    return UGasSystemSubsystem::BlocksActorSight(GetPawn(), Actor, EffectiveThreshold);
+}
+
+void AEnemyBaseAIController::ApplyGasFilteredSight(AActor* Actor, bool bVisible)
 {
     AEnemyBase* Enemy = GetEnemyCharacter();
-    if (!IsValid(Enemy) || Enemy->IsDead() || !IsValid(Actor)) return;
-
+    if (!bObservationEnabled || !IsValid(Enemy) || Enemy->IsDead() || !IsValid(Actor)) return;
     UEnemyStateMachineComponent* SM = Enemy->GetStateMachineComponent();
-    if (!SM) return;
+    if (!IsValid(SM) || SM->GetCurrentState() == EEnemyStateType::Dead) return;
+    if (!Actor->IsA(ACharacterPlayer::StaticClass()) && !Actor->ActorHasTag(TEXT("Player"))) return;
 
-    // A projectile/weapon must never become the chase target just because sight sensed it.
-    if (!Actor->IsA(ACharacterPlayer::StaticClass()) &&
-        !Actor->ActorHasTag(TEXT("Player")))
+    if (bVisible)
     {
-        return;
-    }
-
-    if (Stimulus.WasSuccessfullySensed())
-    {
+        // Do not restart Chase or cancel Attack on every periodic observation.
+        if (SM->GetTrackedTarget() == Actor && SM->IsTargetCurrentlyVisible()) return;
         SM->SetTarget(Actor);
-        SM->OnTargetFound(); // Cancels any previously scheduled loss-of-sight timer.
-
-        // Health-based Flee/Hide/Recover still takes priority. A recent
-        // impact is handled by zigzag Chase when the player is visible.
+        SM->OnTargetFound();
         if (SM->IsInDefensiveState())
         {
             SM->NotifyThreatSeen(Actor);
             return;
         }
-        // A visually reacquired target does not interrupt a door breach;
-        // the door state itself checks whether the obstacle is still relevant.
         if (SM->GetCurrentState() != EEnemyStateType::BreachDoor)
-        {
             SM->SetState(EEnemyStateType::Chase);
-        }
     }
-    else if (SM->GetTrackedTarget() == Actor)
+    else if (SM->GetTrackedTarget() == Actor && SM->IsTargetCurrentlyVisible())
     {
-        // Only the currently tracked player's lost sight should start the timer.
+        // Exactly once per loss; repeating this would restart the memory timer.
         SM->OnTargetMissed();
     }
+}
+
+void AEnemyBaseAIController::HandleSightStimulus(AActor* Actor, const FAIStimulus& Stimulus)
+{
+    if (!bObservationEnabled || !IsValid(Actor) ||
+        (!Actor->IsA(ACharacterPlayer::StaticClass()) && !Actor->ActorHasTag(TEXT("Player")))) return;
+    const bool bRawVisible = Stimulus.WasSuccessfullySensed();
+    const bool bGasBlocked = bRawVisible && IsSightBlockedByGas(Actor);
+    const TWeakObjectPtr<AActor> Key(Actor);
+    if (bGasBlocked) GasBlockedSightActors.Add(Key);
+    else GasBlockedSightActors.Remove(Key);
+    ApplyGasFilteredSight(Actor, bRawVisible && !bGasBlocked);
+}
+
+void AEnemyBaseAIController::PollGasFilteredSight()
+{
+    AEnemyBase* Enemy = GetEnemyCharacter();
+    if (!bObservationEnabled || !IsValid(Enemy) || Enemy->IsDead() || !AIPerceptionComponent) return;
+    UEnemyStateMachineComponent* SM = Enemy->GetStateMachineComponent();
+    if (!IsValid(SM) || SM->GetCurrentState() == EEnemyStateType::Dead) return;
+
+    TArray<AActor*> RawVisibleActors;
+    AIPerceptionComponent->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), RawVisibleActors);
+    TSet<TWeakObjectPtr<AActor>> CurrentBlocked;
+    TArray<AActor*> ClearActors;
+    for (AActor* Actor : RawVisibleActors)
+    {
+        if (!IsValid(Actor) || (!Actor->IsA(ACharacterPlayer::StaticClass()) && !Actor->ActorHasTag(TEXT("Player")))) continue;
+        if (IsSightBlockedByGas(Actor))
+        {
+            CurrentBlocked.Add(TWeakObjectPtr<AActor>(Actor));
+            ApplyGasFilteredSight(Actor, false);
+        }
+        else
+        {
+            ClearActors.Add(Actor);
+        }
+    }
+    GasBlockedSightActors = MoveTemp(CurrentBlocked);
+
+    // Also handle forgotten raw stimuli; clearing gas cannot recover a target
+    // that is behind a wall, outside the FOV or no longer perceived.
+    AActor* Tracked = SM->GetTrackedTarget();
+    if (IsValid(Tracked) && SM->IsTargetCurrentlyVisible() && !ClearActors.Contains(Tracked))
+        ApplyGasFilteredSight(Tracked, false);
+
+    // Prefer the existing target; otherwise pick one currently visible player.
+    // No state changes while an already visible target stays visible.
+    if (SM->IsTargetCurrentlyVisible()) return;
+    if (IsValid(Tracked) && ClearActors.Contains(Tracked))
+        ApplyGasFilteredSight(Tracked, true);
+    else if (!ClearActors.IsEmpty())
+        ApplyGasFilteredSight(ClearActors[0], true);
 }
 
 void AEnemyBaseAIController::HandleHearingStimulus(AActor* Actor, const FAIStimulus& Stimulus)
@@ -679,6 +733,7 @@ void AEnemyBaseAIController::DisablePerception()
 void AEnemyBaseAIController::StartLightObservation()
 {
     if (!GetWorld() || !HasAuthority() || !GetPawn()) return;
+    bObservationEnabled = true;
     // Restarting the timer after loading a different row must not leave the
     // previous sampling cadence active.
     GetWorld()->GetTimerManager().ClearTimer(LightObservationTimerHandle);
@@ -691,6 +746,8 @@ void AEnemyBaseAIController::StartLightObservation()
 
 void AEnemyBaseAIController::StopLightObservation()
 {
+    bObservationEnabled = false;
+    GasBlockedSightActors.Reset();
     if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(LightObservationTimerHandle);
     LastObservedSpotLight.Reset();
 }
@@ -702,6 +759,8 @@ bool AEnemyBaseAIController::CanObserveLightPoint(
 {
     const AEnemyBase* Enemy = GetEnemyCharacter();
     if (!IsValid(Enemy) || !GetWorld()) return false;
+
+    if (UGasSystemSubsystem::BlocksSight(GetWorld(), EyeLocation, Point, GasSightOpticalDepthThreshold)) return false;
 
     const FVector ToPoint = Point - EyeLocation;
     if (ToPoint.IsNearlyZero()) return true;
@@ -822,6 +881,14 @@ bool AEnemyBaseAIController::TryObserveSpotLight(
             continue;
         }
 
+        // A reflected light cue traverses two gas segments: lamp -> patch -> eye.
+        if (const UGasSystemSubsystem* Gas = GetWorld()->GetSubsystem<UGasSystemSubsystem>())
+        {
+            const float OpticalDepth = Gas->GetOpticalDepth(LightOrigin, Patch) +
+                Gas->GetOpticalDepth(Patch, EyeLocation);
+            if (OpticalDepth >= FMath::Max(0.01f, GasSightOpticalDepthThreshold)) continue;
+        }
+
         // If only the pool of light is visible, the source direction/distance
         // is uncertain. Investigate an estimated point on the illuminated side
         // of the surface; NEVER use Player->GetActorLocation().
@@ -843,6 +910,7 @@ bool AEnemyBaseAIController::TryObserveSpotLight(
 
 void AEnemyBaseAIController::PollVisiblePlayerLights()
 {
+    PollGasFilteredSight();
     AEnemyBase* Enemy = GetEnemyCharacter();
     if (!IsValid(Enemy) || Enemy->IsDead() || !GetWorld()) return;
     UEnemyStateMachineComponent* SM = Enemy->GetStateMachineComponent();
