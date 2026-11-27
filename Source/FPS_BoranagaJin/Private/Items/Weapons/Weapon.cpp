@@ -10,6 +10,8 @@
 #include "Items/ItemPickUp.h"
 #include "TimerManager.h"
 #include "Items/Projectile/ProjectileShell.h"
+#include "Items/Projectile/Projectile.h"
+#include "ObjectPoolSubsystem.h"
 #include "Items/Weapons/WeaponCamShakeBase.h"
 #include "Items/Weapons/WeaponInterface.h"
 #include "UI/AmmoCounterWidget.h"
@@ -118,11 +120,10 @@ void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 	SetMeshVisibility(false);
 	SetAimSocketRelativeTransform();
 
-	//TODO: ObjectPoolingSystem에 편입
 	InitProjectileShells();
-
-	InitProjectiles(FireData_L.ProjectileClass, 10);
-	InitProjectiles(FireData_R.ProjectileClass, 10);
+	InitProjectiles(FireData_L.ProjectileClass, NumProjectile_L);
+	InitProjectiles(FireData_R.ProjectileClass, NumProjectile_R);
+	InitProjectiles(FireData_Skill.ProjectileClass, NumProjectile_Skill);
 }
 
 void AWeapon::InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
@@ -1068,11 +1069,11 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 
 		const FRotator SpawnRotation = ProjectileDirection.Rotation();
 
-		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass, MuzzleLocation, ProjectileDirection.Rotation());
 		if (!IsValid(Projectile)) return;
 		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 		Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable);
-		SetUpAimUIDelegateBinding(Projectile); //TODO: 중복바인딩 방지
+		SetUpAimUIDelegateBinding(Projectile);
 		if (bIsHoming)
 		{
 			Projectile->SetHomingTarget(bIsHoming, HomingTarget);
@@ -1177,7 +1178,7 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 		{
 			const FVector RandomVec = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(ProjectileDirection.GetSafeNormal(), GetGripSpreadAngle(FireData->MaxAngleOfMultiProjectileSpread));
 
-			AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+			AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass, MuzzleLocation, RandomVec.Rotation());
 			if (!IsValid(Projectile)) continue;
 			if (!bShotCommitted)
 			{
@@ -1475,7 +1476,7 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 		const FVector MuzzleLocation = WeaponMesh->GetSocketLocation(FName(TEXT("Muzzle")));
 		const FRotator SpawnRotation = ProjectileStartLocation.Rotation();
 
-		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass, MuzzleLocation, ProjectileDirection.Rotation());
 		if (!IsValid(Projectile)) return;
 		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 		Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable, true);
@@ -1581,7 +1582,7 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 		const FVector MuzzleLocation = WeaponMesh->GetSocketLocation(FName(TEXT("Muzzle")));
 		const FRotator SpawnRotation = SpreadedDirection.Rotation();
 
-		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass, MuzzleLocation, SpreadedDirection.Rotation());
 		if (!IsValid(Projectile)) return;
 		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 
@@ -1866,67 +1867,37 @@ void AWeapon::DestroyChargeEffect()
 #pragma endregion
 
 #pragma region ProjectileShell
-void AWeapon::InitProjectileShells() //TODO: need to be called in Weapon Init
+void AWeapon::InitProjectileShells()
 {
-	const FVector SpawnLocation = GetActorLocation();
-	const FRotator SpawnRotation = GetActorRotation();
-	FActorSpawnParameters SpawnParameter;
-	SpawnParameter.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	for (int i = 0; i < MaxProjectileShellNum; i++)
+	if (!ProjectileShellClass || MaxProjectileShellNum <= 0) return;
+	if (UWorld* World = GetWorld())
 	{
-		AProjectileShell* NewProjectileShell = GetWorld()->SpawnActor<AProjectileShell>(ProjectileShellClass, SpawnLocation, SpawnRotation, SpawnParameter);
-		if (!NewProjectileShell) continue;
-		ProjectileShells.Add(NewProjectileShell);
+		if (UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>())
+		{
+			Pool->EnsurePoolCapacity(ProjectileShellClass, MaxProjectileShellNum);
+		}
 	}
-
-	int32 numofshell = ProjectileShells.Num();
-	//UE_LOG(LogTemp, Warning, TEXT("Num of Shell: %d"), numofshell);
 }
 
 void AWeapon::EjectProjectileShell()
 {
-	FTransform ActorToWorldTransform = GetTransform();
-	FVector EjectLocation;
-	FRotator EjectRotation;
-	if (WeaponMesh)
+	if (!ProjectileShellClass || CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
+	UWorld* World = GetWorld();
+	UObjectPoolSubsystem* Pool = World ? World->GetSubsystem<UObjectPoolSubsystem>() : nullptr;
+	if (!IsValid(Pool)) return;
+
+	const FName ChamberSocket(TEXT("Chamber"));
+	const bool bHasSocket = IsValid(WeaponMesh) && WeaponMesh->DoesSocketExist(ChamberSocket);
+	const FVector EjectLocation = bHasSocket ? WeaponMesh->GetSocketLocation(ChamberSocket) : GetActorLocation();
+	const FRotator EjectRotation = bHasSocket ? WeaponMesh->GetSocketRotation(ChamberSocket) : GetActorRotation();
+	const FVector EjectDirection = EjectRotation.RotateVector(DefaultEjectImpulseVec).GetSafeNormal();
+	const FVector EjectImpulse = EjectDirection.IsNearlyZero() ? FVector::ZeroVector :
+		UKismetMathLibrary::RandomUnitVectorInConeInDegrees(EjectDirection, 5.f) * DefaultEjectImpulse;
+
+	if (AProjectileShell* Shell = Pool->SpawnFromPool(ProjectileShellClass, EjectLocation, EjectRotation))
 	{
-		EjectLocation = WeaponMesh->GetSocketLocation(FName("Chamber"));
-		EjectRotation = WeaponMesh->GetSocketRotation(FName("Chamber"));
+		Shell->EjectShell(EjectLocation, EjectRotation, EjectImpulse);
 	}
-	else
-	{
-		EjectLocation = GetActorLocation();
-		EjectRotation = GetActorRotation();
-	}
-	//FVector EjectImpulse = ActorToWorldTransform.InverseTransformVector(DefaultEjectImpulseVec);
-	FVector EjectImpulse = EjectRotation.RotateVector(DefaultEjectImpulseVec).GetSafeNormal();
-
-	EjectImpulse = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(EjectImpulse.GetSafeNormal(), 5.f);
-
-	EjectImpulse *= DefaultEjectImpulse;
-
-	if (!ProjectileShells[CurrProjectileShellIdx] || !IsValid(ProjectileShells[CurrProjectileShellIdx]))
-	{
-		const FVector SpawnLocation = GetActorLocation();
-		const FRotator SpawnRotation = GetActorRotation();
-		FActorSpawnParameters SpawnParameter;
-		SpawnParameter.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		AProjectileShell* NewProjectileShell = GetWorld()->SpawnActor<AProjectileShell>(ProjectileShellClass, SpawnLocation, SpawnRotation, SpawnParameter);
-
-		if (NewProjectileShell)
-		{
-			ProjectileShells[CurrProjectileShellIdx] = NewProjectileShell;
-			ProjectileShells[CurrProjectileShellIdx]->EjectShell(EjectLocation, EjectRotation, EjectImpulse);
-		}
-	}
-	else
-	{
-		ProjectileShells[CurrProjectileShellIdx]->EjectShell(EjectLocation, EjectRotation, EjectImpulse);
-	}
-
-	CurrProjectileShellIdx = (CurrProjectileShellIdx + 1) % MaxProjectileShellNum;
 }
 #pragma endregion
 
@@ -2686,7 +2657,7 @@ void AWeapon::ActivateAmmoCounterWidget(bool bflag)
 
 void AWeapon::SetUpAimUIDelegateBinding(AProjectile* Projectile)
 {
-	if (AimUIWidget)
+	if (IsValid(Projectile) && IsValid(AimUIWidget))
 	{
 		AimUIWidget->SetUpAimUIDelegateBinding(Projectile);
 	}
@@ -3991,75 +3962,42 @@ void AWeapon::UpdateOverheat(float DeltaTime)
 #pragma region Projectile Pool
 void AWeapon::InitProjectiles(TSubclassOf<AProjectile> ProjectileClass, int32 NumObject)
 {
-	UWorld* const World = GetWorld();
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	auto& Pool = ProjectilePool.FindOrAdd(ProjectileClass);
-
-	for (int32 i = 0; i < NumObject; ++i)
+	if (!ProjectileClass || NumObject <= 0) return;
+	if (UWorld* World = GetWorld())
 	{
-		AProjectile* Projectile = World->SpawnActor<AProjectile>(ProjectileClass, FTransform::Identity, SpawnParams);
-		if (Projectile)
+		if (UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>())
 		{
-			//UE_LOG(LogTemp, Warning, TEXT("InitProjectiles"));
-			Projectile->LoadProjectileData();
-			Projectile->DeactiveProjectile();
-			Pool.Add(Projectile);
+			Pool->EnsurePoolCapacity(ProjectileClass, NumObject);
 		}
 	}
-
-	//UE_LOG(LogTemp, Warning, TEXT("InitProjectiles"));
-	//UE_LOG(LogTemp, Warning, TEXT("ProjectilePool Num: %d"), Pool.Num());
 }
 
 AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass)
 {
-	UWorld* const World = GetWorld();
-	if (!IsValid(World) || !ProjectileClass) return nullptr;
-	auto& Pool = ProjectilePool.FindOrAdd(ProjectileClass);
+	return GetProjectileFromPool(ProjectileClass, GetActorLocation(), GetActorRotation());
+}
 
-	//UE_LOG(LogTemp, Warning, TEXT("GetProjectileFromPool"));
-	//UE_LOG(LogTemp, Warning, TEXT("ProjectilePool Num: %d"), Pool.Num());
+AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass, const FVector& Location, const FRotator& Rotation)
+{
+	UWorld* World = GetWorld();
+	UObjectPoolSubsystem* Pool = World ? World->GetSubsystem<UObjectPoolSubsystem>() : nullptr;
+	if (!IsValid(Pool) || !ProjectileClass) return nullptr;
 
-
-	AProjectile* Projectile = nullptr;
-	if (Pool.Num() > 0)
+	AProjectile* Projectile = Pool->SpawnFromPool(ProjectileClass, Location, Rotation);
+	if (IsValid(Projectile))
 	{
-		Projectile = Pool.Pop(false);
+		Projectile->SetWeapon(this);
 	}
-	else
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		Projectile = World->SpawnActor<AProjectile>(ProjectileClass, FTransform::Identity, SpawnParams);
-		if (Projectile)
-		{
-			Projectile->LoadProjectileData();
-		}
-	}
-
-	if (!IsValid(Projectile)) return nullptr;
-	Projectile->SetWeapon(this); //TODO: 어차피 GetFromPool 하자마자 Init 따로 호출하면서 처리하는데 굳이?
-	ActiveProjectileSet.Add(Projectile);
-
 	return Projectile;
 }
 
 void AWeapon::ReturnProjectile(AProjectile* Projectile)
 {
-	//UE_LOG(LogTemp, Warning, TEXT("ReturnProjectile"));
-
-	if (!Projectile) return;
-	if (!ActiveProjectileSet.Contains(Projectile)) return;
-
-	// Projectile->DeactivateToPool(); //TODO: 만들어야함
-	ActiveProjectileSet.Remove(Projectile);
-
-	//UE_LOG(LogTemp, Warning, TEXT("ActiveProjectileSet Num: %d"), ActiveProjectileSet.Num());
-
-	TSubclassOf<AProjectile> Cls = Projectile->GetClass();
-	ProjectilePool.FindOrAdd(Cls).Add(Projectile);
+	// Legacy callers can still return their own projectile; never return another weapon's lease.
+	if (IsValid(Projectile) && Projectile->IsActiveInPool() && Projectile->IsOwnedByWeapon(this))
+	{
+		Projectile->DeactiveProjectile();
+	}
 }
 #pragma endregion
 

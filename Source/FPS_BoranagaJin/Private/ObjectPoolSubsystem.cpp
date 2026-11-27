@@ -6,44 +6,36 @@
 void UObjectPoolSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bIsDeinitializing = false;
 }
 
 void UObjectPoolSubsystem::Deinitialize()
 {
-	for (auto& Pair : ActorPools)
+	bIsDeinitializing = true;
+	// Destroying an actor can run callbacks; do not iterate live pool containers.
+	TArray<AActor*> Actors;
+	Actors.Reserve(ActorToPoolClassMap.Num());
+	for (const auto& Entry : ActorToPoolClassMap)
 	{
-		FActorPool& Pool = Pair.Value;
-
-		for (AActor* Actor : Pool.AvailableActors)
-		{
-			if (IsValid(Actor))
-			{
-				Actor->Destroy();
-			}
-		}
-
-		for (AActor* Actor : Pool.ActiveActors)
-		{
-			if (IsValid(Actor))
-			{
-				Actor->Destroy();
-			}
-		}
-
-		Pool.AvailableActors.Empty();
-		Pool.AvailableActorSet.Empty();
-		Pool.ActiveActors.Empty();
+		if (IsValid(Entry.Key.Get())) Actors.Add(Entry.Key.Get());
 	}
-
 	ActorPools.Empty();
 	ActorToPoolClassMap.Empty();
-
+	ReturningActors.Empty();
+	for (AActor* Actor : Actors)
+	{
+		if (IsValid(Actor))
+		{
+			Actor->OnDestroyed.RemoveDynamic(this, &UObjectPoolSubsystem::HandlePooledActorDestroyed);
+			Actor->Destroy();
+		}
+	}
 	Super::Deinitialize();
 }
 
 bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 {
-	if (!IsValid(Actor))
+	if (bIsDeinitializing || !IsValid(Actor) || ReturningActors.Contains(Actor))
 	{
 		return false;
 	}
@@ -77,6 +69,9 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 		return false;
 	}
 
+	ActorToPoolClassMap.Add(Actor, ActorClass);
+	Actor->OnDestroyed.AddUniqueDynamic(this, &UObjectPoolSubsystem::HandlePooledActorDestroyed);
+
 	if (IPoolableActorInterface* PoolableActor = Cast<IPoolableActorInterface>(Actor))
 	{
 		PoolableActor->SetOwningPool(this);
@@ -100,8 +95,10 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 		/*
 		 * 처음부터 사용 가능한 비활성 객체로 등록한다.
 		 */
+		ReturningActors.Add(Actor);
 		DeactivateActor(Actor);
-		AddToAvailablePool(Pool, Actor);
+		ReturningActors.Remove(Actor);
+		if (IsValid(Actor) && !bIsDeinitializing) AddToAvailablePool(ActorPools.FindOrAdd(ActorClass), Actor);
 	}
 
 
@@ -111,115 +108,75 @@ bool UObjectPoolSubsystem::RegisterActor(AActor* Actor, bool bStartActive)
 
 void UObjectPoolSubsystem::PrewarmPool(TSubclassOf<AActor> ActorClass, int32 Count)
 {
-	if (!ActorClass || Count <= 0)
-	{
-		return;
-	}
-
-	FActorPool& Pool = ActorPools.FindOrAdd(ActorClass);
-
-	for (int32 i = 0; i < Count; ++i)
+	if (bIsDeinitializing || !ActorClass || Count <= 0) return;
+	for (int32 i = 0; i < Count && !bIsDeinitializing; ++i)
 	{
 		AActor* NewActor = CreateNewActor(ActorClass);
-
-		if (!NewActor)
-		{
-			continue;
-		}
-
+		if (!IsValid(NewActor)) continue;
+		// AItem and AItemPickUp may self-register from BeginPlay during SpawnActor.
+		RemoveFromActivePool(ActorPools.FindOrAdd(ActorClass), NewActor);
+		ReturningActors.Add(NewActor);
 		DeactivateActor(NewActor);
-		AddToAvailablePool(Pool, NewActor);
+		ReturningActors.Remove(NewActor);
+		if (IsValid(NewActor) && !bIsDeinitializing) AddToAvailablePool(ActorPools.FindOrAdd(ActorClass), NewActor);
 	}
+}
+
+void UObjectPoolSubsystem::EnsurePoolCapacity(TSubclassOf<AActor> ActorClass, int32 MinTotalCount)
+{
+	if (bIsDeinitializing || !ActorClass || MinTotalCount <= 0) return;
+	int32 TotalCount = 0;
+	if (const FActorPool* Pool = ActorPools.Find(ActorClass))
+	{
+		for (AActor* Actor : Pool->AvailableActors) if (IsValid(Actor)) ++TotalCount;
+		for (AActor* Actor : Pool->ActiveActors) if (IsValid(Actor)) ++TotalCount;
+	}
+	PrewarmPool(ActorClass, FMath::Max(0, MinTotalCount - TotalCount));
 }
 
 AActor* UObjectPoolSubsystem::SpawnFromPool(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation, bool bShouldCreateNewActor)
 {
-	if (!ActorClass)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 1"));
-		return nullptr;
-	}
-
-	FActorPool& Pool = ActorPools.FindOrAdd(ActorClass);
+	if (bIsDeinitializing || !ActorClass) return nullptr;
 	AActor* Actor = nullptr;
-
-	if (bShouldCreateNewActor)
+	if (!bShouldCreateNewActor)
 	{
-		Actor = CreateNewActor(ActorClass);
-	}
-	else
-	{
-		while (Pool.AvailableActors.Num() > 0 && !Actor)
+		FActorPool& Pool = ActorPools.FindOrAdd(ActorClass);
+		while (!Pool.AvailableActors.IsEmpty() && !Actor)
 		{
-			Actor = Pool.AvailableActors.Pop();
-
-			if (!IsValid(Actor))
-			{
-				Actor = nullptr;
-				continue;
-			}
-
-			Pool.AvailableActorSet.Remove(Actor);
-		}
-
-		if (!Actor)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 2"));
-			Actor = CreateNewActor(ActorClass);
+			AActor* Candidate = Pool.AvailableActors.Pop(EAllowShrinking::No);
+			Pool.AvailableActorSet.Remove(Candidate);
+			if (IsValid(Candidate)) Actor = Candidate;
+			else ActorToPoolClassMap.Remove(Candidate);
 		}
 	}
+	if (!Actor) Actor = CreateNewActor(ActorClass);
+	if (!IsValid(Actor) || bIsDeinitializing) return nullptr;
 
-	if (!Actor)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 3"));
-		return nullptr;
-	}
-
+	// Register as active BEFORE invoking actor callbacks, and do not retain a TMap value reference across callbacks.
+	AddToActivePool(ActorPools.FindOrAdd(ActorClass), Actor);
 	ActivateActor(Actor, Location, Rotation);
-	AddToActivePool(Pool, Actor);
-
-	UE_LOG(LogTemp, Warning, TEXT("AActor* UObjectPoolSubsystem::SpawnFromPool 4"));
-	return Actor;
+	const FActorPool* Pool = ActorPools.Find(ActorClass);
+	return IsValid(Actor) && Pool && Pool->ActiveActors.Contains(Actor) ? Actor : nullptr;
 }
 
 void UObjectPoolSubsystem::ReturnToPool(AActor* Actor)
 {
-	UE_LOG(LogTemp, Error, TEXT("void UObjectPoolSubsystem::ReturnToPool(AActor* Actor)"));
-
-	if (!IsValid(Actor)) { return; }
-
-	//TODO: 사용 고려해봐야함
-	//TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor);
-	//----------------------------
+	if (bIsDeinitializing || !IsValid(Actor) || Actor->GetWorld() != GetWorld() || ReturningActors.Contains(Actor)) return;
 	const TSubclassOf<AActor> PoolClass = Actor->GetClass();
-
-	if (!PoolClass)
-	{
-		Actor->Destroy();
-		return;
-	}
-
-	FActorPool* Pool = ActorPools.Find(*PoolClass);
-
+	FActorPool* Pool = ActorPools.Find(PoolClass);
 	if (!Pool)
 	{
 		Actor->Destroy();
 		ActorToPoolClassMap.Remove(Actor);
 		return;
 	}
-
-	if (Pool->AvailableActorSet.Contains(Actor))
-	{
-		return;
-	}
-
-	RemoveFromActivePool(*Pool, Actor);
-
+	if (Pool->AvailableActorSet.Contains(Actor)) return;
+	// Only a checked-out actor may be returned. Duplicate calls cannot insert duplicates.
+	if (!RemoveFromActivePool(*Pool, Actor)) return;
+	ReturningActors.Add(Actor);
 	DeactivateActor(Actor);
-
-	AddToAvailablePool(*Pool, Actor);
-
-	UE_LOG(LogTemp, Error, TEXT("Class = %s"), *PoolClass->GetName());
+	ReturningActors.Remove(Actor);
+	if (IsValid(Actor) && !bIsDeinitializing) AddToAvailablePool(ActorPools.FindOrAdd(PoolClass), Actor);
 }
 
 bool UObjectPoolSubsystem::IsActorInAvailablePool(AActor* Actor) const
@@ -248,45 +205,14 @@ bool UObjectPoolSubsystem::IsActorInAvailablePool(AActor* Actor) const
 
 AActor* UObjectPoolSubsystem::GetActorFromAvailablePool(AActor* Actor, const FVector& Location, const FRotator& Rotation)
 {
-	if (!IsValid(Actor)) { return nullptr; }
-
-	//TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor);
+	if (bIsDeinitializing || !IsValid(Actor) || Actor->GetWorld() != GetWorld()) return nullptr;
 	const TSubclassOf<AActor> PoolClass = Actor->GetClass();
-
-	if (!PoolClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("GetActorFromAvailablePool 1"));
-		return nullptr;
-	}
-
-	FActorPool* Pool = ActorPools.Find(*PoolClass);
-
-	if (!Pool)
-	{
-		UE_LOG(LogTemp, Error, TEXT("GetActorFromAvailablePool 2"));
-		return nullptr;
-	}
-
-	if (!Pool->AvailableActorSet.Contains(Actor))
-	{
-		UE_LOG(LogTemp, Error, TEXT("GetActorFromAvailablePool 3"));
-		return nullptr;
-	}
-
-	const bool bRemoved = RemoveFromAvailablePool(*Pool, Actor);
-
-	if (!bRemoved)
-	{
-		UE_LOG(LogTemp, Error, TEXT("GetActorFromAvailablePool 4"));
-		return nullptr;
-	}
-
-	ActivateActor(Actor, Location, Rotation);
+	FActorPool* Pool = ActorPools.Find(PoolClass);
+	if (!Pool || !RemoveFromAvailablePool(*Pool, Actor)) return nullptr;
 	AddToActivePool(*Pool, Actor);
-
-	UE_LOG(LogTemp, Error, TEXT("AActor* UObjectPoolSubsystem::GetActorFromAvailablePool(AActor* Actor, const FVector& Location, const FRotator& Rotation)"));
-
-	return Actor;
+	ActivateActor(Actor, Location, Rotation);
+	Pool = ActorPools.Find(PoolClass);
+	return IsValid(Actor) && Pool && Pool->ActiveActors.Contains(Actor) ? Actor : nullptr;
 }
 
 AActor* UObjectPoolSubsystem::FindActorByInstanceIDFromPool(FGuid InInstanceID, TSubclassOf<AActor> ActorClass)
@@ -385,7 +311,7 @@ AActor* UObjectPoolSubsystem::ExtractActorFromAvailablePool(AActor* Actor)
 
 AActor* UObjectPoolSubsystem::CreateNewActor(TSubclassOf<AActor> ActorClass)
 {
-	if (!GetWorld() || !ActorClass)
+	if (bIsDeinitializing || !GetWorld() || !ActorClass)
 	{
 		return nullptr;
 	}
@@ -400,12 +326,13 @@ AActor* UObjectPoolSubsystem::CreateNewActor(TSubclassOf<AActor> ActorClass)
 		SpawnParams
 	);
 
-	if (!NewActor)
+	if (!IsValid(NewActor))
 	{
 		return nullptr;
 	}
 
 	ActorToPoolClassMap.Add(NewActor, ActorClass);
+	NewActor->OnDestroyed.AddUniqueDynamic(this, &UObjectPoolSubsystem::HandlePooledActorDestroyed);
 
 	if (IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(NewActor))
 	{
@@ -427,8 +354,8 @@ void UObjectPoolSubsystem::ActivateActor(AActor* Actor, const FVector& Location,
 		return;
 	}
 
-	Actor->SetActorLocation(Location);
-	Actor->SetActorRotation(Rotation);
+	Actor->SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+	if (!IsValid(Actor)) return;
 
 	Actor->SetActorHiddenInGame(false);
 	Actor->SetActorEnableCollision(true);
@@ -442,16 +369,9 @@ void UObjectPoolSubsystem::ActivateActor(AActor* Actor, const FVector& Location,
 
 void UObjectPoolSubsystem::DeactivateActor(AActor* Actor)
 {
-	if (!IsValid(Actor))
-	{
-		return;
-	}
-
-	if (IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(Actor))
-	{
-		Poolable->OnDeactivateToPool();
-	}
-
+	if (!IsValid(Actor)) return;
+	if (IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(Actor)) Poolable->OnDeactivateToPool();
+	if (!IsValid(Actor)) return;
 	Actor->SetActorHiddenInGame(true);
 	Actor->SetActorEnableCollision(false);
 	Actor->SetActorTickEnabled(false);
@@ -487,7 +407,7 @@ bool UObjectPoolSubsystem::RemoveFromAvailablePool(FActorPool& Pool, AActor* Act
 
 	Pool.AvailableActorSet.Remove(Actor);
 
-	const int32 RemovedCount = Pool.AvailableActors.RemoveSwap(Actor);
+	const int32 RemovedCount = Pool.AvailableActors.RemoveSwap(Actor, EAllowShrinking::No);
 
 	return RemovedCount > 0;
 }
@@ -512,7 +432,23 @@ bool UObjectPoolSubsystem::RemoveFromActivePool(FActorPool& Pool, AActor* Actor)
 		return false;
 	}
 
-	const int32 RemovedCount = Pool.ActiveActors.RemoveSwap(Actor);
+	const int32 RemovedCount = Pool.ActiveActors.Remove(Actor);
 
 	return RemovedCount > 0;
+}
+void UObjectPoolSubsystem::HandlePooledActorDestroyed(AActor* Actor)
+{
+	// OnDestroyed may be called with an actor already marked for destruction.
+	if (!Actor) return;
+	if (const TSubclassOf<AActor>* PoolClass = ActorToPoolClassMap.Find(Actor))
+	{
+		if (FActorPool* Pool = ActorPools.Find(*PoolClass))
+		{
+			Pool->AvailableActorSet.Remove(Actor);
+			Pool->AvailableActors.RemoveSwap(Actor, EAllowShrinking::No);
+			Pool->ActiveActors.Remove(Actor);
+		}
+	}
+	ActorToPoolClassMap.Remove(Actor);
+	ReturningActors.Remove(Actor);
 }

@@ -8,6 +8,7 @@
 
 #include "Data/ProjectileData.h"
 
+#include "PoolableActorInterface.h"
 #include "Projectile.generated.h"
 
 class AWeapon;
@@ -21,7 +22,7 @@ DECLARE_DELEGATE(FHeadShotDelegate);
 DECLARE_DELEGATE(FBodyShotDelegate);
 
 UCLASS(config = Game)
-class FPS_BORANAGAJIN_API AProjectile : public AActor
+class FPS_BORANAGAJIN_API AProjectile : public AActor, public IPoolableActorInterface
 {
 	GENERATED_BODY()
 public:
@@ -134,6 +135,23 @@ public:
 	void StopLifeTimer();
 	void DeactiveProjectile();
 
+	virtual void SetOwningPool(UObjectPoolSubsystem* NewPool) override;
+	virtual void OnActivateFromPool() override;
+	virtual void OnDeactivateToPool() override;
+	virtual bool IsActiveInPool() const override { return bIsActiveInPool; }
+	bool IsOwnedByWeapon(const AWeapon* InWeapon) const { return Weapon == InWeapon; }
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UObjectPoolSubsystem> OwningPool = nullptr;
+	bool bIsActiveInPool = false;
+	bool bProjectileDataInitialized = false;
+	float InitialDefaultDamage = 0.f;
+	void ResetProjectileRuntime();
+	void StopTrailEffect();
+
+public:
+
 	void ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation);
 	void ApplyDamage(AActor* OtherActor, float DamageAmount, EGameDamageType DamageType, bool bCanForceDamage, const FName BoneName, TEnumAsByte<EPhysicalSurface> SurfaceType = SurfaceType1, const FVector ImpulseDirection = FVector::ZeroVector, const FVector ImpactPoint = FVector::ZeroVector);
 	bool SearchOverlappedActor(FVector CenterLocation, float SearchRadius, TArray<AActor*>& OverlappedActors);
@@ -172,10 +190,8 @@ protected:
 
 	void DrawSphere(FVector Location, float Radius);
 
-	//protected:
-	//	// Called when the game starts or when spawned
-	//	virtual void BeginPlay() override;
-	//
+protected:
+	virtual void BeginPlay() override;
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

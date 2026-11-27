@@ -24,6 +24,7 @@
 
 class ACharacterPlayer;
 class AProjectileShell;
+class AProjectile;
 
 class UAmmoCounterWidget;
 class UInputAction;
@@ -411,22 +412,19 @@ public:
 #pragma endregion
 
 #pragma region Projectile Shell
-	//TODO: ObjectPoolSubsystem에 편입
 protected:
 	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	TSubclassOf<AProjectileShell> ProjectileShellClass;
-	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
+	/** Shared pool prewarm target (legacy property name retained for existing BPs). Not a live-shell limit. */
+	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell", meta = (ClampMin = "0", DisplayName = "Shell Pool Prewarm Count"))
 	int32 MaxProjectileShellNum = 5;
 
-	UPROPERTY()
-	TArray<AProjectileShell*> ProjectileShells; //TODO: queue로 대체 , 근데 그냥 array가 나을듯
 
 	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	FVector DefaultEjectImpulseVec;
 	UPROPERTY(EditAnywhere, Category = "Weapon|Projectile|Shell")
 	float DefaultEjectImpulse = 0.f;
 
-	int32 CurrProjectileShellIdx = 0;
 
 	void InitProjectileShells();
 	virtual void EjectProjectileShell() override;
@@ -730,18 +728,19 @@ protected:
 
 #pragma region Projectile
 protected:
-	//TODO: ObjectPoolingSubsystem에 편입
+	/** Minimum total actors per concrete projectile class in the shared world pool. */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Projectile|Pool", meta = (ClampMin = "0"))
 	int32 NumProjectile_L = 10;
-	int32 NumProjectile_R = 5;
-
-	//----------------------------
-	TMap<TSubclassOf<AProjectile>, TArray<AProjectile*>> ProjectilePool;
-	UPROPERTY()
-	TSet<AProjectile*> ActiveProjectileSet;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Projectile|Pool", meta = (ClampMin = "0"))
+	int32 NumProjectile_R = 10;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Projectile|Pool", meta = (ClampMin = "0"))
+	int32 NumProjectile_Skill = 10;
 
 public:
+	// Compatibility wrappers only: Weapon no longer owns any projectile storage.
 	void InitProjectiles(TSubclassOf<AProjectile> ProjectileClass, int32 NumObject);
 	AProjectile* GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass);
+	AProjectile* GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass, const FVector& Location, const FRotator& Rotation);
 	void ReturnProjectile(AProjectile* Projectile);
 #pragma endregion
 

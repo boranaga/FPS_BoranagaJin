@@ -7,6 +7,9 @@
 #include "Components/PrimitiveComponent.h"
 #include "Engine/World.h"
 #include "Items/Weapons/Weapon.h"
+#include "ObjectPoolSubsystem.h"
+#include "TimerManager.h"
+#include "Components/StaticMeshComponent.h"
 
 #include "Characters/Enemies/EnemyBase.h"
 #include "Interface/DamageInterface.h"
@@ -87,8 +90,9 @@ AProjectile::AProjectile()
 	// <Pooling Version>
 	InitialLifeSpan = 0;
 	SetActorHiddenInGame(true);
-	//SetActorEnableCollision(false);
+	SetActorEnableCollision(false);
 	SetActorTickEnabled(false);
+	PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void AProjectile::StartLifeTimer(float Seconds)
@@ -114,113 +118,146 @@ void AProjectile::StopLifeTimer()
 	GetWorldTimerManager().ClearTimer(LifeTimer);
 }
 
+void AProjectile::SetOwningPool(UObjectPoolSubsystem* NewPool)
+{
+	OwningPool = NewPool;
+}
+
+void AProjectile::OnActivateFromPool()
+{
+	// A checked-out actor is not yet a fired projectile. InitProjectile configures the shot.
+	bIsActiveInPool = true;
+	bIsActivated = false;
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
+	CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ProjectileMovement->Deactivate();
+	ProjectileMovement->StopMovementImmediately();
+	ProjectileMovement->SetUpdatedComponent(CollisionComp);
+	ProjectileMovement->bSimulationEnabled = true;
+	ProjectileMovement->SetComponentTickEnabled(false);
+}
+
+void AProjectile::OnDeactivateToPool()
+{
+	// Do not call ReturnToPool here: this callback is invoked by the subsystem.
+	bIsActiveInPool = false;
+	ResetProjectileRuntime();
+}
+
 void AProjectile::DeactiveProjectile()
 {
-	// Mark inactive before collision/FX cleanup; the pool may also call this for initial setup.
+	if (IsValid(OwningPool))
+	{
+		if (bIsActiveInPool) OwningPool->ReturnToPool(this);
+		return;
+	}
+
+	// Compatibility for a standalone, non-pooled projectile: no Weapon-owned storage.
+	ResetProjectileRuntime();
+	Destroy();
+}
+
+void AProjectile::StopTrailEffect()
+{
+	// Release the manually leased Niagara component exactly once.
+	if (IsValid(TrailEffectComponent))
+	{
+		TrailEffectComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+		TrailEffectComponent->DeactivateImmediate();
+		TrailEffectComponent->ReleaseToPool();
+	}
+	TrailEffectComponent = nullptr;
+	bShouldUpdateTrailEffect = false;
+}
+
+void AProjectile::ResetProjectileRuntime()
+{
 	bIsActivated = false;
-	StopLifeTimer();
+	SetActorEnableCollision(false);
+	SetActorHiddenInGame(true);
+	SetActorTickEnabled(false);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LifeTimer);
+		World->GetTimerManager().ClearTimer(DamageDecayTimer);
+	}
+	OnHeadShot.Unbind();
+	OnBodyShot.Unbind();
+	StopTrailEffect();
 
-	// <StuckCount>
-	StuckCount = 0;
-
-	//----------------
-	//TODO: Deactive 시킬것들 전부 하기
-
-	NumPenetrableObjects = 0;
-	CurrentRicochetCount = 0;
-
-	// <AutoAim>
-	bIsAutoAim = false;
-
-	// <HitScan>
-	bIsHitScan = false;
-	bActivatedMeshMovementForHitScan = false;
-	HitScanEndPoints.Empty();
-	CurrEndPointIdx = 0;
-	DistanceMoved = 0;
-	TargetDistance = 0.f;
-
-
-	// <Penetration>
-	NumPenetratedObjects = 0;
-	AdditionalDamage = 0;
-
-	// <Homing>
-	TargetEnemy = nullptr;
-	ProjectileMovement->bIsHomingProjectile = false;
-
-	// <Damage Decay>
-	if (ProjectileData) DefaultDamage = ProjectileData->DefaultDamage;
-	GetWorldTimerManager().ClearTimer(DamageDecayTimer);
-
-	// <Custom Projectile Movement>
-	bUseCustomProjectieMovement = false;
-	if (bHasDetachedMeshTransform && ProjectileMesh && CollisionComp)
+	if (IsValid(CollisionComp))
+	{
+		CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CollisionComp->OnComponentHit.RemoveDynamic(this, &AProjectile::OnHit);
+		CollisionComp->OnComponentBeginOverlap.RemoveDynamic(this, &AProjectile::OnComponentBeginOverlap);
+		CollisionComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+		CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel6, ECR_Block);
+		CollisionComp->SetSphereRadius(InitialRadius);
+	}
+	if (IsValid(ProjectileMovement))
+	{
+		ProjectileMovement->StopMovementImmediately();
+		ProjectileMovement->Deactivate();
+		ProjectileMovement->bIsHomingProjectile = false;
+		ProjectileMovement->HomingTargetComponent.Reset();
+		ProjectileMovement->SetUpdatedComponent(CollisionComp);
+		ProjectileMovement->bSimulationEnabled = true;
+		ProjectileMovement->Velocity = FVector::ZeroVector;
+		ProjectileMovement->SetComponentTickEnabled(false);
+	}
+	if (bHasDetachedMeshTransform && IsValid(ProjectileMesh) && IsValid(CollisionComp))
 	{
 		ProjectileMesh->AttachToComponent(CollisionComp, FAttachmentTransformRules::KeepRelativeTransform);
 		ProjectileMesh->SetRelativeTransform(MeshRelativeTransformBeforeCustomMovement);
-		bHasDetachedMeshTransform = false;
 	}
+	bHasDetachedMeshTransform = false;
+	if (IsValid(ProjectileMesh)) ProjectileMesh->SetVisibility(false);
 
-	// <Trail Effect>
-	if (TrailEffectComponent)
-	{
-		TrailEffectComponent->Deactivate();
-		TrailEffectComponent->DestroyComponent();
-		TrailEffectComponent = nullptr;
-	}
-	bShouldUpdateTrailEffect = false;
-
-	// <Radius>
+	StuckCount = 0;
+	PrevProjectileLoc = FVector::ZeroVector;
+	NumPenetrableObjects = 0;
+	NumPenetratedObjects = 0;
+	CurrentRicochetCount = 0;
+	AdditionalDamage = 0.f;
 	ProjectileRadius = InitialRadius;
-	CollisionComp->SetSphereRadius(InitialRadius);
-
-	//-------------
-	SetActorHiddenInGame(true);
-	//SetActorEnableCollision(false);
-	CollisionComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-	CollisionComp->SetCollisionResponseToChannel(ECC_GameTraceChannel6, ECR_Block);
-
-	CollisionComp->OnComponentHit.RemoveDynamic(this, &AProjectile::OnHit);
-	CollisionComp->OnComponentBeginOverlap.RemoveDynamic(this, &AProjectile::OnComponentBeginOverlap);
-
-	CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	ProjectileMovement->StopMovementImmediately();
-	ProjectileMovement->Deactivate();
-
-	SetActorTickEnabled(false);
-	bIsActivated = false;
-
-	//---------------
-
-	if (Weapon)
-	{
-		Weapon->ReturnProjectile(this);
-	}
+	DefaultDamage = InitialDefaultDamage;
+	bIsAutoAim = false;
+	bIsHitScan = false;
+	bActivatedMeshMovementForHitScan = false;
+	bUseCustomProjectieMovement = false;
+	HitScanEndPoints.Reset();
+	CurrEndPointIdx = 0;
+	DistanceMoved = TargetDistance = 0.f;
+	MovementDirection = FVector::ZeroVector;
+	PM_Start_To_d_Len = PM_k_by_d = 0.f;
+	PM_Cam_Pos = PM_d_Pos = PM_Start_Pos = PM_Dir = PM_Dir_d_To_Muzzle = PM_Muzzle_Start_Pos = FVector::ZeroVector;
+	TargetEnemy = nullptr;
+	RecentTargetLocation = FVector::ZeroVector;
+	ProjectileOwner = nullptr;
+	Weapon = nullptr;
+	SetOwner(nullptr);
+	SetInstigator(nullptr);
 }
 
 void AProjectile::InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon, float additonalDamage, float AdditionalRadius, int32 NumPenetrable, bool HitScan, bool AutoAim)
 {
-	//UE_LOG(LogTemp, Error, TEXT("InitProjectile_Pool"));
-
-	bIsActivated = true;
+	if (IsValid(OwningPool) && !bIsActiveInPool) return;
+	if (!bProjectileDataInitialized) LoadProjectileData();
+	bIsActivated = false;
+	ProjectileMovement->Deactivate();
+	ProjectileMovement->StopMovementImmediately();
 	ProjectileMovement->SetUpdatedComponent(CollisionComp);
+	ProjectileMovement->bSimulationEnabled = true;
+	ProjectileMovement->Velocity = FVector::ZeroVector;
+	Weapon = IsValid(OwnerWeapon) ? OwnerWeapon : nullptr;
+	ProjectileOwner = IsValid(OwnerOfProjectile) ? OwnerOfProjectile : nullptr;
 	SetActorHiddenInGame(false);
-	//SetActorEnableCollision(true);
-	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	SetActorTickEnabled(true);
-
-	if (IsValid(OwnerWeapon))
-	{
-		Weapon = OwnerWeapon;
-	}
-
-	if (IsValid(OwnerOfProjectile))
-	{
-		ProjectileOwner = OwnerOfProjectile;
-		SpawnTrailEffect();
-	}
+	ProjectileMesh->SetVisibility(true);
+	PrevProjectileLoc = GetActorLocation();
+	StuckCount = 0;
+	if (ProjectileOwner) SpawnTrailEffect();
 
 	if (AutoAim)
 	{
@@ -253,6 +290,7 @@ void AProjectile::InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon
 		}
 	}
 
+	ProjectileMovement->bShouldBounce = bCanSimpleBounce;
 	if (bCanSimpleBounce)
 	{
 		// MEMO: Test
@@ -286,6 +324,12 @@ void AProjectile::InitProjectile(AActor* OwnerOfProjectile, AWeapon* OwnerWeapon
 			}), DamageDecayTime, false);
 	}
 
+	// All per-shot data is installed before collision callbacks can execute.
+	// Hitscan collision is query-only via explicit traces, not the tracer component.
+	CollisionComp->SetCollisionEnabled(HitScan || AutoAim ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryOnly);
+	SetActorEnableCollision(true);
+	SetActorTickEnabled(true);
+	bIsActivated = true;
 	StartLifeTimer(LifeSpan);
 }
 
@@ -311,7 +355,8 @@ void AProjectile::InitHitScan()
 
 void AProjectile::LoadProjectileData()
 {
-	ProjectileData = ProjectileDataTableHandle.GetRow<FProjectileData>("");
+	bProjectileDataInitialized = true;
+	ProjectileData = ProjectileDataTableHandle.GetRow<FProjectileData>(TEXT("AProjectile::LoadProjectileData"));
 	if (ProjectileData)
 	{
 		// <Effect>
@@ -371,6 +416,10 @@ void AProjectile::LoadProjectileData()
 		// <CustomProjectileMovement>
 		PM_Cam_To_d_Len = ProjectileData->PM_Cam_To_d_Len;
 	}
+	if (HitScanProjectileVelocity <= 0.f) HitScanProjectileVelocity = ProjectileMovement->InitialSpeed;
+	InitialDefaultDamage = DefaultDamage;
+	ProjectileRadius = InitialRadius;
+	if (ProjectileMovement->MaxSpeed <= 0.f && PM_Vel <= 0.f) PM_Vel = ProjectileMovement->InitialSpeed;
 }
 
 void AProjectile::SetWeapon(AWeapon* NewWeapon)
@@ -380,26 +429,31 @@ void AProjectile::SetWeapon(AWeapon* NewWeapon)
 
 void AProjectile::SetHomingTarget(bool bIsHoming, AActor* Target)
 {
-	ProjectileMovement->bIsHomingProjectile = bIsHoming;
-
-	if (bIsHoming)
+	const bool bValidTarget = bIsHoming && IsValid(Target) && IsValid(Target->GetRootComponent());
+	ProjectileMovement->bIsHomingProjectile = bValidTarget;
+	ProjectileMovement->HomingTargetComponent.Reset();
+	TargetEnemy = nullptr;
+	RecentTargetLocation = FVector::ZeroVector;
+	if (bValidTarget)
 	{
 		ProjectileMovement->HomingAccelerationMagnitude = HomingAccelerationMagnitude;
 		ProjectileMovement->HomingTargetComponent = Target->GetRootComponent();
-
 		TargetEnemy = Cast<AEnemyBase>(Target);
-		if (TargetEnemy)
-		{
-			RecentTargetLocation = TargetEnemy->GetActorLocation();
-		}
-		//UE_LOG(LogTemp, Warning, TEXT("Homing!!!"));
+		RecentTargetLocation = Target->GetActorLocation();
 	}
 }
 
 void AProjectile::LaunchProjectile(FVector MuzzlePos, FRotator Direction)
 {
+	if (!bIsActivated) return;
 	SetActorLocationAndRotation(MuzzlePos, Direction);
-	ProjectileMovement->Activate();
+	if (!bIsActivated) return;
+	ProjectileMovement->SetUpdatedComponent(CollisionComp);
+	ProjectileMovement->bSimulationEnabled = true;
+	// Activate() alone does not restore velocity cleared on the previous return.
+	ProjectileMovement->Velocity = Direction.Vector() * ProjectileMovement->InitialSpeed;
+	ProjectileMovement->Activate(true);
+	ProjectileMovement->SetComponentTickEnabled(true);
 }
 
 void AProjectile::ApplyExplosiveDamage(bool bCanExplosiveDamage, FVector CenterLocation)
@@ -578,7 +632,7 @@ bool AProjectile::IsAutoAimPathBlockedByGasPipe(const FVector& Start, const FVec
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(AutoAimGasPipe), false, this);
 	if (ProjectileOwner) Query.AddIgnoredActor(ProjectileOwner);
 	if (Target) Query.AddIgnoredActor(Target);
-	if (Weapon && Weapon->GetWeaponMesh()) Query.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	if (IsValid(Weapon) && IsValid(Weapon->GetWeaponMesh())) Query.AddIgnoredComponent(Weapon->GetWeaponMesh());
 	FCollisionResponseParams Responses;
 	Responses.CollisionResponse.SetResponse(ECC_Pawn, ECR_Overlap);
 	Responses.CollisionResponse.SetResponse(ECC_GameTraceChannel6, ECR_Overlap);
@@ -610,12 +664,7 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 
 		if (bShouldUpdateTrailEffect)
 		{
-			if (TrailEffectComponent)
-			{
-				TrailEffectComponent->Deactivate();
-				TrailEffectComponent->DestroyComponent();
-				TrailEffectComponent = nullptr;
-			}
+			StopTrailEffect();
 		}
 
 		// Destroy(); //이게 문제가 됨
@@ -636,12 +685,7 @@ void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 				SpawnDecalEffect(Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
 				if (!bShouldUpdateTrailEffect)
 				{
-					if (TrailEffectComponent)
-					{
-						TrailEffectComponent->Deactivate();
-						TrailEffectComponent->DestroyComponent();
-						TrailEffectComponent = nullptr;
-					}
+					StopTrailEffect();
 				}
 
 
@@ -773,11 +817,7 @@ void AProjectile::OnComponentBeginOverlap(UPrimitiveComponent* OverlappedCompone
 					ResetPenetration();
 
 
-					if (bShouldUpdateTrailEffect && IsValid(TrailEffectComponent))
-					{
-						TrailEffectComponent->Deactivate();
-						TrailEffectComponent->DestroyComponent();
-					}
+					StopTrailEffect();
 
 					//Destroy();
 					DeactiveProjectile();
@@ -814,7 +854,7 @@ void AProjectile::SpawnTrailEffect(bool bShouldAttachedToWeapon) //TODO: Rocket 
 		// TODO: offset�� Traile ���� �ٸ��� �����ؾ���. �ƴϸ� �����Ϳ��� Mesh���� socket�� ��ġ�� ���� �ٲ��ִ� ���� ���� ���������
 		FVector TrailLocationOffset = (TrailEndTransform.GetLocation() - TrailStartTransform.GetLocation()).GetSafeNormal() * TrailOffsetDist;
 
-		if (bShouldAttachedToWeapon)
+		if (bShouldAttachedToWeapon && IsValid(Weapon) && IsValid(Weapon->GetWeaponMesh()))
 		{
 			//UE_LOG(LogTemp, Error, TEXT("Spawn Trail Effect!!!"));
 
@@ -822,12 +862,12 @@ void AProjectile::SpawnTrailEffect(bool bShouldAttachedToWeapon) //TODO: Rocket 
 				GetWorld(),
 				TrailEffect,
 				Weapon->GetWeaponMesh()->GetSocketLocation(FName(TEXT("Muzzle"))),
-				FRotator(0.f, 0.f, 0.f), FVector(1), true, true, ENCPoolMethod::AutoRelease);
+				FRotator(0.f, 0.f, 0.f), FVector(1), false, true, ENCPoolMethod::ManualRelease);
 
-			bShouldUpdateTrailEffect = true;
+			bShouldUpdateTrailEffect = IsValid(TrailEffectComponent);
 
 
-			TrailEffectComponent->SetVectorParameter(FName(TEXT("Beam End")), ProjectileMesh->GetSocketLocation(FName(TEXT("TrailStart"))));
+			if (IsValid(TrailEffectComponent)) TrailEffectComponent->SetVectorParameter(FName(TEXT("Beam End")), ProjectileMesh->GetSocketLocation(FName(TEXT("TrailStart"))));
 		}
 		else
 		{
@@ -838,7 +878,7 @@ void AProjectile::SpawnTrailEffect(bool bShouldAttachedToWeapon) //TODO: Rocket 
 				TrailLocationOffset,
 				FRotator(0, 0, 0),
 				EAttachLocation::KeepRelativeOffset,
-				true, true, ENCPoolMethod::AutoRelease);
+				false, true, ENCPoolMethod::ManualRelease);
 		}
 	}
 }
@@ -857,7 +897,7 @@ void AProjectile::SpawnDecalEffect(FVector SpawnLocation, FRotator SpawnRotation
 				SpawnRotation,
 				10.0f
 			);
-		ProjectileDecal->SetFadeScreenSize(0.0001f);
+		if (IsValid(ProjectileDecal)) ProjectileDecal->SetFadeScreenSize(0.0001f);
 	}
 }
 
@@ -865,7 +905,7 @@ void AProjectile::UpdateTrailEffect()
 {
 	if (bShouldUpdateTrailEffect)
 	{
-		if (TrailEffectComponent)
+		if (IsValid(TrailEffectComponent))
 		{
 			TrailEffectComponent->SetVectorParameter(FName(TEXT("Beam End")), ProjectileMesh->GetSocketLocation(FName(TEXT("TrailStart"))));
 		}
@@ -937,7 +977,7 @@ void AProjectile::PerformHitScan(FVector StartLocation, FVector TraceDirection, 
 
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(ProjectileOwner);
-	if (Weapon && Weapon->GetWeaponMesh()) Params.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	if (IsValid(Weapon) && IsValid(Weapon->GetWeaponMesh())) Params.AddIgnoredComponent(Weapon->GetWeaponMesh());
 	Params.AddIgnoredComponent(ProjectileMesh);
 	Params.AddIgnoredActor(this);
 	Params.bReturnPhysicalMaterial = true;
@@ -1114,12 +1154,7 @@ void AProjectile::UpdateHitScanProjectileMovement(float DeltaTime)
 		if (CurrEndPointIdx + 1 > HitScanEndPoints.Num() - 1)
 		{
 			//TODO: 그대로 직진? Destroy?
-			if (TrailEffectComponent)
-			{
-				TrailEffectComponent->Deactivate();
-				TrailEffectComponent->DestroyComponent();
-				TrailEffectComponent = nullptr;
-			}
+			StopTrailEffect();
 			DeactiveProjectile();
 		}
 		else
@@ -1146,7 +1181,7 @@ void AProjectile::LaunchAutoAim(FVector StartLocation, FVector TraceDir, FVector
 
 	FCollisionQueryParams BaseParams(SCENE_QUERY_STAT(WeaponSphereSweep), /*bTraceComplex=*/false);
 	if (ProjectileOwner) BaseParams.AddIgnoredActor(ProjectileOwner);
-	if (Weapon && Weapon->GetWeaponMesh()) BaseParams.AddIgnoredComponent(Weapon->GetWeaponMesh());
+	if (IsValid(Weapon) && IsValid(Weapon->GetWeaponMesh())) BaseParams.AddIgnoredComponent(Weapon->GetWeaponMesh());
 	if (ProjectileMesh) BaseParams.AddIgnoredComponent(ProjectileMesh);
 	BaseParams.AddIgnoredActor(this);
 	BaseParams.bReturnPhysicalMaterial = true; //TODO: ???
@@ -1484,12 +1519,15 @@ void AProjectile::InitProjectileMovement(FVector StartPos, FVector Direction, FV
 	PM_Start_To_d_Len = FMath::Abs(FVector::DotProduct((-PM_Dir), PM_Dir_d_To_Muzzle)) * FVector::Distance(PM_d_Pos, MuzzlePos);
 	PM_Start_Pos = PM_Cam_Pos + PM_Dir * (PM_Cam_To_d_Len - PM_Start_To_d_Len);
 
-	PM_k_by_d = FVector::Distance(PM_d_Pos, MuzzlePos) / PM_Start_To_d_Len;
+	PM_k_by_d = PM_Start_To_d_Len > KINDA_SMALL_NUMBER ? FVector::Distance(PM_d_Pos, MuzzlePos) / PM_Start_To_d_Len : 0.f;
 
 	//------------------------------
 	ProjectileMesh->SetVisibility(true);
 	DistanceMoved = 0.f;
 	SetActorLocation(PM_Start_Pos);
+	if (!bIsActivated) return;
+	CollisionComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	if (!bIsActivated) return;
 
 	FVector MeshTargetLocation = PM_Start_Pos + (PM_d_Pos - PM_Start_Pos) + PM_Dir_d_To_Muzzle * (PM_d_Pos - PM_Start_Pos).Length() * PM_k_by_d;
 	ProjectileMesh->SetWorldLocationAndRotation(MeshTargetLocation, (-PM_Dir_d_To_Muzzle).Rotation());
@@ -1583,12 +1621,12 @@ void AProjectile::ReportImpactNoiseToAI(const FVector& ImpactLocation, const FVe
 }
 
 // Called when the game starts or when spawned
-//void AProjectile::BeginPlay()
-//{
-//	Super::BeginPlay();
-//	
-//}
-//
+void AProjectile::BeginPlay()
+{
+	Super::BeginPlay();
+	LoadProjectileData();
+	ResetProjectileRuntime();
+}
 void AProjectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -1622,16 +1660,10 @@ void AProjectile::Tick(float DeltaTime)
 
 void AProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	bIsActiveInPool = false;
+	ResetProjectileRuntime();
+	OwningPool = nullptr;
 	Super::EndPlay(EndPlayReason);
-
-	if (TrailEffectComponent)
-	{
-		if (bShouldUpdateTrailEffect)
-		{
-			TrailEffectComponent->Deactivate();
-			TrailEffectComponent->DestroyComponent();
-		}
-	}
 }
 
 void AProjectile::BeginDestroy()
@@ -1641,17 +1673,11 @@ void AProjectile::BeginDestroy()
 
 void AProjectile::FellOutOfWorld(const UDamageType& dmgType)
 {
-	SetActorLocation(FVector::ZeroVector);
-	SetActorRotation(FRotator::ZeroRotator);
-
 	DeactiveProjectile();
 }
 
 void AProjectile::OutsideWorldBounds()
 {
-	SetActorLocation(FVector::ZeroVector);
-	SetActorRotation(FRotator::ZeroRotator);
-
 	DeactiveProjectile();
 }
 
