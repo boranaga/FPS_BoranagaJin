@@ -49,7 +49,7 @@ void UPlayerMovementComponent::BeginPlay()
 	CurrentMovementState = EMovementState::EMS_Airborne;
 	OnAirborneDelegate.Broadcast();
 
-	// CharacterPlayer relays UStaminaComponent::OnStaminaChanged to legacy UI delegate.
+	// HUD subscribes directly to UStaminaComponent; legacy Pawn relay is kept for compatibility.
 	// No PlayerMovement-owned stamina initialization or broadcast.
 }
 
@@ -68,7 +68,17 @@ void UPlayerMovementComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 				Velocity.X, Velocity.Y, Velocity.Z, Velocity.Size(), Velocity.Size2D()));
 	}
 
-	if (!PawnOwner || !UpdatedComponent) { return; }
+	// Possession can change after BeginPlay; never use the old cached controller.
+	PlayerController = IsValid(PawnOwner) ? Cast<APlayerController>(PawnOwner->GetController()) : nullptr;
+	if (!IsValid(PawnOwner) || !IsValid(UpdatedComponent) || !IsValid(PlayerController))
+	{
+		if (IsValid(StaminaComponent))
+		{
+			StaminaComponent->SetRunningDrainEnabled(false);
+			StaminaComponent->SetRecoveryEnabled(false);
+		}
+		return;
+	}
 
 	ConsumeDeadRequest();
 

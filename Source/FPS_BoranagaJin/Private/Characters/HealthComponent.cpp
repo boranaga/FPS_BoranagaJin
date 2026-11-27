@@ -14,15 +14,18 @@ void UHealthComponent::BeginPlay()
 	Super::BeginPlay();
 
 	ReloadSettingsFromOwnerDataTable();
-	CurrentHealth = MaxHealth;
-	bIsDead = false;
+	MaxHealth = FMath::IsFinite(MaxHealth) ? FMath::Max(1.f, MaxHealth) : 100.f;
+	CurrentHealth = PendingInitialHealth.IsSet()
+		? FMath::Clamp(PendingInitialHealth.GetValue(), 0.f, MaxHealth) : MaxHealth;
+	PendingInitialHealth.Reset();
+	bIsDead = CurrentHealth <= 0.f;
 	bSettingsInitialized = true;
 
-	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
-
-	AActor* OwnerActor = GetOwner();
-	if (!OwnerActor) { return; }
-	BloodTrailComponent = OwnerActor->FindComponentByClass<UBloodTrailComponent>();
+	if (AActor* OwnerActor = GetOwner())
+	{
+		BloodTrailComponent = OwnerActor->FindComponentByClass<UBloodTrailComponent>();
+	}
+	BroadcastHealthChanged();
 }
 
 void UHealthComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -34,24 +37,17 @@ void UHealthComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 
 float UHealthComponent::ApplyDamage(float DamageAmount)
 {
-	if (bIsDead || DamageAmount <= 0.f)
+	if (bIsDead || !FMath::IsFinite(DamageAmount) || DamageAmount <= 0.f)
 	{
 		return 0.f;
 	}
 
 	const float OldHealth = CurrentHealth;
 
-	CurrentHealth = FMath::Clamp(CurrentHealth - DamageAmount, 0.f, MaxHealth);
-
-	const float ActualDamage = OldHealth - CurrentHealth;
-
-	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
-
-	if (CurrentHealth <= 0.f)
-	{
-		bIsDead = true;
-		OnDeath.Broadcast();
-	}
+	const float NewHealth = FMath::Clamp(OldHealth - DamageAmount, 0.f, MaxHealth);
+	const float ActualDamage = OldHealth - NewHealth;
+	if (ActualDamage <= 0.f) { return 0.f; }
+	CommitHealth(NewHealth);
 
 
 	if (GetWorld() && IsValid(BloodTrailComponent) && !BloodTrailComponent->IsBleeding())
@@ -79,14 +75,8 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 
 void UHealthComponent::Heal(float HealAmount)
 {
-	if (bIsDead || HealAmount <= 0.f)
-	{
-		return;
-	}
-
-	CurrentHealth = FMath::Clamp(CurrentHealth + HealAmount, 0.f, MaxHealth);
-
-	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+	if (bIsDead || !FMath::IsFinite(HealAmount) || HealAmount <= 0.f) { return; }
+	CommitHealth(CurrentHealth + HealAmount);
 }
 
 void UHealthComponent::StopBleeding(float HealAmount)
@@ -125,15 +115,36 @@ float UHealthComponent::GetHealthPercent() const
 
 void UHealthComponent::SetCurrHealth(float NewHealthVal)
 {
-	CurrentHealth = FMath::Clamp(NewHealthVal, 0.f, MaxHealth);
-	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+	if (!FMath::IsFinite(NewHealthVal)) { return; }
+	if (!bSettingsInitialized)
+	{
+		PendingInitialHealth = NewHealthVal;
+		return;
+	}
+	CommitHealth(NewHealthVal);
 }
 
 void UHealthComponent::ResetHealth()
 {
-	CurrentHealth = MaxHealth;
-	bIsDead = false;
+	PendingInitialHealth.Reset();
+	CommitHealth(MaxHealth);
+}
 
+void UHealthComponent::CommitHealth(float NewHealth)
+{
+	const float OldHealth = CurrentHealth;
+	const bool bWasDead = bIsDead;
+	CurrentHealth = FMath::Clamp(NewHealth, 0.f, MaxHealth);
+	bIsDead = CurrentHealth <= 0.f;
+	const bool bBecameDead = !bWasDead && bIsDead;
+
+	// Listeners always observe a consistent health/death state.
+	if (OldHealth != CurrentHealth) { BroadcastHealthChanged(); }
+	if (bBecameDead && bIsDead) { OnDeath.Broadcast(); }
+}
+
+void UHealthComponent::BroadcastHealthChanged()
+{
 	OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
 }
 
@@ -167,7 +178,7 @@ bool UHealthComponent::ReloadSettingsFromOwnerDataTable()
 	const float PreviousCurrent = CurrentHealth;
 	const bool bWasDead = bIsDead;
 
-	MaxHealth = FMath::Max(1.f, Row->Health.MaxHealth);
+	MaxHealth = FMath::IsFinite(Row->Health.MaxHealth) ? FMath::Max(1.f, Row->Health.MaxHealth) : 100.f;
 	BleedingHealthThresholdPercent = FMath::Clamp(
 		Row->Health.BleedingHealthThresholdPercent, 0.f, 1.f);
 	HeavyDamageThreshold = FMath::Max(0.f, Row->Health.HeavyDamageThreshold);
@@ -180,8 +191,10 @@ bool UHealthComponent::ReloadSettingsFromOwnerDataTable()
 		const float PreviousRatio = PreviousMax > KINDA_SMALL_NUMBER
 			? PreviousCurrent / PreviousMax : 0.f;
 		CurrentHealth = bWasDead ? 0.f : FMath::Clamp(PreviousRatio * MaxHealth, 0.f, MaxHealth);
-		// Preserve the delegate's argument ordering used in the uploaded code.
-		OnHealthChanged.Broadcast(MaxHealth, CurrentHealth);
+		if (PreviousMax != MaxHealth || PreviousCurrent != CurrentHealth)
+		{
+			BroadcastHealthChanged();
+		}
 	}
 	return true;
 }

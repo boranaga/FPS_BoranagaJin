@@ -25,6 +25,8 @@ class AExitDoor;
 class APlayerController;
 class AFPSPlayerController;
 class ACharacterPlayer;
+class UHealthComponent;
+class UStaminaComponent;
 class UGameAudioSubsystem;
 
 struct FPlayableMapInfo;
@@ -60,6 +62,7 @@ public:
     UBaseUIWidget* GetUIWidget(EUIType UIType) const;
 
     void SetControlledCharacter(ACharacterPlayer* NewCharacter);
+    void ClearControlledCharacter(const ACharacterPlayer* ExpectedCharacter);
 
     /** True whenever a modal UI must suppress world interaction and pickup prompts. */
     bool IsWorldInteractionInputBlocked() const;
@@ -107,6 +110,21 @@ private:
 
     void BindCharacterDelegates();
     void UnbindCharacterDelegates();
+    void ReleaseCharacterWidgets(bool bIncludeVitals);
+    void ReleaseWidgetsOfType(EUIType UIType);
+
+    template<typename TWidget>
+    TWidget* EnsureVitalWidget(TSubclassOf<TWidget> WidgetClass, EUIType UIType);
+
+    void RefreshHealthUI();
+    void RefreshStaminaUI();
+    void HandleHealthChanged(float MaxHealth, float CurrentHealth);
+    void HandleStaminaChanged(float CurrentStamina, float MaxStamina);
+
+    TWeakObjectPtr<UHealthComponent> BoundHealthComponent;
+    TWeakObjectPtr<UStaminaComponent> BoundStaminaComponent;
+    FDelegateHandle HealthChangedHandle;
+    FDelegateHandle StaminaChangedHandle;
 
     void SetUIOnlyInput(UBaseUIWidget* FocusWidget);
     void SetGameOnlyInput();

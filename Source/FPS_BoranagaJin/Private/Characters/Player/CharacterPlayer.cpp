@@ -194,11 +194,15 @@ void ACharacterPlayer::BeginPlay()
 
 	if (HealthComponent)
 	{
+		HealthComponent->OnDeath.RemoveAll(this);
 		HealthComponent->OnDeath.AddUObject(this, &ACharacterPlayer::OnDeath);
+		// A save restored before component BeginPlay may already be at zero health.
+		if (HealthComponent->IsDead()) { OnDeath(); }
 	}
 
 	if (StaminaComponent)
 	{
+		StaminaComponent->OnStaminaChanged.RemoveAll(this);
 		StaminaComponent->OnStaminaChanged.AddUObject(
 			this, &ACharacterPlayer::HandleStaminaChanged);
 	}
@@ -247,7 +251,7 @@ void ACharacterPlayer::BeginPlay()
 	//InitUIManager();
 	InitPlayerUISubsystem();
 
-	// Initial UI value: component BeginPlay has already applied the owner's DT.
+	// Initial notification for legacy subscribers only. The HUD reads its own snapshot.
 	if (StaminaComponent)
 	{
 		HandleStaminaChanged(StaminaComponent->GetCurrentStamina(),
@@ -257,6 +261,11 @@ void ACharacterPlayer::BeginPlay()
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (AFPSPlayerController* PC = Cast<AFPSPlayerController>(GetController()))
+	{
+		PC->ReleasePlayerUISubsystem(this);
+	}
+	if (IsValid(HealthComponent)) { HealthComponent->OnDeath.RemoveAll(this); }
 	if (StaminaComponent)
 	{
 		StaminaComponent->OnStaminaChanged.RemoveAll(this);
@@ -888,8 +897,8 @@ void ACharacterPlayer::HandleStaminaChanged(float CurrentStamina, float MaxStami
 
 void ACharacterPlayer::OnDeath()
 {
-	GEngine->AddOnScreenDebugMessage(10, 15.0f, FColor::Yellow, TEXT("Player Dead"));
-	GetPlayerMovementComponent()->NotifyDeath();
+	if (GEngine) { GEngine->AddOnScreenDebugMessage(10, 15.0f, FColor::Yellow, TEXT("Player Dead")); }
+	if (IsValid(MovementComponent)) { MovementComponent->NotifyDeath(); }
 }
 
 void ACharacterPlayer::OnDash(FVector2D MovementInput)
@@ -996,12 +1005,9 @@ void ACharacterPlayer::OnDashEnd()
 
 void ACharacterPlayer::InitPlayerUISubsystem()
 {
-	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::InitPlayerUISubsystem()"));
-
-	if (GetController())
+	if (AFPSPlayerController* PlayerController = Cast<AFPSPlayerController>(GetController()))
 	{
-		AFPSPlayerController* PlayerController = Cast<AFPSPlayerController>(GetOwner());
-		if (PlayerController)
+		if (PlayerController->IsLocalPlayerController() && PlayerController->GetPawn() == this)
 		{
 			PlayerController->InitPlayerUISubsystem();
 		}

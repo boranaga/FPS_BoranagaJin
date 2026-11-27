@@ -17,6 +17,7 @@
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/GameViewportClient.h"
 #include "InputMappingContext.h"
 
 
@@ -63,20 +64,63 @@ void AFPSPlayerController::BeginPlay()
 
 	if (!IsLocalPlayerController()) { return; }
 
-	UPlayerUISubsystem* UISubsystem = GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!IsValid(LocalPlayer)) { return; }
+	UPlayerUISubsystem* UISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(UISubsystem)) { return; }
 	UISubsystem->InitPauseMenuUI(PauseMenuWidgetClass);
 	UISubsystem->InitGameOverUI(GameOverWidgetClass);
+
+	if (IsValid(GetPawn()) && GetPawn()->HasActorBegunPlay())
+	{
+		InitPlayerUISubsystem();
+	}
 
 }
 
 void AFPSPlayerController::OnPossess(APawn* aPawn)
 {
 	Super::OnPossess(aPawn);
-
-	if (IsLocalPlayerController())
+	if (IsValid(GetPawn()) && GetPawn()->HasActorBegunPlay())
 	{
+		InitPlayerUISubsystem();
+	}
+}
 
+void AFPSPlayerController::OnUnPossess()
+{
+	ReleasePlayerUISubsystem(Cast<ACharacterPlayer>(GetPawn()));
+	Super::OnUnPossess();
+}
+
+void AFPSPlayerController::OnRep_Pawn()
+{
+	ACharacterPlayer* Previous = InitializedUICharacter.Get();
+	Super::OnRep_Pawn();
+	if (Previous && Previous != GetPawn()) { ReleasePlayerUISubsystem(Previous); }
+	if (IsValid(GetPawn()) && GetPawn()->HasActorBegunPlay()) { InitPlayerUISubsystem(); }
+}
+
+void AFPSPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ReleasePlayerUISubsystem(InitializedUICharacter.Get());
+	Super::EndPlay(EndPlayReason);
+}
+
+void AFPSPlayerController::ReleasePlayerUISubsystem(const ACharacterPlayer* ExpectedCharacter)
+{
+	if (!ExpectedCharacter) { return; }
+	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+	{
+		if (UPlayerUISubsystem* UI = LocalPlayer->GetSubsystem<UPlayerUISubsystem>())
+		{
+			UI->ClearControlledCharacter(ExpectedCharacter);
+		}
+	}
+	if (InitializedUICharacter.Get() == ExpectedCharacter)
+	{
+		InitializedUICharacter.Reset();
+		bIsInventoryOpened = false;
 	}
 }
 
@@ -113,14 +157,20 @@ void AFPSPlayerController::SetupInputComponent()
 
 void AFPSPlayerController::InitPlayerUISubsystem()
 {
+	if (!IsLocalPlayerController()) { return; }
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 	if (!IsValid(LocalPlayer)) { return; }
 	UPlayerUISubsystem* PlayerUISubsystem = LocalPlayer->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(PlayerUISubsystem)) { return; }
 
 	ACharacterPlayer* ControlledCharacter = Cast<ACharacterPlayer>(GetPawn());
-	if (!ControlledCharacter) { return; }
+	if (!IsValid(ControlledCharacter)) { return; }
 
+	if (InitializedUICharacter.Get() != ControlledCharacter)
+	{
+		bIsInventoryOpened = false;
+	}
+	InitializedUICharacter = ControlledCharacter;
 	PlayerUISubsystem->SetControlledCharacter(ControlledCharacter);
 
 	PlayerUISubsystem->InitHealthBarUI(HealthBarWidgetClass);

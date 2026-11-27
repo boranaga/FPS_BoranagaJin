@@ -144,7 +144,7 @@ public:
 #pragma endregion
 
 public:
-	// Legacy UI signature is (Max, Current); forwarded from StaminaComponent.
+	// Legacy external subscriber API (Max, Current). HUD subscribes to the component directly.
 	FOnStaminaUpdated OnStaminaUpdated;
 
 	FOnPlayerHealthHalved OnPlayerHealthHalved;
@@ -296,7 +296,7 @@ protected:
 	void CalculateMappedSoundValue(const FPlayerSoundData& Data, float Speed, float& OutVolumeMultiplier,
 		float& OutPitchMultiplier);
 
-	// Relay (Current, Max) component values into the existing UI (Max, Current).
+	// Compatibility relay for external subscribers (not the Health/Stamina HUD).
 	void HandleStaminaChanged(float CurrentStamina, float MaxStamina);
 
 	// Damage Comp Event Delegate Functions

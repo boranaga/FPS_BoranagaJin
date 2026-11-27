@@ -14,17 +14,21 @@ void UStaminaComponent::BeginPlay()
 {
     Super::BeginPlay();
     ReloadSettingsFromOwnerDataTable();
+    MaxStamina = FMath::IsFinite(MaxStamina) ? FMath::Max(1.f, MaxStamina) : 1000.f;
+    MinimumRunStamina = FMath::Clamp(MinimumRunStamina, 0.f, MaxStamina);
     CurrentStamina = MaxStamina;
     bSettingsInitialized = true;
     bContinuousRunningDrain = false;
     bRecoveryEnabled = true;
+    LastConsumeTime = -999.f;
+    BroadcastStaminaChanged();
 }
 
 void UStaminaComponent::TickComponent(
     float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    if (!GetWorld() || DeltaTime <= 0.f) return;
+    if (!GetWorld() || !FMath::IsFinite(DeltaTime) || DeltaTime <= 0.f) return;
 
     if (bContinuousRunningDrain)
     {
@@ -48,7 +52,7 @@ void UStaminaComponent::TickComponent(
 
 bool UStaminaComponent::CanConsume(float Amount) const
 {
-    return Amount > 0.f && CurrentStamina + KINDA_SMALL_NUMBER >= Amount;
+    return FMath::IsFinite(Amount) && Amount > 0.f && CurrentStamina + KINDA_SMALL_NUMBER >= Amount;
 }
 
 bool UStaminaComponent::ConsumeStamina(float Amount)
@@ -59,13 +63,14 @@ bool UStaminaComponent::ConsumeStamina(float Amount)
 
 bool UStaminaComponent::SpendStamina(float Amount)
 {
-    if (Amount <= 0.f || !GetWorld() || CurrentStamina <= 0.f) return false;
+    if (!FMath::IsFinite(Amount) || Amount <= 0.f || !GetWorld() || CurrentStamina <= 0.f) return false;
     const float Old = CurrentStamina;
     CurrentStamina = FMath::Clamp(CurrentStamina - Amount, 0.f, MaxStamina);
     LastConsumeTime = GetWorld()->GetTimeSeconds();
     if (CurrentStamina == Old) return false;
+    const bool bBecameEmpty = Old > 0.f && CurrentStamina <= 0.f;
     BroadcastStaminaChanged();
-    if (Old > 0.f && CurrentStamina <= 0.f)
+    if (bBecameEmpty && CurrentStamina <= 0.f)
     {
         OnStaminaEmpty.Broadcast();
     }
@@ -74,7 +79,7 @@ bool UStaminaComponent::SpendStamina(float Amount)
 
 void UStaminaComponent::BroadcastStaminaChanged()
 {
-    // Native delegate uses (current, max). CharacterPlayer relays legacy (max, current).
+    // Native delegate uses (Current, Max). UI adapts to its legacy (Max, Current) API.
     OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
 }
 
@@ -108,7 +113,7 @@ void UStaminaComponent::SetRecoveryEnabled(bool bEnabled)
 
 void UStaminaComponent::RecoverStamina(float DeltaTime)
 {
-    if (!GetWorld() || !bRecoveryEnabled || bContinuousRunningDrain || DeltaTime <= 0.f)
+    if (!GetWorld() || !bRecoveryEnabled || bContinuousRunningDrain || !FMath::IsFinite(DeltaTime) || DeltaTime <= 0.f)
         return;
     if (GetWorld()->GetTimeSeconds() - LastConsumeTime < RecoveryDelay)
         return;
@@ -157,7 +162,7 @@ bool UStaminaComponent::ReloadSettingsFromOwnerDataTable()
 
     const float PreviousMax = MaxStamina;
     const float PreviousCurrent = CurrentStamina;
-    MaxStamina = FMath::Max(1.f, Row->Stamina.MaxStamina);
+    MaxStamina = FMath::IsFinite(Row->Stamina.MaxStamina) ? FMath::Max(1.f, Row->Stamina.MaxStamina) : 1000.f;
     RecoveryRate = FMath::Max(0.f, Row->Stamina.RecoveryRate);
     RecoveryDelay = FMath::Max(0.f, Row->Stamina.RecoveryDelay);
     RunStaminaCostPerSecond = FMath::Max(0.f, Row->Stamina.RunStaminaCostPerSecond);
@@ -169,7 +174,10 @@ bool UStaminaComponent::ReloadSettingsFromOwnerDataTable()
         const float Ratio = PreviousMax > KINDA_SMALL_NUMBER
             ? PreviousCurrent / PreviousMax : 0.f;
         CurrentStamina = FMath::Clamp(Ratio * MaxStamina, 0.f, MaxStamina);
-        BroadcastStaminaChanged();
+        if (PreviousMax != MaxStamina || PreviousCurrent != CurrentStamina)
+        {
+            BroadcastStaminaChanged();
+        }
     }
     return true;
 }

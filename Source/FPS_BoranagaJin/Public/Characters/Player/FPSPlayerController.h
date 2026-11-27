@@ -11,6 +11,7 @@ class UPlayerDisplayWidget; //Inventory Widget
 class UThrowableWeaponInventoryWidget;
 class UQuickSlotWidget;
 class UInteractionWidget;
+class ACharacterPlayer;
 
 class UInputAction;
 class UInputMappingContext;
@@ -27,10 +28,14 @@ protected:
 
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* aPawn) override;
+	virtual void OnUnPossess() override;
+	virtual void OnRep_Pawn() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void SetupInputComponent() override;
 public:
 	//void InitUIManager(); //MEMO: Legacy
 	void InitPlayerUISubsystem();
+	void ReleasePlayerUISubsystem(const ACharacterPlayer* ExpectedCharacter);
 
 private:
 	void HandlePauseInput();
@@ -42,6 +47,7 @@ private:
 
 private:
 	bool bIsInventoryOpened = false;
+	TWeakObjectPtr<ACharacterPlayer> InitializedUICharacter;
 
 private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -64,7 +70,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UInteractionWidget> InteractionWidgetClass;
 	UPROPERTY(EditDefaultsOnly, Category = "UI") //MEMO: Inventory
-	TSubclassOf<UPlayerDisplayWidget> PlayerDisplayWidgetClass;
+		TSubclassOf<UPlayerDisplayWidget> PlayerDisplayWidgetClass;
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UThrowableWeaponInventoryWidget> ThrowableWeaponInventoryWidgetClass;
 	UPROPERTY(EditDefaultsOnly, Category = "UI")

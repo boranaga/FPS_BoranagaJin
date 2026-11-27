@@ -21,6 +21,7 @@
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/InteractionComponent.h"
 #include "Characters/HealthComponent.h"
+#include "Characters/StaminaComponent.h"
 #include "SaveSystem/SaveGameSubsystem.h"
 //#include "SaveSystem/SaveGameCustom.h"
 
@@ -41,6 +42,7 @@ void UPlayerUISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UPlayerUISubsystem::Deinitialize()
 {
     UnbindCharacterDelegates();
+    ReleaseCharacterWidgets(true);
 
     // Door actors may be ending play concurrently with the local-player subsystem.
     CloseExitDoorUI();
@@ -84,9 +86,10 @@ void UPlayerUISubsystem::RegisterUIWidget(UBaseUIWidget* NewWidget)
 
     WidgetArray.Widgets.AddUnique(NewWidget);
 
-    if (!NewWidget->IsInViewport())
+    if (!NewWidget->IsInViewport() && !NewWidget->AddToPlayerScreen(Layer))
     {
-        NewWidget->AddToPlayerScreen(Layer);
+        UE_LOG(LogTemp, Warning, TEXT("Failed to add UI to player screen: %s"), *GetNameSafe(NewWidget));
+        UnregisterUIWidget(NewWidget);
     }
 }
 
@@ -347,7 +350,8 @@ void UPlayerUISubsystem::ShowUI(EUIType UIType)
     {
         if (IsValid(Widget))
         {
-            Widget->SetVisibility(ESlateVisibility::Visible);
+            Widget->SetVisibility(UIType == EUIType::Health || UIType == EUIType::Stamina
+                ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Visible);
         }
     }
 }
@@ -372,7 +376,9 @@ void UPlayerUISubsystem::ShowUI(UBaseUIWidget* UIPtr)
 {
     if (IsValid(UIPtr))
     {
-        UIPtr->SetVisibility(ESlateVisibility::Visible);
+        const EUIType Type = UIPtr->GetUIType();
+        UIPtr->SetVisibility(Type == EUIType::Health || Type == EUIType::Stamina
+            ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Visible);
     }
 }
 
@@ -404,13 +410,28 @@ UBaseUIWidget* UPlayerUISubsystem::GetUIWidget(EUIType UIType) const
 
 void UPlayerUISubsystem::SetControlledCharacter(ACharacterPlayer* NewCharacter)
 {
-    if (CharacterPlayer == NewCharacter) { return; }
+    if (CharacterPlayer.Get() == NewCharacter)
+    {
+        if (IsValid(NewCharacter)) { BindCharacterDelegates(); }
+        return;
+    }
 
     UnbindCharacterDelegates();
-
-    CharacterPlayer = NewCharacter;
-
+    if (CharacterPlayer || !IsValid(NewCharacter))
+    {
+        ReleaseCharacterWidgets(!IsValid(NewCharacter));
+    }
+    CharacterPlayer = IsValid(NewCharacter) ? NewCharacter : nullptr;
     BindCharacterDelegates();
+}
+
+void UPlayerUISubsystem::ClearControlledCharacter(const ACharacterPlayer* ExpectedCharacter)
+{
+    // An old Pawn/controller must not clear a newly possessed Pawn's HUD.
+    if (ExpectedCharacter && CharacterPlayer.Get() == ExpectedCharacter)
+    {
+        SetControlledCharacter(nullptr);
+    }
 }
 
 AFPSPlayerController* UPlayerUISubsystem::GetFPSPlayerController() const
@@ -458,14 +479,137 @@ void UPlayerUISubsystem::BindCharacterDelegates()
 {
     if (!IsValid(CharacterPlayer)) { return; }
 
-    // Gameplay UI Delegate ����
+    UHealthComponent* Health = CharacterPlayer->GetHealthComponent();
+    UStaminaComponent* Stamina = CharacterPlayer->GetStaminaComponent();
+
+    if (BoundHealthComponent.Get() != Health || !HealthChangedHandle.IsValid())
+    {
+        if (UHealthComponent* Old = BoundHealthComponent.Get())
+        {
+            Old->OnHealthChanged.Remove(HealthChangedHandle);
+        }
+        HealthChangedHandle.Reset();
+        BoundHealthComponent.Reset();
+        if (IsValid(Health))
+        {
+            BoundHealthComponent = Health;
+            HealthChangedHandle = Health->OnHealthChanged.AddUObject(this, &ThisClass::HandleHealthChanged);
+        }
+    }
+    if (BoundStaminaComponent.Get() != Stamina || !StaminaChangedHandle.IsValid())
+    {
+        if (UStaminaComponent* Old = BoundStaminaComponent.Get())
+        {
+            Old->OnStaminaChanged.Remove(StaminaChangedHandle);
+        }
+        StaminaChangedHandle.Reset();
+        BoundStaminaComponent.Reset();
+        if (IsValid(Stamina))
+        {
+            BoundStaminaComponent = Stamina;
+            StaminaChangedHandle = Stamina->OnStaminaChanged.AddUObject(this, &ThisClass::HandleStaminaChanged);
+        }
+    }
+    // Multicast delegates do not replay previous broadcasts.
+    RefreshHealthUI();
+    RefreshStaminaUI();
 }
 
 void UPlayerUISubsystem::UnbindCharacterDelegates()
 {
-    if (!IsValid(CharacterPlayer)) { return; }
+    if (UHealthComponent* Health = BoundHealthComponent.Get())
+    {
+        Health->OnHealthChanged.Remove(HealthChangedHandle);
+    }
+    if (UStaminaComponent* Stamina = BoundStaminaComponent.Get())
+    {
+        Stamina->OnStaminaChanged.Remove(StaminaChangedHandle);
+    }
+    HealthChangedHandle.Reset();
+    StaminaChangedHandle.Reset();
+    BoundHealthComponent.Reset();
+    BoundStaminaComponent.Reset();
 
-    // Gameplay UI Delegate ����
+    // These pre-existing gameplay widgets still subscribe directly to the Pawn.
+    // Detach them before releasing the old Pawn's widgets on a possession change.
+    if (!IsValid(CharacterPlayer)) { return; }
+    CharacterPlayer->OnInteractionUIPopUpDelegate.RemoveAll(this);
+    CharacterPlayer->OnInteractionUIUpdatedDelegate.RemoveAll(this);
+    if (const FUIWidgetArray* Array = UIWidgets.Find(EUIType::Inventory))
+    {
+        for (UBaseUIWidget* Widget : Array->Widgets)
+        {
+            if (!IsValid(Widget)) { continue; }
+            CharacterPlayer->OnInventoryCreatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnInventoryUpdatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnPrimaryWeaponInventoryCreatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnPrimaryWeaponInventoryUpdated.RemoveAll(Widget);
+            CharacterPlayer->OnSecondaryWeaponInventoryCreatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnSecondaryWeaponInventoryUpdated.RemoveAll(Widget);
+        }
+    }
+    if (const FUIWidgetArray* Array = UIWidgets.Find(EUIType::ThrowableWeaponInventory))
+    {
+        for (UBaseUIWidget* Widget : Array->Widgets)
+        {
+            if (!IsValid(Widget)) { continue; }
+            CharacterPlayer->OnThrowableWeaponInventoryCreatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnThrowableWeaponInventoryUpdatedDelegate.RemoveAll(Widget);
+        }
+    }
+    if (const FUIWidgetArray* Array = UIWidgets.Find(EUIType::QuickSlot))
+    {
+        for (UBaseUIWidget* Widget : Array->Widgets)
+        {
+            if (!IsValid(Widget)) { continue; }
+            CharacterPlayer->OnQuickSlotUpdatedDelegate.RemoveAll(Widget);
+            CharacterPlayer->OnQuickSlotSelectionChanged.RemoveAll(Widget);
+        }
+    }
+}
+
+void UPlayerUISubsystem::ReleaseWidgetsOfType(EUIType UIType)
+{
+    FUIWidgetArray* Array = UIWidgets.Find(UIType);
+    if (!Array) { return; }
+    // Remove the registry entry first; RemoveFromParent can run widget callbacks.
+    FUIWidgetArray OldWidgets = MoveTemp(*Array);
+    UIWidgets.Remove(UIType);
+    for (UBaseUIWidget* Widget : OldWidgets.Widgets)
+    {
+        if (!IsValid(Widget)) { continue; }
+        if (UThrowableWeaponInventoryWidget* Throwable = Cast<UThrowableWeaponInventoryWidget>(Widget))
+        {
+            Throwable->OnThrowableWeaponEquipRequested.RemoveAll(this);
+        }
+        if (UPlayerDisplayWidget* Display = Cast<UPlayerDisplayWidget>(Widget))
+        {
+            auto UnbindInventory = [this](auto Inventory)
+                {
+                    if (!Inventory) { return; }
+                    Inventory->OnDropInventorySlotRequestedDelegate.RemoveAll(this);
+                    Inventory->OnSwapInventorySlotsRequestedDelegate.RemoveAll(this);
+                    Inventory->OnUseInventorySlotRequestedDelegate.RemoveAll(this);
+                };
+            UnbindInventory(Display->GetItemInventoryUIWidget());
+            UnbindInventory(Display->GetPrimaryWeaponInventoryUIWidget());
+            UnbindInventory(Display->GetSecondaryWeaponInventoryUIWidget());
+        }
+        Widget->RemoveFromParent();
+    }
+}
+
+void UPlayerUISubsystem::ReleaseCharacterWidgets(bool bIncludeVitals)
+{
+    ReleaseWidgetsOfType(EUIType::Interaction);
+    ReleaseWidgetsOfType(EUIType::Inventory);
+    ReleaseWidgetsOfType(EUIType::ThrowableWeaponInventory);
+    ReleaseWidgetsOfType(EUIType::QuickSlot);
+    if (bIncludeVitals)
+    {
+        ReleaseWidgetsOfType(EUIType::Health);
+        ReleaseWidgetsOfType(EUIType::Stamina);
+    }
 }
 
 void UPlayerUISubsystem::SetUIOnlyInput(UBaseUIWidget* FocusWidget)
@@ -607,43 +751,101 @@ bool UPlayerUISubsystem::IsPauseMenuOpened() const
     return PauseMenuWidget->GetVisibility() != ESlateVisibility::Collapsed;
 }
 
+template<typename TWidget>
+TWidget* UPlayerUISubsystem::EnsureVitalWidget(TSubclassOf<TWidget> WidgetClass, EUIType UIType)
+{
+    if (!WidgetClass)
+    {
+        ReleaseWidgetsOfType(UIType);
+        UE_LOG(LogTemp, Warning, TEXT("Vital widget class is not assigned: %s"), *UEnum::GetValueAsString(UIType));
+        return nullptr;
+    }
+    APlayerController* PlayerController = GetCustomPlayerController();
+    if (!IsValid(PlayerController)) { return nullptr; }
+
+    TWidget* Widget = Cast<TWidget>(GetUIWidget(UIType));
+    const FUIWidgetArray* Array = UIWidgets.Find(UIType);
+    if (IsValid(Widget) && Array && Array->Widgets.Num() == 1 &&
+        Widget->GetClass() == WidgetClass.Get() && Widget->GetOwningPlayer() == PlayerController)
+    {
+        if (!Widget->IsInViewport()) { RegisterUIWidget(Widget); }
+        return Widget->IsInViewport() ? Widget : nullptr;
+    }
+
+    ReleaseWidgetsOfType(UIType);
+    Widget = CreateWidget<TWidget>(PlayerController, WidgetClass);
+    if (!IsValid(Widget)) { return nullptr; }
+    if (Widget->GetUIType() != UIType)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Unexpected UI type for %s"), *GetNameSafe(Widget));
+        return nullptr;
+    }
+    // Avoid displaying the WBP's default percentage before its first snapshot.
+    Widget->SetVisibility(ESlateVisibility::Collapsed);
+    RegisterUIWidget(Widget);
+    return Widget->IsInViewport() && GetUIWidget(UIType) == Widget ? Widget : nullptr;
+}
+
 void UPlayerUISubsystem::InitHealthBarUI(TSubclassOf<UHealthWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
-    APlayerController* PlayerController = GetCustomPlayerController();
-    if (!IsValid(PlayerController)) { return; }
-    UHealthWidget* HealthWidget = CreateWidget<UHealthWidget>(PlayerController, WidgetClass);
-    if (!IsValid(HealthWidget)) { return; }
-    RegisterUIWidget(HealthWidget);
-
-    HealthWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-
-    if (!CharacterPlayer) return;
-    CharacterPlayer->GetHealthComponent()->OnHealthChanged.AddUObject(HealthWidget, &UHealthWidget::SetHealthBarPercent);
+    if (EnsureVitalWidget(WidgetClass, EUIType::Health)) { RefreshHealthUI(); }
 }
 
 void UPlayerUISubsystem::InitStaminaUI(TSubclassOf<UStaminaWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
-    APlayerController* PlayerController = GetCustomPlayerController();
-    if (!IsValid(PlayerController)) { return; }
-    UStaminaWidget* StaminaWidget = CreateWidget<UStaminaWidget>(PlayerController, WidgetClass);
-    if (!IsValid(StaminaWidget)) { return; }
-    RegisterUIWidget(StaminaWidget);
-    StaminaWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+    if (EnsureVitalWidget(WidgetClass, EUIType::Stamina)) { RefreshStaminaUI(); }
+}
 
-    if (!CharacterPlayer) return;
-    CharacterPlayer->OnStaminaUpdated.AddUObject(StaminaWidget, &UStaminaWidget::UpdateStaminaBar);
+void UPlayerUISubsystem::RefreshHealthUI()
+{
+    UHealthWidget* Widget = Cast<UHealthWidget>(GetUIWidget(EUIType::Health));
+    if (!IsValid(Widget)) { return; }
+    if (UHealthComponent* Health = BoundHealthComponent.Get())
+    {
+        Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+        HandleHealthChanged(Health->GetMaxHealth(), Health->GetCurrentHealth());
+    }
+    else { Widget->SetVisibility(ESlateVisibility::Collapsed); }
+}
+
+void UPlayerUISubsystem::RefreshStaminaUI()
+{
+    UStaminaWidget* Widget = Cast<UStaminaWidget>(GetUIWidget(EUIType::Stamina));
+    if (!IsValid(Widget)) { return; }
+    if (UStaminaComponent* Stamina = BoundStaminaComponent.Get())
+    {
+        Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+        HandleStaminaChanged(Stamina->GetCurrentStamina(), Stamina->GetMaxStamina());
+    }
+    else { Widget->SetVisibility(ESlateVisibility::Collapsed); }
+}
+
+void UPlayerUISubsystem::HandleHealthChanged(float MaxHealth, float CurrentHealth)
+{
+    if (UHealthWidget* Widget = Cast<UHealthWidget>(GetUIWidget(EUIType::Health)))
+    {
+        if (!IsValid(Widget)) { return; }
+        const float SafeMax = FMath::IsFinite(MaxHealth) ? FMath::Max(1.f, MaxHealth) : 1.f;
+        const float SafeCurrent = FMath::IsFinite(CurrentHealth) ? FMath::Clamp(CurrentHealth, 0.f, SafeMax) : 0.f;
+        Widget->SetHealthBarPercent(SafeMax, SafeCurrent);
+    }
+}
+
+void UPlayerUISubsystem::HandleStaminaChanged(float CurrentStamina, float MaxStamina)
+{
+    // Native component (Current, Max) -> existing widget (Max, Current).
+    UpdateStaminaBar(MaxStamina, CurrentStamina);
 }
 
 void UPlayerUISubsystem::InitInteractionWidget(TSubclassOf<UInteractionWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
+    if (!WidgetClass || !IsValid(CharacterPlayer) || GetUIWidget(EUIType::Interaction)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
     UInteractionWidget* InteractionWidget = CreateWidget<UInteractionWidget>(PlayerController, WidgetClass);
     if (!IsValid(InteractionWidget)) { return; }
     RegisterUIWidget(InteractionWidget);
+    if (GetUIWidget(EUIType::Interaction) != InteractionWidget) { return; }
 
     InteractionWidget->SetVisibility(ESlateVisibility::Hidden);
 
@@ -653,12 +855,13 @@ void UPlayerUISubsystem::InitInteractionWidget(TSubclassOf<UInteractionWidget> W
 
 void UPlayerUISubsystem::InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
+    if (!WidgetClass || !IsValid(CharacterPlayer) || GetUIWidget(EUIType::Inventory)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
     UPlayerDisplayWidget* InventoryWidget = CreateWidget<UPlayerDisplayWidget>(PlayerController, WidgetClass);
     if (!IsValid(InventoryWidget)) { return; }
     RegisterUIWidget(InventoryWidget);
+    if (GetUIWidget(EUIType::Inventory) != InventoryWidget) { return; }
     HideUI(InventoryWidget);
 
     //TODO: nullptr ��� �ڵ�
@@ -693,12 +896,13 @@ void UPlayerUISubsystem::InitInventoryUI(TSubclassOf<UPlayerDisplayWidget> Widge
 
 void UPlayerUISubsystem::InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWeaponInventoryWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
+    if (!WidgetClass || !IsValid(CharacterPlayer) || GetUIWidget(EUIType::ThrowableWeaponInventory)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
     UThrowableWeaponInventoryWidget* ThrowableWeaponInventoryWidget = CreateWidget<UThrowableWeaponInventoryWidget>(PlayerController, WidgetClass);
     if (!IsValid(ThrowableWeaponInventoryWidget)) { return; }
     RegisterUIWidget(ThrowableWeaponInventoryWidget);
+    if (GetUIWidget(EUIType::ThrowableWeaponInventory) != ThrowableWeaponInventoryWidget) { return; }
     HideUI(EUIType::ThrowableWeaponInventory);
 
     ThrowableWeaponInventoryWidget->OnThrowableWeaponEquipRequested.AddUObject(this, &UPlayerUISubsystem::HandleThrowableWeaponEquipRequested);
@@ -710,12 +914,13 @@ void UPlayerUISubsystem::InitThrowableWeaponInventoryUI(TSubclassOf<UThrowableWe
 
 void UPlayerUISubsystem::InitQuickSlotUI(TSubclassOf<UQuickSlotWidget> WidgetClass)
 {
-    if (!WidgetClass) { return; }
+    if (!WidgetClass || !IsValid(CharacterPlayer) || GetUIWidget(EUIType::QuickSlot)) { return; }
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
     UQuickSlotWidget* QuickSlotWidget = CreateWidget<UQuickSlotWidget>(PlayerController, WidgetClass);
     if (!IsValid(QuickSlotWidget)) { return; }
     RegisterUIWidget(QuickSlotWidget);
+    if (GetUIWidget(EUIType::QuickSlot) != QuickSlotWidget) { return; }
     ShowUI(EUIType::QuickSlot);
 
     CharacterPlayer->OnQuickSlotUpdatedDelegate.AddUObject(QuickSlotWidget, &UQuickSlotWidget::UpdateQuickSlots);
@@ -1092,7 +1297,9 @@ void UPlayerUISubsystem::UpdateStaminaBar(float maxstamina, float currstamina)
 {
     UStaminaWidget* StaminaWidget = Cast<UStaminaWidget>(GetUIWidget(EUIType::Stamina));
     if (!IsValid(StaminaWidget)) { return; }
-    StaminaWidget->UpdateStaminaBar(maxstamina, currstamina);
+    const float SafeMax = FMath::IsFinite(maxstamina) ? FMath::Max(1.f, maxstamina) : 1.f;
+    const float SafeCurrent = FMath::IsFinite(currstamina) ? FMath::Clamp(currstamina, 0.f, SafeMax) : 0.f;
+    StaminaWidget->UpdateStaminaBar(SafeMax, SafeCurrent);
 }
 
 void UPlayerUISubsystem::OpenInventory()
@@ -1159,6 +1366,7 @@ void UPlayerUISubsystem::OpenThrowableWeaponInventory()
     APlayerController* PlayerController = GetCustomPlayerController();
     if (!IsValid(PlayerController)) { return; }
 
+    if (!IsValid(CharacterPlayer)) { return; }
     CharacterPlayer->OnThrowableWeaponInventoryUpdateRequestedDelegate.Broadcast();
 
     ShowUI(EUIType::ThrowableWeaponInventory);

@@ -4,7 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "StaminaComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnStaminaChanged, float currentStamina, float maxStamina);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnStaminaChanged, float CurrentStamina, float MaxStamina);
 DECLARE_MULTICAST_DELEGATE(FOnStaminaEmpty);
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))

@@ -2,9 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Misc/Optional.h"
 #include "HealthComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnHealthChanged, float currenthealth, float maxhealth);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnHealthChanged, float MaxHealth, float CurrentHealth);
 DECLARE_MULTICAST_DELEGATE(FOnDeath);
 
 class UBloodTrailComponent;
@@ -40,6 +41,8 @@ private:
 	//bool bIsBleeding = false;
 	bool bIsDead = false;
 	bool bSettingsInitialized = false;
+	// An explicit save restore before BeginPlay is applied after the DT maximum is known.
+	TOptional<float> PendingInitialHealth;
 public:
 	// Reads only the Owner actor's assigned row (if it implements the interface).
 	UFUNCTION(BlueprintCallable, Category = "Health - Configuration")
@@ -60,5 +63,6 @@ public:
 	void SetCurrHealth(float NewHealthVal);
 	void ResetHealth();
 private:
-	//void UpdateBleedingState();
+	void CommitHealth(float NewHealth);
+	void BroadcastHealthChanged();
 };
