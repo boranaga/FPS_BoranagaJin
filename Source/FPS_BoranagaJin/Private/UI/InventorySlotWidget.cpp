@@ -15,6 +15,8 @@
 
 #include "Blueprint/SlateBlueprintLibrary.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 void UInventorySlotWidget::NativePreConstruct()
 {
@@ -37,6 +39,21 @@ void UInventorySlotWidget::NativeConstruct()
 
 	// Blueprint 등에서 설정되어 있을 수 있는 원래 Tint를 저장한다.
 	DefaultSlotColor = GetColorAndOpacity();
+}
+
+void UInventorySlotWidget::NativeDestruct()
+{
+	if (UWorld* World = GetWorld()) World->GetTimerManager().ClearTimer(HideToolWidgetTimerHandle);
+	if (IsValid(ItemToolWidget))
+	{
+		ItemToolWidget->OnToolWidgetEnter.RemoveAll(this);
+		ItemToolWidget->OnToolWidgetLeave.RemoveAll(this);
+		ItemToolWidget->OnUseItemRequested.RemoveAll(this);
+		ItemToolWidget->OnDropItemRequested.RemoveAll(this);
+		ItemToolWidget->RemoveFromParent();
+		ItemToolWidget = nullptr;
+	}
+	Super::NativeDestruct();
 }
 
 void UInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -238,8 +255,9 @@ void UInventorySlotWidget::LoadItemDataTable()
 
 void UInventorySlotWidget::ClearItemSlotData()
 {
-	ItemQuantity = 0;
+	ItemNum = 0;
 	ItemName = EItemName::ItemName_None;
+	HideItemTool();
 
 	if (TextItemQuantity)
 	{
@@ -257,22 +275,23 @@ void UInventorySlotWidget::ClearItemSlotData()
 	}
 }
 
-void UInventorySlotWidget::SetItemSlotData(FName ItemDataRowName, int32 InItemQuantity)
+void UInventorySlotWidget::SetItemSlotData(FName ItemDataRowName, int32 InItemNum)
 {
-	if (!LoadedItemTable) { return; }
+	if (!LoadedItemTable) LoadItemDataTable();
+	if (!LoadedItemTable) { ClearItemSlotData(); return; }
 	FItemData* ItemData = LoadedItemTable->FindRow<FItemData>(ItemDataRowName, TEXT("LoadItemData"));
-	if (!ItemData) { return; }
+	if (!ItemData) { ClearItemSlotData(); return; }
 
 	if (ItemIcon)
 	{
 		ItemIcon->SetBrushFromTexture(ItemData->ItemImage);
 	}
 
-	ItemQuantity = InItemQuantity;
+	ItemNum = FMath::Max(0, InItemNum);
 
 	if (TextItemQuantity)
 	{
-		TextItemQuantity->SetText(FText::FromString(FString::Printf(TEXT("%d"), ItemQuantity)));
+		TextItemQuantity->SetText(FText::FromString(FString::Printf(TEXT("%d"), ItemNum)));
 	}
 
 	if (OverlayInventorySlot)

@@ -10,15 +10,15 @@
 
 void UInventoryUIWidget::NativePreConstruct()
 {
-	Super::NativePreConstruct();
+    Super::NativePreConstruct();
 
-	//LoadItemDataTable();
+    //LoadItemDataTable();
 }
 
 void UInventoryUIWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
-	Super::NativeTick(MyGeometry, InDeltaTime);
-	CachedGeometry = MyGeometry;
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    CachedGeometry = MyGeometry;
 }
 
 //void UInventoryUIWidget::LoadItemDataTable()
@@ -29,91 +29,68 @@ void UInventoryUIWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 void UInventoryUIWidget::CreateInventorySlots(int32 InventorySlotCount)
 {
-	if (!WrapBoxInventory) return;
-
-	WrapBoxInventory->ClearChildren();
-	InventorySlotWidgets.Empty();
-
-	for (int32 i = 0; i < InventorySlotCount; i++)
-	{
-		UInventorySlotWidget* NewInventorySlot = CreateWidget<UInventorySlotWidget>(GetWorld(), InventorySlotWidgetClass);
-
-		if (NewInventorySlot)
-		{
-			//NewInventorySlot->SetOwnerUIManager(OwnerUIManager);
-
-			NewInventorySlot->SetIndex(i);
-			NewInventorySlot->SetOwnerInventoryWidget(this);
-
-			InventorySlotWidgets.Add(NewInventorySlot);
-
-			NewInventorySlot->SetVisibility(ESlateVisibility::Visible);
-			WrapBoxInventory->AddChildToWrapBox(NewInventorySlot);
-		}
-	}
+    if (!IsValid(WrapBoxInventory) || !InventorySlotWidgetClass || InventorySlotCount < 0) return;
+    if (InventorySlotWidgets.Num() == InventorySlotCount && WrapBoxInventory->GetChildrenCount() == InventorySlotCount)
+    {
+        bool bAllValid = true;
+        for (UInventorySlotWidget* Widget : InventorySlotWidgets) bAllValid &= IsValid(Widget);
+        if (bAllValid) return;
+    }
+    WrapBoxInventory->ClearChildren();
+    InventorySlotWidgets.Reset();
+    InventorySlotWidgets.SetNumZeroed(InventorySlotCount);
+    for (int32 Index = 0; Index < InventorySlotCount; ++Index)
+    {
+        UInventorySlotWidget* Widget = CreateWidget<UInventorySlotWidget>(GetWorld(), InventorySlotWidgetClass);
+        if (!IsValid(Widget)) continue;
+        Widget->SetIndex(Index);
+        Widget->SetOwnerInventoryWidget(this);
+        InventorySlotWidgets[Index] = Widget;
+        Widget->SetVisibility(ESlateVisibility::Visible);
+        WrapBoxInventory->AddChildToWrapBox(Widget);
+        Widget->ClearItemSlotData();
+    }
 }
 
 void UInventoryUIWidget::UpdateInventorySlots(const TArray<FInventorySlot>& Inventory)
 {
-	for (int32 i = 0; i < Inventory.Num(); i++)
-	{
-		if (!Inventory[i].IsEmpty())
-		{
-			if (InventorySlotWidgets.IsValidIndex(i) && InventorySlotWidgets[i])
-			{
-				InventorySlotWidgets[i]->SetItemSlotData(Inventory[i].ItemID, Inventory[i].Num());
-			}
-		}
-	}
-
-	//------------------------------
-
-	for (int32 i = 0; i < InventorySlotWidgets.Num(); i++)
-	{
-		if (!InventorySlotWidgets.IsValidIndex(i) || !InventorySlotWidgets[i])
-		{
-			continue;
-		}
-
-		if (Inventory.IsValidIndex(i) && !Inventory[i].IsEmpty())
-		{
-			InventorySlotWidgets[i]->SetItemSlotData(
-				Inventory[i].ItemID,
-				Inventory[i].Num()
-			);
-		}
-		else
-		{
-			InventorySlotWidgets[i]->ClearItemSlotData();
-		}
-	}
+    // Restore may change the number of slots; retain stable index mapping.
+    CreateInventorySlots(Inventory.Num());
+    for (int32 Index = 0; Index < InventorySlotWidgets.Num(); ++Index)
+    {
+        UInventorySlotWidget* Widget = InventorySlotWidgets[Index];
+        if (!IsValid(Widget)) continue;
+        if (Inventory.IsValidIndex(Index) && !Inventory[Index].IsEmpty())
+            Widget->SetItemSlotData(Inventory[Index].ItemID, Inventory[Index].Num());
+        else Widget->ClearItemSlotData();
+    }
 }
 
 void UInventoryUIWidget::RequestSwapInventorySlots(int32 FromIndex, int32 ToIndex)
 {
-	OnSwapInventorySlotsRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
+    OnSwapInventorySlotsRequestedDelegate.Broadcast(InventoryName, FromIndex, ToIndex);
 }
 
 void UInventoryUIWidget::RequestDropInventorySlot(int32 SlotIndex)
 {
-	OnDropInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+    OnDropInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
 }
 
 void UInventoryUIWidget::RequestUseInventorySlot(int32 SlotIndex)
 {
-	OnUseInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
+    OnUseInventorySlotRequestedDelegate.Broadcast(InventoryName, SlotIndex);
 }
 
 bool UInventoryUIWidget::IsScreenPositionInsideInventory(const FVector2D& ScreenPosition) const
 {
-	const FVector2D LocalPosition =
-		CachedGeometry.AbsoluteToLocal(ScreenPosition);
+    const FVector2D LocalPosition =
+        CachedGeometry.AbsoluteToLocal(ScreenPosition);
 
-	const FVector2D Size = CachedGeometry.GetLocalSize();
+    const FVector2D Size = CachedGeometry.GetLocalSize();
 
-	return LocalPosition.X >= 0.f &&
-		LocalPosition.Y >= 0.f &&
-		LocalPosition.X <= Size.X &&
-		LocalPosition.Y <= Size.Y;
+    return LocalPosition.X >= 0.f &&
+        LocalPosition.Y >= 0.f &&
+        LocalPosition.X <= Size.X &&
+        LocalPosition.Y <= Size.Y;
 }
 

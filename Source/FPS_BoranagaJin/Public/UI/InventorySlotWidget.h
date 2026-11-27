@@ -24,6 +24,7 @@ class FPS_BORANAGAJIN_API UInventorySlotWidget : public UBaseUIWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -77,11 +78,11 @@ protected:
 
 public:
 	void ClearItemSlotData();
-	void SetItemSlotData(FName ItemDataRowName, int32 InItemQuantity = 1);
+	void SetItemSlotData(FName ItemDataRowName, int32 InItemNum = 1);
 
 protected:
 	EItemName ItemName = EItemName::ItemName_None;
-	int32 ItemQuantity = 0;
+	int32 ItemNum = 0;
 	int32 Index = INDEX_NONE;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ItemInventoryUIWidget")

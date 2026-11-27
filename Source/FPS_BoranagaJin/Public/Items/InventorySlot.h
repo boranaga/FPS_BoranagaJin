@@ -8,143 +8,39 @@
 USTRUCT(BlueprintType)
 struct FPS_BORANAGAJIN_API FInventorySlot
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
+
 public:
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<AItem>> Items;
+    // One runtime actor represents the entire homogeneous stack.
+    UPROPERTY(Transient)
+    TObjectPtr<AItem> Item = nullptr;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EItemName ItemName = EItemName::ItemName_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+    EItemName ItemName = EItemName::ItemName_None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName ItemID = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+    FName ItemID = NAME_None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 ItemCount = 0;
+    // Mirror of AItem's base stack quantity. Never edit either independently.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+    int32 ItemNum = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 MaxStackCount = 99;
-public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
+    int32 MaxStackCount = 99;
 
-	FInventorySlot() { ClearSlot(); }
-
-	void ClearSlot()
-	{
-		ItemName = EItemName::ItemName_None;
-		ItemID = NAME_None;
-		//Count = 0;
-		MaxStackCount = 99;
-		Items.Empty();
-		//Items.Reset(); //TODO: Reset하면 AItem이 Destroy 될 수 있기 때문에 일단 그냥 Empty로 놔둠
-	}
-
-	bool IsEmpty() const
-	{
-		return Items.IsEmpty();
-	}
-
-	int32 Num() const
-	{
-		return Items.Num();
-	}
-
-	int32 Count() const
-	{
-		if (!Items.IsEmpty())
-		{
-			return Items[0]->GetItemNum();
-		}
-
-
-		return ItemCount;
-	}
-
-	bool IsSameItem(const EItemName& InItemName) const
-	{
-		return !IsEmpty() && ItemName == InItemName;
-	}
-
-	bool CanStack(const EItemName& InItemName) const
-	{
-		//return IsSameItem(InItemName) && Count < MaxStackCount;
-		return IsSameItem(InItemName) && Items.Num() < MaxStackCount;
-	}
-
-	bool AddItem(AItem* InItem, int32 AddCount = 1) //TODO: AddCount가 필요한가
-	{
-		if (!IsValid(InItem))
-		{
-			return false;
-		}
-
-		//if (!CanStack(InItem->GetItemName()))
-		//{
-		//	return false;
-		//}
-
-		if (IsEmpty())
-		{
-			Items.Add(InItem);
- 			ItemName = InItem->GetItemName();
-			ItemID = InItem->GetItemID();
-			ItemCount = AddCount;
-			return true;
-		}
-
-
-		if (IsSameItem(InItem->GetItemName()))
-		{
-			ItemCount = FMath::Clamp(ItemCount + AddCount, 0, MaxStackCount);
-			return true;
-		}
-
-		Items.Add(InItem);
-
-		//return false;
-		return true;
-	}
-
-	AItem* RemoveItem(int32 ItemIndex)
-	{
-		if (IsEmpty())
-		{
-			return nullptr;
-		}
-
-		if (ItemIndex == INDEX_NONE)
-		{
-			ItemIndex = Items.Num() - 1;
-		}
-
-		if (!Items.IsValidIndex(ItemIndex))
-		{
-			return nullptr;
-		}
-
-		AItem* RemovedItem = Items[ItemIndex];
-
-		Items.RemoveAt(ItemIndex);
-
-		if (Items.IsEmpty())
-		{
-			ClearSlot();
-		}
-
-		return RemovedItem;
-	}
-
-
-	AItem* GetItem(int32 ItemIdx = 0)
-	{
-		//if (!IsEmpty() && Count != 0)
-		//{
-		//	return Items[ItemIdx];
-		//}
-		//else
-		//{
-		//	return nullptr;
-		//}
-
-		return Items.IsValidIndex(ItemIdx) ? Items[ItemIdx].Get() : nullptr;
-	}
+    void ClearSlot(); // Detach only; caller owns pool/drop policy. Preserve capacity.
+    bool IsEmpty() const;
+    int32 GetStackItemNum() const;
+    int32 Num() const; // UI quantity (throwable launcher exposes its ammo via GetItemNum).
+    int32 Count() const;
+    bool IsSameItem(const EItemName& InItemName) const;
+    static bool CanRepresentStack(const AItem* InItem);
+    bool CanStack(const EItemName& InItemName, int32 AddCount = 1) const;
+    bool CanStackWith(const AItem* InItem, int32 AddCount = 1) const;
+    bool AddItem(AItem* InItem, int32 AddCount = 1);
+    bool AddStack(int32 AddCount = 1);
+    bool RemoveItems(int32 RemoveCount = 1);
+    void SynchronizeItemNum();
+    // Index 0 retained for source compatibility. There are no other actor indices.
+    AItem* GetItem(int32 ItemIdx = 0) const;
 };

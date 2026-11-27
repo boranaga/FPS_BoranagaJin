@@ -98,7 +98,7 @@ private:
 	void CaptureWorldActorData(UFPSGameSave& SaveObject);
 	void CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject);
 
-	void RestorePlayerData(const UFPSGameSave& SaveObject);
+	bool RestorePlayerData(const UFPSGameSave& SaveObject);
 	void RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject);
 	void RestoreWorldActorData(const UFPSGameSave& SaveObject);
 
@@ -140,7 +140,7 @@ private:
 	int32 SaveUserIndex = 0;
 
 	UPROPERTY()
-	int32 CurrentSaveVersion = 1;
+	int32 CurrentSaveVersion = 2;
 
 	UPROPERTY()
 	bool bIsSaving = false;

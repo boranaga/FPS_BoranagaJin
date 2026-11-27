@@ -257,6 +257,9 @@ private:
 
 	FDelegateHandle InventoryUpdatedHandle;
 
+	// Runtime-only guard: inventory and unlock callbacks can run synchronously.
+	bool bIsInsertingItem = false;
+
 #pragma region InteractableInterface
 public:
 	virtual void Interact_Implementation(AActor* Interactor) override;

@@ -2,6 +2,9 @@
 #include "Items/Weapons/ThrowableWeapon/ThrowableWeaponProjectile.h"
 #include "Items/Weapons/ThrowableWeapon/ThrowableTrajectoryIndicator.h"
 #include "Items/InventorySystemComponent.h"
+#include "Items/ItemPickUp.h"
+#include "TimerManager.h"
+#include "Engine/LocalPlayer.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "PlayerUISubsystem.h"
 #include "ObjectPoolSubsystem.h"
@@ -39,6 +42,7 @@ AThrowableWeapon::AThrowableWeapon()
 
 	bIsWeapon = true;
 	bIsStackable = false;
+	SetItemNum(1);
 }
 
 void AThrowableWeapon::BeginPlay()
@@ -76,10 +80,23 @@ void AThrowableWeapon::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
+	if (!IsValid(NewCharacter)) return;
 	Character = NewCharacter;
-	if (bWasInitialized) { return; }
-	bWasInitialized = true;
 	ItemPickUp = PickUpActor;
+	if (!ItemPickUpClass && IsValid(PickUpActor)) ItemPickUpClass = PickUpActor->GetClass();
+	SetItemNum(1);
+	bIsStackable = false;
+	bIsWeapon = true;
+	CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
+	CharacterController = Cast<APlayerController>(Character->GetController());
+	TotalAmmo = FMath::Clamp(GetClass()->GetDefaultObject<AThrowableWeapon>()->TotalAmmo, 0, FMath::Max(0, MaxAmmo)); // Pickup/save may override.
+	if (bWasInitialized)
+	{
+		InitUI();
+		RefreshAmmoUI(false);
+		return;
+	}
+	bWasInitialized = true;
 	LoadItemData();
 
 	if (Character)
@@ -105,6 +122,7 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 		MuzzlePoint->AttachToComponent(GetRootComponent(), AttachmentRules);
 	}
 
+	TotalAmmo = FMath::Clamp(TotalAmmo, 0, MaxAmmo);
 	InitUI();
 
 	InitProjectiles(FireData.ProjectileClass, 5);
@@ -112,37 +130,7 @@ void AThrowableWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* Pic
 
 void AThrowableWeapon::InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
-	Character = NewCharacter;
-	if (bWasInitialized) { return; }
-	bWasInitialized = true;
-	ItemPickUp = PickUpActor;
-	LoadItemData();
-
-	if (Character)
-	{
-		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
-		//InitializeCamera(Character);
-		LoadDataPost();
-	}
-	InitUI();
-
-	CharacterController = Cast<APlayerController>(Character->GetController());
-	if (CharacterController)
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(CharacterController->GetLocalPlayer()))
-		{
-			// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
-			Subsystem->AddMappingContext(InputMappingContext, 1);
-		}
-	}
-
-	if (MuzzlePoint)
-	{
-		FAttachmentTransformRules AttachmentRules(EAttachmentRule::KeepRelative, true);
-		MuzzlePoint->AttachToComponent(GetRootComponent(), AttachmentRules);
-	}
-
-	InitProjectiles(FireData.ProjectileClass, 5);
+	AThrowableWeapon::InitItem(NewCharacter, PickUpActor);
 }
 
 void AThrowableWeapon::InitCam(ACharacterPlayer* TargetCharacter)
@@ -151,21 +139,19 @@ void AThrowableWeapon::InitCam(ACharacterPlayer* TargetCharacter)
 
 void AThrowableWeapon::InitUI()
 {
-	if (!CharacterController)
-	{
-		CharacterController = Cast<APlayerController>(Character->GetController());
-	}
-	if (!CharacterController) { return; }
+	if (!IsValid(Character)) return;
+	CharacterController = Cast<APlayerController>(Character->GetController());
+	if (!IsValid(CharacterController) || !CharacterController->GetLocalPlayer()) return;
 	UPlayerUISubsystem* UISubsystem = CharacterController->GetLocalPlayer()->GetSubsystem<UPlayerUISubsystem>();
 	if (!IsValid(UISubsystem)) { return; }
 
-	if (AimUIWidgetClass)
+	if (AimUIWidgetClass && !IsValid(AimUIWidget))
 	{
 		AimUIWidget = UISubsystem->CreateAndRegisterWidget(AimUIWidgetClass);
-		AimUIWidget->SetVisibility(ESlateVisibility::Hidden);
+		if (IsValid(AimUIWidget)) AimUIWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (AmmoCounterWidgetClass)
+	if (AmmoCounterWidgetClass && !IsValid(AmmoCounterWidget))
 	{
 		AmmoCounterWidget = UISubsystem->CreateAndRegisterWidget(AmmoCounterWidgetClass);
 		if (AmmoCounterWidget)
@@ -250,7 +236,7 @@ void AThrowableWeapon::LoadData()
 
 	// <Reload>
 	ReloadingTime = WeaponData->ReloadingTime;
-	MaxAmmo = WeaponData->MaxAmmo;
+	MaxAmmo = FMath::Max(0, WeaponData->MaxAmmo);
 	FireData.AmmoCost = WeaponData->AmmoConsumedPerShot;
 
 	// <HitScan>
@@ -366,7 +352,7 @@ void AThrowableWeapon::LoadDataPost()
 
 	// <Reload>
 	ReloadingTime = WeaponData->ReloadingTime;
-	MaxAmmo = WeaponData->MaxAmmo;
+	MaxAmmo = FMath::Max(0, WeaponData->MaxAmmo);
 	FireData.AmmoCost = WeaponData->AmmoConsumedPerShot;
 
 	// <HitScan>
@@ -410,9 +396,40 @@ void AThrowableWeapon::LoadDataPost()
 	DownwardPitchOffset = WeaponData->DownwardPitchOffset;
 }
 
+void AThrowableWeapon::OnDeactivateToPool()
+{
+	if (PendingFireMode != EThrowableWeaponFireMode::None || CurrentState == EThrowableWeaponStateType::Firing) CancelPendingThrow();
+	if (UWorld* World = GetWorld())
+	{
+		auto& Timers = World->GetTimerManager();
+		for (FTimerHandle* Handle : { &SwitchingTimer, &ReloadingTimer, &SingleShotTimer, &BurstShotTimer, &ChargingTimer, &FuseTimerHandle })
+			Timers.ClearTimer(*Handle);
+	}
+	ResetInputActionBinding();
+	StopTrajectoryPreview();
+	ActivateAimUIWidget(false);
+	ActivateAmmoCounterWidget(false);
+	DestroyChargeEffect();
+	DetachItemFromPlayer();
+	CurrentState = EThrowableWeaponStateType::Unequiped;
+	BurstShotFired = 0;
+	ElapsedChargeTime = 0.f;
+	CharacterAnimInstance = nullptr;
+	CharacterController = nullptr;
+	Character = nullptr;
+	ItemPickUp = nullptr;
+	Super::OnDeactivateToPool();
+}
+
 void AThrowableWeapon::OnItemStateRestored()
 {
-	//TODO: Def
+	Super::OnItemStateRestored();
+	SetItemNum(1);
+	bIsWeapon = true;
+	bIsStackable = false;
+	TotalAmmo = FMath::Clamp(TotalAmmo, 0, FMath::Max(0, MaxAmmo));
+	// The inventory may still be staging this item. Do not broadcast before commit.
+	RefreshAmmoUI(false);
 }
 
 bool AThrowableWeapon::AttachItemToPlayer(ACharacterPlayer* TargetCharacter)
@@ -509,8 +526,11 @@ void AThrowableWeapon::Unequip(ACharacterPlayer* TargetCharacter)
 	GetWorld()->GetTimerManager().SetTimer(SwitchingTimer, [this, TargetCharacter]() {OnUnequipEnded(TargetCharacter); }, WeaponSwitchingRate, false);
 	StartAnimation(AM_Unequip_Character, WeaponSwitchingRate);
 
-	AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
-	AM_Unequip_Character->bEnableAutoBlendOut = false;
+	if (AM_Unequip_Character)
+	{
+		AM_Unequip_Character->BlendOut.SetBlendTime(1000.f);
+		AM_Unequip_Character->bEnableAutoBlendOut = false;
+	}
 }
 
 void AThrowableWeapon::OnEquipEnded(ACharacterPlayer* TargetCharacter)
@@ -577,7 +597,7 @@ void AThrowableWeapon::Throw(const FVector& BaseThrowDirection)
 	//}
 
 
-	if (BaseThrowDirection.IsNearlyZero())
+	if (!HasAmmo(FireData.AmmoCost) || BaseThrowDirection.ContainsNaN() || BaseThrowDirection.IsNearlyZero())
 	{
 		SetState(EThrowableWeaponStateType::Idle);
 		return;
@@ -703,12 +723,13 @@ void AThrowableWeapon::SetFireMode(EThrowableWeaponFireMode NewFireMode)
 
 void AThrowableWeapon::ExecuteThrow()
 {
-	if (PendingFireMode == EThrowableWeaponFireMode::None)
+	if (CurrentState != EThrowableWeaponStateType::Firing || PendingFireMode == EThrowableWeaponFireMode::None)
 	{
 		return;
 	}
 
 	const float ThrowSpeed = GetThrowStrength(PendingFireMode);
+	PendingFireMode = EThrowableWeaponFireMode::None; // Commit this release only once.
 
 	FireSingleProjectile(&FireData, PendingThrowDirection, ThrowSpeed);
 
@@ -1209,51 +1230,51 @@ void AThrowableWeapon::StopSingleShot()
 
 void AThrowableWeapon::StartReload()
 {
-	//TODO: ���� ����(aiming ��� reloading���� ��ȯ�� �� ���� ���¿� ���� ó�� �ʿ�)
-
-	StartAnimation(AM_Reload_Character, ReloadingTime);
-	TWeakObjectPtr WeakThis = this;
-	GetWorld()->GetTimerManager().SetTimer(ReloadingTimer, FTimerDelegate::CreateWeakLambda(this, [WeakThis]()
-		{
-			if (auto* HardThis = WeakThis.Get())
-			{
-				HardThis->StopReload();
-			}
-		}), ReloadingTime, false);
+	// Legacy reload state is unsupported for throwables.
+	if (CurrentState == EThrowableWeaponStateType::Reloading) SetState(EThrowableWeaponStateType::Idle);
 }
 
 bool AThrowableWeapon::AddAmmo(int32 NumAmmo)
 {
-	if (TotalAmmo < MaxAmmo)
-	{
-		int32 NewTotalAmmo = FMath::Clamp(TotalAmmo + NumAmmo, 0, MaxAmmo);
-		TotalAmmo = NewTotalAmmo;
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-		}
-		return true;
-	}
-	return false;
+	return TryAddAmmo(NumAmmo, true);
+}
+
+bool AThrowableWeapon::AddAmmoFromPickup(int32 NumAmmo)
+{
+	return TryAddAmmo(NumAmmo, false);
+}
+
+bool AThrowableWeapon::TryAddAmmo(int32 NumAmmo, bool bNotifyInventory)
+{
+	if (NumAmmo <= 0 || static_cast<int64>(TotalAmmo) + NumAmmo > FMath::Max(0, MaxAmmo)) return false;
+	TotalAmmo += NumAmmo;
+	RefreshAmmoUI(bNotifyInventory);
+	return true;
+}
+
+bool AThrowableWeapon::SetAmmoForPickup(int32 NewAmmo)
+{
+	if (NewAmmo < 0 || NewAmmo > FMath::Max(0, MaxAmmo)) return false;
+	TotalAmmo = NewAmmo;
+	RefreshAmmoUI(false);
+	return true;
+}
+
+void AThrowableWeapon::RefreshAmmoUI(bool bNotifyInventory)
+{
+	if (IsValid(AmmoCounterWidget)) AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
+	if (bNotifyInventory && IsValid(Character))
+		Character->OnThrowableWeaponInventoryUpdateRequestedDelegate.Broadcast();
 }
 
 void AThrowableWeapon::AutoReload()
 {
-	if (bCanAutoReload)
-	{
-		if (!HasAmmo() && TotalAmmo > 0)
-		{
-			SetState(EThrowableWeaponStateType::Reloading);
-		}
-	}
+	// No magazine: all throwable charges are immediately available.
 }
 
 void AThrowableWeapon::ReloadingEnd()
 {
-	if (TotalAmmo < MaxAmmo)
-	{
-		ReloadAmmo();
-	}
+	// Legacy animation notify: never consume a throwable on reload.
 }
 
 void AThrowableWeapon::InitProjectiles(TSubclassOf<AThrowableWeaponProjectile> ProjectileClass, int32 NumObject)
@@ -1306,6 +1327,7 @@ void AThrowableWeapon::ActivateAmmoCounterWidget(bool bFlag)
 	{
 		if (AmmoCounterWidget)
 		{
+			RefreshAmmoUI(false);
 			AmmoCounterWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
@@ -1472,81 +1494,6 @@ void AThrowableWeapon::ResetThrowable()
 
 void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireData, int32 NumPenetrable, float AdditionalDamage)
 {
-	//// <Old>
-
-	//if (CurrentState == EThrowableWeaponStateType::Unequiped) return;
-	//if (!InFireData) return;
-	//if (!Character) return;
-	//if (Character->GetController() == nullptr) return;
-
-	//const auto* Cam = Character->GetCameraComponent();
-	//if (!Cam) return;
-
-	//if (InFireData->AmmoCost > 0)
-	//{
-	//	if (!HasAmmo(InFireData->AmmoCost))
-	//	{
-	//		return;
-	//	}
-	//	ConsumeAmmo(InFireData->AmmoCost);
-	//}
-
-	//FVector ProjectileStartLocation = Cam->GetComponentLocation();
-	//FVector ProjectileDirection = Cam->GetForwardVector();
-
-	//if (InFireData->ProjectileClass != nullptr)
-	//{
-	//	const FVector SpawnLocation = ProjectileStartLocation;
-	//	FVector MuzzleLocation;
-	//	if (MuzzlePoint)
-	//	{
-	//		MuzzleLocation = MuzzlePoint->GetComponentLocation();
-	//	}
-	//	else
-	//	{
-	//		return;
-	//	}
-
-	//	const FRotator SpawnRotation = ProjectileDirection.Rotation();
-
-	//	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
-	//	if (PoolSubsystem == nullptr) { return; }
-	//	AThrowableWeaponProjectile* NewProjectile = nullptr;
-	//	NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
-	//	NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
-
-	//	NewProjectile->InitProjectileMovement(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
-
-
-	//	if (bWeaponAssetsReady)
-	//	{
-	//		//TODO: SpawnRotation ����ȭ
-	//		if (InFireData->MuzzleFireEffect)
-	//		{
-	//			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-	//				GetWorld(),
-	//				InFireData->MuzzleFireEffect,
-	//				MuzzleLocation,
-	//				SpawnRotation,
-	//				FVector(1.0f),
-	//				true, true, ENCPoolMethod::AutoRelease);
-	//		}
-	//	}
-	//}
-
-	//ReportFiringSoundToAI();
-	//if (InFireData->FireSound) //TODO: SoundSystem�� ���ս�Ű��
-	//{
-	//	UGameplayStatics::PlaySoundAtLocation(this, InFireData->FireSound, Character->GetActorLocation());
-	//}
-
-	//StartFireAnimation(AM_Throw_Up_Character);
-
-	//// <CamShake>
-	//ApplyCameraShake(InFireData->CamShake);
-
-	//------------------------------------------------------
-
 	// <New>
 
 	if (CurrentState == EThrowableWeaponStateType::Unequiped) return;
@@ -1557,14 +1504,7 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	const auto* Cam = Character->GetCameraComponent();
 	if (!Cam) return;
 
-	if (InFireData->AmmoCost > 0)
-	{
-		if (!HasAmmo(InFireData->AmmoCost))
-		{
-			return;
-		}
-		ConsumeAmmo(InFireData->AmmoCost);
-	}
+	if (!HasAmmo(InFireData->AmmoCost) || !InFireData->ProjectileClass || !IsValid(MuzzlePoint) || !IsValid(GetWorld())) return;
 
 	FVector ProjectileStartLocation = Cam->GetComponentLocation();
 	FVector ProjectileDirection = Cam->GetForwardVector();
@@ -1588,7 +1528,9 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 		if (PoolSubsystem == nullptr) { return; }
 		AThrowableWeaponProjectile* NewProjectile = nullptr;
 		NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
+		if (!IsValid(NewProjectile)) return;
 		NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
+		ConsumeAmmo(InFireData->AmmoCost);
 
 		NewProjectile->InitProjectileMovement(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
 
@@ -1643,15 +1585,8 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 		return;
 	}
 
-	if (InFireData->AmmoCost > 0)
-	{
-		if (!HasAmmo(InFireData->AmmoCost))
-		{
-			return;
-		}
-
-		ConsumeAmmo(InFireData->AmmoCost);
-	}
+	if (!HasAmmo(InFireData->AmmoCost) || ThrowDirection.ContainsNaN() ||
+		ThrowDirection.IsNearlyZero() || !FMath::IsFinite(ThrowSpeed) || ThrowSpeed <= 0.f) return;
 
 	UWorld* World = GetWorld();
 	if (!IsValid(World)) { return; }
@@ -1677,7 +1612,12 @@ void AThrowableWeapon::FireSingleProjectile(FThrowableWeaponFireParams* InFireDa
 	if (!IsValid(NewProjectile)) { return; }
 
 	NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, false);
-	NewProjectile->LaunchProjectile(SpawnLocation, NormalizedDirection, ThrowSpeed);
+	if (!NewProjectile->LaunchProjectile(SpawnLocation, NormalizedDirection, ThrowSpeed))
+	{
+		NewProjectile->DeactivateProjectile();
+		return;
+	}
+	ConsumeAmmo(InFireData->AmmoCost);
 
 	//NewProjectile->InitProjectileMovement(SpawnLocation, NormalizedDirection, SpawnLocation);
 
@@ -1732,14 +1672,7 @@ void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData,
 	const auto* Cam = Character->GetCameraComponent();
 	if (!Cam) return;
 
-	if (InFireData->AmmoCost > 0)
-	{
-		if (!HasAmmo(InFireData->AmmoCost))
-		{
-			return;
-		}
-		ConsumeAmmo(InFireData->AmmoCost);
-	}
+	if (!HasAmmo(InFireData->AmmoCost) || !InFireData->ProjectileClass || !IsValid(MuzzlePoint) || !IsValid(GetWorld())) return;
 
 	FVector ProjectileStartLocation = Cam->GetComponentLocation();
 	FVector ProjectileDirection = Cam->GetForwardVector();
@@ -1763,7 +1696,9 @@ void AThrowableWeapon::FireSingleHitScan(FThrowableWeaponFireParams* InFireData,
 		if (PoolSubsystem == nullptr) { return; }
 		AThrowableWeaponProjectile* NewProjectile = nullptr;
 		NewProjectile = PoolSubsystem->SpawnFromPool(InFireData->ProjectileClass, SpawnLocation, SpawnRotation);
+		if (!IsValid(NewProjectile)) return;
 		NewProjectile->InitProjectile(Character, this, AdditionalDamage, NumPenetrable, true);
+		ConsumeAmmo(InFireData->AmmoCost);
 
 		NewProjectile->LaunchHitScan(ProjectileStartLocation, ProjectileDirection, MuzzleLocation);
 
@@ -1885,7 +1820,7 @@ void AThrowableWeapon::EndBurstShot()
 
 void AThrowableWeapon::PrepareToFire()
 {
-	if (CurrentState == EThrowableWeaponStateType::Idle)
+	if (CurrentState == EThrowableWeaponStateType::Idle && HasAmmo(FireData.AmmoCost))
 	{
 		UE_LOG(LogTemp, Error, TEXT("void AThrowableWeapon::PrepareToFire() -> Aim"));
 
@@ -1981,14 +1916,7 @@ void AThrowableWeapon::StopCharge()
 
 void AThrowableWeapon::HandleReload()
 {
-	if (CurrentState == EThrowableWeaponStateType::Idle)
-	{
-		if (TotalAmmo < MaxAmmo && TotalAmmo > 0)
-		{
-			SetState(EThrowableWeaponStateType::Reloading);
-			ReportReloadingSoundToAI();
-		}
-	}
+	// No separate magazine to reload.
 }
 
 void AThrowableWeapon::CancelReload()
@@ -2032,33 +1960,14 @@ void AThrowableWeapon::InterruptReloadAndFire() //TODO: �ѹ� ���캸�
 
 void AThrowableWeapon::ConsumeAmmo(int32 AmmoCost)
 {
-	if (TotalAmmo > 0)
-	{
-		if (TotalAmmo >= AmmoCost)
-		{
-			TotalAmmo -= AmmoCost;
-		}
-		else
-		{
-			TotalAmmo = 0;
-		}
-
-		//TODO: PlayerUISubsystem�� ����
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-		}
-	}
+	if (AmmoCost <= 0 || AmmoCost > TotalAmmo) return;
+	TotalAmmo -= AmmoCost;
+	RefreshAmmoUI(true);
 }
 
-void AThrowableWeapon::ReloadAmmo() //TODO: �� ���� reload �ǵ��� �����ؾ���.
+void AThrowableWeapon::ReloadAmmo()
 {
-	TotalAmmo -= 1;
-
-	if (AmmoCounterWidget)
-	{
-		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-	}
+	// No separate magazine to reload.
 }
 
 bool AThrowableWeapon::HasAmmo()
@@ -2068,7 +1977,7 @@ bool AThrowableWeapon::HasAmmo()
 
 bool AThrowableWeapon::HasAmmo(int32 AmmoCost)
 {
-	return TotalAmmo >= AmmoCost;
+	return AmmoCost > 0 && TotalAmmo >= AmmoCost;
 }
 
 void AThrowableWeapon::StartFireAnimation(UAnimMontage* CharacterFireAnimation)

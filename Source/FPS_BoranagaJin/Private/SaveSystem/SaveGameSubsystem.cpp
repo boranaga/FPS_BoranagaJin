@@ -10,6 +10,10 @@
 #include "ObjectPoolSubsystem.h"
 
 #include "Characters/Player/CharacterPlayer.h"
+#include "Items/Item.h"
+#include "Items/ItemPickUp.h"
+#include "Items/InventorySystemComponent.h"
+#include "SaveSystem/InventorySaveData.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -21,6 +25,82 @@
 #include "HAL/PlatformTime.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSaveGameSubsystem, Log, All);
+
+namespace
+{
+	void CollectSavedInventoryIDs(const UFPSGameSave& Save, TSet<FGuid>& OutIDs)
+	{
+		const auto Collect = [&OutIDs](const TArray<FInventorySlotSaveData>& Slots)
+			{
+				for (const FInventorySlotSaveData& Slot : Slots)
+				{
+					if (Slot.Item.InstanceID.IsValid()) OutIDs.Add(Slot.Item.InstanceID);
+					for (const FItemInstanceSaveData& LegacyItem : Slot.Items)
+						if (LegacyItem.InstanceID.IsValid()) OutIDs.Add(LegacyItem.InstanceID);
+				}
+			};
+		Collect(Save.PlayerData.ItemInventorySlots);
+		Collect(Save.PlayerData.PrimaryWeaponInventorySlots);
+		Collect(Save.PlayerData.SecondaryWeaponInventorySlots);
+		Collect(Save.PlayerData.ThrowableWeaponInventorySlots);
+	}
+
+	bool ShouldSkipWorldItem(AActor* Actor, const TSet<AItem*>& InventoryItems, const TSet<FGuid>& LegacyLinkedIDs)
+	{
+		AItem* Item = Cast<AItem>(Actor);
+		// Inventory snapshots own held items. Inactive pooled item actors are not world objects.
+		// A dropped item is represented by the active AItemPickUp's serialized snapshot.
+		return IsValid(Item) && (InventoryItems.Contains(Item) || (!Item->IsActiveInPool() && !LegacyLinkedIDs.Contains(Item->GetInstanceID())));
+	}
+
+	void CollectLegacyLinkedIDs(UWorld* World, TSet<FGuid>& OutIDs)
+	{
+		if (!IsValid(World)) return;
+		for (TActorIterator<AItemPickUp> It(World); It; ++It)
+		{
+			AItemPickUp* Pickup = *It;
+			if (IsValid(Pickup) && Pickup->IsActiveInPool() && Pickup->GetLegacyItemInstanceID().IsValid())
+				OutIDs.Add(Pickup->GetLegacyItemInstanceID());
+		}
+	}
+
+	bool ValidateInventorySnapshot(ACharacterPlayer* Player, const UFPSGameSave& Save)
+	{
+		UInventorySystemComponent* Inventory = IsValid(Player) ? Player->GetInventorySystemComponent() : nullptr;
+		if (!IsValid(Inventory)) return false;
+		const auto Matches = [Inventory](EInventoryName Type, const TArray<FInventorySlotSaveData>& SavedSlots)
+			{
+				const TArray<FInventorySlot>* Slots = Inventory->GetInventoryConst(Type);
+				if (!Slots || Slots->Num() != SavedSlots.Num()) return false;
+				for (int32 Index = 0; Index < Slots->Num(); ++Index)
+				{
+					const FInventorySlot& Slot = (*Slots)[Index];
+					const FItemInstanceSaveData& Saved = SavedSlots[Index].Item;
+					if (Slot.IsEmpty()) { if (!SavedSlots[Index].IsEmpty()) return false; continue; }
+					if (!Saved.IsValid() || Saved.ItemNum != Slot.GetStackItemNum() ||
+						Saved.InstanceID != Slot.GetItem()->GetInstanceID()) return false;
+				}
+				return true;
+			};
+		return Matches(EInventoryName::Item, Save.PlayerData.ItemInventorySlots) &&
+			Matches(EInventoryName::PrimaryWeapon, Save.PlayerData.PrimaryWeaponInventorySlots) &&
+			Matches(EInventoryName::SecondaryWeapon, Save.PlayerData.SecondaryWeaponInventorySlots) &&
+			Matches(EInventoryName::ThrowableWeapon, Save.PlayerData.ThrowableWeaponInventorySlots);
+	}
+
+	void CollectRuntimeInventoryItems(ACharacterPlayer* Player, TSet<AItem*>& OutItems)
+	{
+		if (!IsValid(Player)) return;
+		UInventorySystemComponent* Inventory = Player->GetInventorySystemComponent();
+		if (!IsValid(Inventory)) return;
+		for (EInventoryName Type : { EInventoryName::Item, EInventoryName::PrimaryWeapon, EInventoryName::SecondaryWeapon, EInventoryName::ThrowableWeapon })
+		{
+			if (const TArray<FInventorySlot>* Slots = Inventory->GetInventoryConst(Type))
+				for (const FInventorySlot& Slot : *Slots)
+					if (AItem* Item = Slot.GetItem()) OutItems.Add(Item);
+		}
+	}
+}
 
 void USaveGameSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -86,6 +166,12 @@ bool USaveGameSubsystem::SaveGameAsync()
 	}
 
 	CaptureCurrentGameState(*NewSaveGame);
+	if (!ValidateInventorySnapshot(FindPlayerCharacter(), *NewSaveGame))
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Save aborted: incomplete inventory snapshot."));
+		OnSaveGameCompleted.Broadcast(false);
+		return false;
+	}
 
 	/*
 	 * 비동기 저장이 끝날 때까지 GC되지 않도록
@@ -126,6 +212,12 @@ bool USaveGameSubsystem::SaveGameSync()
 	}
 
 	CaptureCurrentGameState(*NewSaveGame);
+	if (!ValidateInventorySnapshot(FindPlayerCharacter(), *NewSaveGame))
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Save aborted: incomplete inventory snapshot."));
+		OnSaveGameCompleted.Broadcast(false);
+		return false;
+	}
 
 	const bool bSuccess = UGameplayStatics::SaveGameToSlot(NewSaveGame, CurrSaveSlotName, SaveUserIndex);
 
@@ -345,7 +437,38 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 	 // ItemPickUp과 생성된 Itme과의 매칭을 어떻게 처리해야할지 고려해야함
 	RestoreRuntimeSpawnedWorldActorData(*LoadedSaveGame);
 	RestoreWorldActorData(*LoadedSaveGame);
-	RestorePlayerData(*LoadedSaveGame);
+	// Legacy dropped pickups stored an actor ID instead of a self-contained snapshot.
+	// Their restored actor must be available to SpawnItem, not active in the world.
+	{
+		TSet<AItem*> LiveInventoryItems;
+		CollectRuntimeInventoryItems(FindPlayerCharacter(), LiveInventoryItems);
+		TSet<FGuid> SavedInventoryIDs;
+		CollectSavedInventoryIDs(*LoadedSaveGame, SavedInventoryIDs);
+		if (UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>())
+		{
+			for (TActorIterator<AItemPickUp> It(World); It; ++It)
+			{
+				AItemPickUp* Pickup = *It;
+				if (!IsValid(Pickup) || !Pickup->IsActiveInPool() || !Pickup->GetLegacyItemInstanceID().IsValid()) continue;
+				const TSubclassOf<AItem> ItemClass = Pickup->GetItemClass();
+				if (!ItemClass || SavedInventoryIDs.Contains(Pickup->GetLegacyItemInstanceID())) continue;
+				AItem* Item = Cast<AItem>(Pool->FindActorByInstanceIDFromPool(Pickup->GetLegacyItemInstanceID(), ItemClass));
+				if (IsValid(Item) && !LiveInventoryItems.Contains(Item))
+				{
+					FItemInstanceSaveData Snapshot;
+					if (Item->WriteItemSaveData(Snapshot))
+						Pickup->SetDroppedItemState(Snapshot, Pickup->IsThrowableWeapon() ? Item->GetItemNum() : INDEX_NONE);
+					if (Item->IsActiveInPool()) Item->DeactivateItem();
+				}
+			}
+		}
+	}
+	if (!RestorePlayerData(*LoadedSaveGame))
+	{
+		UE_LOG(LogSaveGameSubsystem, Error, TEXT("ApplyLoadedGame failed: inventory restore incomplete."));
+		bPendingApplyLoadedGame = false;
+		return false;
+	}
 
 	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
 	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
@@ -771,11 +894,15 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 	SaveObject.WorldActorData.Reset();
 
 	TSet<FGuid> UsedSaveIDs;
+	TSet<AItem*> InventoryItems;
+	CollectRuntimeInventoryItems(FindPlayerCharacter(), InventoryItems);
+	TSet<FGuid> LegacyLinkedIDs;
+	CollectLegacyLinkedIDs(World, LegacyLinkedIDs);
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (!IsValid(Actor)) { continue; }
+		if (!IsValid(Actor) || ShouldSkipWorldItem(Actor, InventoryItems, LegacyLinkedIDs)) { continue; }
 
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
@@ -828,11 +955,15 @@ void USaveGameSubsystem::CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject)
 	SaveObject.RuntimeSpawnedWorldActorData.Reset();
 
 	TSet<FGuid> UsedSaveIDs;
+	TSet<AItem*> InventoryItems;
+	CollectRuntimeInventoryItems(FindPlayerCharacter(), InventoryItems);
+	TSet<FGuid> LegacyLinkedIDs;
+	CollectLegacyLinkedIDs(World, LegacyLinkedIDs);
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (!IsValid(Actor)) { continue; }
+		if (!IsValid(Actor) || ShouldSkipWorldItem(Actor, InventoryItems, LegacyLinkedIDs)) { continue; }
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
 		const FGuid SaveID = SaveableActor->GetInstanceID();
@@ -878,14 +1009,14 @@ void USaveGameSubsystem::CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject)
 	}
 }
 
-void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
+bool USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 {
 	ACharacterPlayer* Player = FindPlayerCharacter();
 
 	if (!IsValid(Player))
 	{
 		UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Player data was not restored: Player was not found."));
-		return;
+		return false;
 	}
 
 	ISaveablePlayerInterface* SaveablePlayer = Cast<ISaveablePlayerInterface>(Player);
@@ -893,10 +1024,14 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 	if (!SaveablePlayer)
 	{
 		UE_LOG(LogSaveGameSubsystem, Error, TEXT("Player data was not restored: CharacterPlayer does not implement ISaveablePlayerInterface."));
-		return;
+		return false;
 	}
 
+	UInventorySystemComponent* Inventory = Player->GetInventorySystemComponent();
+	if (!IsValid(Inventory)) return false;
+	Inventory->ResetInventoryRestoreStatus();
 	SaveablePlayer->LoadPlayerSaveData(SaveObject.PlayerData);
+	if (!Inventory->WasInventoryRestoreSuccessful()) return false;
 
 	FTransform TargetTransform = SaveObject.PlayerData.PlayerTransform;
 
@@ -914,6 +1049,7 @@ void USaveGameSubsystem::RestorePlayerData(const UFPSGameSave& SaveObject)
 
 	//TODO: PlayerMovementComponent에서 Player의 이전 속도가 남지 않도록 초기화해야함
 
+	return true;
 }
 
 void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject)
@@ -924,9 +1060,11 @@ void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave&
 	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
 	if (PoolSubsystem == nullptr) { return; }
 
+	TSet<FGuid> InventoryIDs;
+	CollectSavedInventoryIDs(SaveObject, InventoryIDs);
 	for (const FWorldActorSaveData& ActorSaveData : SaveObject.RuntimeSpawnedWorldActorData)
 	{
-		if (!ActorSaveData.InstanceID.IsValid()) { continue; }
+		if (!ActorSaveData.InstanceID.IsValid() || InventoryIDs.Contains(ActorSaveData.InstanceID)) { continue; }
 		AActor* Actor = nullptr;
 
 		if (ActorSaveData.bRuntimeSpawned)
@@ -976,6 +1114,8 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	// Doing that while other actors are still being deserialized may overwrite
 	// their restored state, depending on TActorIterator order.
 	TArray<TWeakObjectPtr<AActor>> RestoredActors;
+	TSet<FGuid> InventoryIDs;
+	CollectSavedInventoryIDs(SaveObject, InventoryIDs);
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -986,7 +1126,7 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 		if (!SaveableActor) { continue; }
 
 		const FGuid SaveID = SaveableActor->GetInstanceID();
-		if (!SaveID.IsValid()) { continue; }
+		if (!SaveID.IsValid() || InventoryIDs.Contains(SaveID)) { continue; }
 
 		const FWorldActorSaveData* ActorSaveData = SaveObject.FindActorData(SaveID);
 		if (!ActorSaveData) { continue; }

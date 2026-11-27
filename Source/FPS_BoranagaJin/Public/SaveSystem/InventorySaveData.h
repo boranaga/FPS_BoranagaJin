@@ -5,6 +5,7 @@
 #include "InventorySaveData.generated.h"
 
 class AItem;
+class AItemPickUp;
 
 /**
  * 인벤토리 안에 있는 아이템 인스턴스 하나의 저장 데이터입니다.
@@ -48,6 +49,13 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadOnly)
 	TArray<uint8> SerializedState;
 
+	// Zero means a legacy record without an explicit quantity.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	int32 ItemNum = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	TSoftClassPtr<AItemPickUp> PickupClass;
+
 public:
 	bool IsValid() const
 	{
@@ -64,56 +72,38 @@ public:
 		ItemID = NAME_None;
 		ItemName = EItemName::ItemName_None;
 		SerializedState.Reset();
+		ItemNum = 0;
+		PickupClass.Reset();
 	}
 };
 
-/**
- * 인벤토리 슬롯 하나의 저장 데이터입니다.
- */
+/** One slot, one item snapshot. Legacy fields are read-only migration inputs. */
 USTRUCT(BlueprintType)
 struct FPS_BORANAGAJIN_API FInventorySlotSaveData
 {
 	GENERATED_BODY()
 
-public:
 	UPROPERTY(SaveGame, BlueprintReadOnly)
-	TArray<FItemInstanceSaveData> Items;
+	FItemInstanceSaveData Item;
 
 	UPROPERTY(SaveGame, BlueprintReadOnly)
 	int32 MaxStackCount = 99;
 
-	//UPROPERTY(SaveGame)
-	//EItemName ItemName = EItemName::ItemName_None;
-
-	//UPROPERTY(SaveGame)
-	//FName ItemID = NAME_None;
+	// Keep exact names/types so UE can deserialize existing v1 saves.
+	// New saves never populate these fields.
+	UPROPERTY(SaveGame, BlueprintReadOnly)
+	TArray<FItemInstanceSaveData> Items;
 
 	UPROPERTY(SaveGame)
 	int32 Count = 0;
 
-//public:
-//	bool IsEmpty() const
-//	{
-//		return ItemName == EItemName::ItemName_None
-//			|| Count <= 0;
-//	}
-
-
-
-public:
 	bool IsEmpty() const
 	{
-		return Items.IsEmpty();
+		return Item.ItemClass.IsNull() && Item.ItemID.IsNone() &&
+			Item.ItemName == EItemName::ItemName_None && !Item.InstanceID.IsValid() &&
+			Item.ItemNum == 0 && Items.IsEmpty() && Count == 0;
 	}
-
-	int32 GetCount() const
-	{
-		return Items.Num();
-	}
-
-	void Reset()
-	{
-		Items.Reset();
-		MaxStackCount = 99;
-	}
+	int32 GetCount() const;
+	bool ResolveItem(FItemInstanceSaveData& OutItem) const;
+	void Reset();
 };

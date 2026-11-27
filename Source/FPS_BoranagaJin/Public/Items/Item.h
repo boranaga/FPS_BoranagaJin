@@ -18,12 +18,12 @@ UCLASS()
 class FPS_BORANAGAJIN_API AItem : public AActor, public IPoolableActorInterface, public ISaveableActorInterface
 {
 	GENERATED_BODY()
-	
-public:	
+
+public:
 	AItem();
 protected:
 	virtual void BeginPlay() override;
-public:	
+public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr);
 	virtual void InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor = nullptr);
@@ -68,6 +68,9 @@ public:
 	EItemName GetItemName() const { return ItemName; }
 	FName GetItemID() const { return ItemID; }
 	virtual int32 GetItemNum() const { return ItemNum; }
+	// GetItemNum may be overridden by a weapon to expose ammunition.
+	int32 GetStackItemNum() const { return ItemNum; }
+	void SetItemNum(int32 NewItemNum);
 	bool IsStackable() const { return bIsStackable; }
 	bool IsWeapon() const { return bIsWeapon; }
 protected:
@@ -105,7 +108,9 @@ public:
 	virtual void OnActivateFromPool() override;
 	virtual void OnDeactivateToPool() override;
 	virtual bool IsActiveInPool() const override;
-	void DeactivateItemAndGetItemPickUp();
+	void DeactivateItemAndGetItemPickUp(); // Legacy wrapper.
+	// Create the world pickup first; the inventory clears references before returning this actor.
+	bool CreateDroppedItemPickUp();
 	void DeactivateItem();
 private:
 	UPROPERTY()

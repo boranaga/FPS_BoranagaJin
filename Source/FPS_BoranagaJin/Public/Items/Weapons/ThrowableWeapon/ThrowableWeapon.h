@@ -44,6 +44,7 @@ public:
 	void LoadData();
 	void LoadDataPost();
 	virtual void OnItemStateRestored() override;
+	virtual void OnDeactivateToPool() override;
 
 	// Equipment
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
@@ -75,7 +76,11 @@ public:
 
 	// Ammo and reload
 	void StartReload();
+	// Pickup commits all requested charges or none. Inventory publishes its own snapshot.
 	bool AddAmmo(int32 NumAmmo);
+	bool AddAmmoFromPickup(int32 NumAmmo);
+	bool SetAmmoForPickup(int32 NewAmmo);
+	int32 GetTotalAmmo() const { return TotalAmmo; }
 	void AutoReload();
 	virtual void ReloadingEnd() override;
 	int32 GetMaxAmmo() const { return MaxAmmo; }
@@ -170,6 +175,8 @@ protected:
 	void StopReload();
 	void InterruptReloadAndFire();
 	void ConsumeAmmo(int32 AmmoCost = 1);
+	void RefreshAmmoUI(bool bNotifyInventory);
+	bool TryAddAmmo(int32 NumAmmo, bool bNotifyInventory);
 	void ReloadAmmo();
 	bool HasAmmo();
 	bool HasAmmo(int32 AmmoCost);

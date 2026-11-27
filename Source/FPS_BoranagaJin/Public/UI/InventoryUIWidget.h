@@ -38,11 +38,11 @@ protected:
 	UPROPERTY()
 	TArray<UInventorySlotWidget*> InventorySlotWidgets;
 
-//	UPROPERTY(EditAnywhere, Category = Weapon)
-//	TSoftObjectPtr<UDataTable> ItemDataTable;
-//	UPROPERTY() UDataTable* LoadedItemTable = nullptr;
-//protected:
-//	void LoadItemDataTable();
+	//	UPROPERTY(EditAnywhere, Category = Weapon)
+	//	TSoftObjectPtr<UDataTable> ItemDataTable;
+	//	UPROPERTY() UDataTable* LoadedItemTable = nullptr;
+	//protected:
+	//	void LoadItemDataTable();
 public:
 	UPROPERTY(EditAnywhere)
 	FName InventoryName;

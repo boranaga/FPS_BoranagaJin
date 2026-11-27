@@ -212,6 +212,11 @@ public:
 	// 나중에 Restore 이후에 InitItem에서 DT Load 먼저 진행한 이후에 LoadItemSaveData 진행해야 하나?
 public:
 	virtual void OnItemStateRestored() override;
+	virtual void OnDeactivateToPool() override;
+
+	// Firearms are unique inventory objects; ammunition never changes ItemNum.
+	int32 GetTotalAmmo() const { return TotalAmmo; }
+	int32 GetMaxTotalAmmo() const { return MaxTotalAmmo; }
 #pragma endregion
 
 #pragma region State
@@ -505,6 +510,9 @@ protected:
 	int32 LeftAmmoInCurrMag = 0;
 
 	FTimerHandle ReloadingTimer;
+	int32 InitialReserveAmmo = 0;
+	int32 InitialMagazineAmmo = 0;
+	void RefreshAmmoUI();
 protected:
 	void HandleReload();
 	void HandlePumpActionReload();

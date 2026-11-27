@@ -3,17 +3,21 @@
 
 #include "Items/Item.h"
 #include "Items/ItemPickUp.h"
+#include "Items/Weapons/ThrowableWeapon/ThrowableWeapon.h"
 #include "Data/ItemData.h"
 #include "Characters/Player/CharacterPlayer.h"
 #include "ObjectPoolSubsystem.h"
 #include "SaveSystem/InventorySaveData.h"
 #include "SaveSystem/SaveGameArchive.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/MemoryReader.h"
+#include "Engine/World.h"
 
 
 // Sets default values
 AItem::AItem()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
 	// <Save>
@@ -49,11 +53,11 @@ void AItem::Tick(float DeltaTime)
 void AItem::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
 	Character = NewCharacter;
+	ItemPickUp = PickUpActor;
 
 	if (!bWasInitialized)
 	{
 		bWasInitialized = true;
-		ItemPickUp = PickUpActor;
 		LoadItemData();
 	}
 }
@@ -149,28 +153,31 @@ bool AItem::IsActiveInPool() const
 
 void AItem::DeactivateItemAndGetItemPickUp()
 {
-	if (OwningPool)
-	{
-		FVector Offset = Character->GetActorLocation() + Character->GetActorForwardVector() * 100.f;
-		if (ItemPickUp)
-		{
-			OwningPool->GetActorFromAvailablePool(ItemPickUp, Offset, Character->GetActorRotation());
-			OwningPool->ReturnToPool(this);
-		}
-		else
-		{
-			if (ItemPickUpClass)
-			{
-				AItemPickUp* NewItemPickUp = OwningPool->SpawnFromPool(ItemPickUpClass, Offset, Character->GetActorRotation());
-				if (NewItemPickUp) 
-				{
-					NewItemPickUp->SetItemPtr(this);
-					ItemPickUp = NewItemPickUp;
-				}
-				OwningPool->ReturnToPool(this);
-			}
-		}
-	}
+	if (CreateDroppedItemPickUp()) DeactivateItem();
+}
+
+void AItem::SetItemNum(int32 NewItemNum)
+{
+	ItemNum = FMath::Max(0, NewItemNum);
+}
+
+bool AItem::CreateDroppedItemPickUp()
+{
+	if (!IsValid(OwningPool.Get()) || !IsValid(Character) || ItemNum <= 0) return false;
+	TSubclassOf<AItemPickUp> PickupClass = ItemPickUpClass;
+	if (!PickupClass && IsValid(ItemPickUp.Get())) PickupClass = ItemPickUp->GetClass();
+	if (!PickupClass) return false;
+
+	FItemInstanceSaveData Snapshot;
+	if (!WriteItemSaveData(Snapshot)) return false;
+	const FVector Location = Character->GetActorLocation() + Character->GetActorForwardVector() * 100.f;
+	AItemPickUp* Pickup = OwningPool->SpawnFromPool(PickupClass, Location, Character->GetActorRotation(), true);
+	if (!IsValid(Pickup)) return false;
+
+	// The pickup owns a snapshot, never a live inventory actor or a stale pooled pointer.
+	const int32 ThrowableAmmo = IsA(AThrowableWeapon::StaticClass()) ? GetItemNum() : INDEX_NONE;
+	Pickup->SetDroppedItemState(Snapshot, ThrowableAmmo);
+	return true;
 }
 
 void AItem::DeactivateItem()
@@ -196,6 +203,9 @@ bool AItem::WriteItemSaveData(FItemInstanceSaveData& OutSaveData)
 	OutSaveData.InstanceID = InstanceID;
 	OutSaveData.ItemID = ItemID;
 	OutSaveData.ItemName = ItemName;
+	OutSaveData.ItemNum = GetStackItemNum();
+	if (ItemPickUpClass) OutSaveData.PickupClass = ItemPickUpClass.Get();
+	else if (IsValid(ItemPickUp.Get())) OutSaveData.PickupClass = ItemPickUp->GetClass();
 
 	FMemoryWriter MemoryWriter(OutSaveData.SerializedState, true);
 	FSaveGameArchive Archive(MemoryWriter);
@@ -204,9 +214,7 @@ bool AItem::WriteItemSaveData(FItemInstanceSaveData& OutSaveData)
 
 	MemoryWriter.Close();
 
-	UE_LOG(LogTemp, Error, TEXT("bool AItem::WriteItemSaveData(FItemInstanceSaveData& OutSaveData)"));
-
-	return true;
+	return !MemoryWriter.IsError() && !Archive.IsError();
 }
 
 bool AItem::LoadItemSaveData(const FItemInstanceSaveData& SaveData)
@@ -223,8 +231,16 @@ bool AItem::LoadItemSaveData(const FItemInstanceSaveData& SaveData)
 		FSaveGameArchive Archive(MemoryReader);
 		Serialize(Archive);
 		MemoryReader.Close();
+		if (MemoryReader.IsError() || Archive.IsError()) return false;
 	}
 
+	InstanceID = SaveData.InstanceID.IsValid() ? SaveData.InstanceID : FGuid::NewGuid();
+	SetItemNum(FMath::Max(1, SaveData.ItemNum));
+	if (!SaveData.PickupClass.IsNull())
+	{
+		if (UClass* LoadedPickupClass = SaveData.PickupClass.LoadSynchronous())
+			ItemPickUpClass = LoadedPickupClass;
+	}
 	OnItemStateRestored();
 
 	return true;

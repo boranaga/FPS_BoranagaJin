@@ -8,6 +8,7 @@
 #include "Objects/DestructibleObject.h"
 #include "ItemName.h"
 #include "Weapons/WeaponName.h"
+#include "SaveSystem/InventorySaveData.h"
 #include "ItemPickUp.generated.h"
 
 class AItem;
@@ -30,6 +31,13 @@ public:
 	void ActivateItemPickUp(FVector location);
 	void DestroyItemPickUp();
 	void SetItemPtr(TObjectPtr<AItem> NewItem);
+	void SetDroppedItemState(const FItemInstanceSaveData& State, int32 InAmmo = INDEX_NONE);
+	TSubclassOf<AItem> GetItemClass() const;
+	FName GetItemID() const;
+	int32 GetItemNum() const { return ItemNum; }
+	void ClearItemLink();
+	bool HasDroppedItemState() const { return DroppedItemState.IsValid(); }
+	FGuid GetLegacyItemInstanceID() const { return ItemInstanceID; }
 #pragma region SaveableActorInterface
 	virtual bool ShouldSaveTransform() const override { return true; }
 	virtual void OnAfterLoad() override;
@@ -75,12 +83,16 @@ protected:
 	bool bIsMagazine = false;
 	UPROPERTY(EditAnywhere)
 	bool bIsStackable = true;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, SaveGame)
 	int32 NumAmmo = 10;
+	UPROPERTY(EditAnywhere, SaveGame, Category = "Item", meta = (ClampMin = "1"))
+	int32 ItemNum = 1;
+	UPROPERTY(SaveGame)
+	FItemInstanceSaveData DroppedItemState;
 	UPROPERTY(EditAnywhere)
 	FVector PoolLocation = FVector(0.f, 0.f, 0.f);
 public:
-	EItemName GetItemName() const { return ItemName; }
+	EItemName GetItemName() const { return DroppedItemState.IsValid() ? DroppedItemState.ItemName : ItemName; }
 	EWeaponName GetWeaponName() const { return WeaponName; }
 	bool IsWeapon() const { return bIsWeapon; }
 	bool IsThrowableWeapon() const { return bIsThrowableWeapon; }

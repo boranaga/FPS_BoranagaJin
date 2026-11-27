@@ -6,209 +6,223 @@
 #include "Items/PickUpComponent.h"
 #include "Components/InteractionPointComponent.h"
 #include "ObjectPoolSubsystem.h"
+#include "Characters/Player/CharacterPlayer.h"
+#include "Items/InventorySystemComponent.h"
+#include "Engine/World.h"
 
 AItemPickUp::AItemPickUp()
 {
-	PrimaryActorTick.bCanEverTick = false;
-	ItemName = EItemName::ItemName_Base;
-	//IntactMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ItemMesh"));
-	//IntactMesh->SetupAttachment(RootComponent);
+    PrimaryActorTick.bCanEverTick = false;
+    ItemName = EItemName::ItemName_Base;
+    //IntactMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ItemMesh"));
+    //IntactMesh->SetupAttachment(RootComponent);
 
-	if (IntactMesh)
-	{
-		IntactMesh->SetCollisionProfileName(FName("ItemPickUp"));
-	}
+    if (IntactMesh)
+    {
+        IntactMesh->SetCollisionProfileName(FName("ItemPickUp"));
+    }
 
 
-	PickUpComponent = CreateDefaultSubobject<UPickUpComponent>(TEXT("PickUpComponent"));
-	PickUpComponent->SetupAttachment(SceneRoot);
-	PickUpComponent->SetCollisionProfileName(FName("ItemPickUp"));
+    PickUpComponent = CreateDefaultSubobject<UPickUpComponent>(TEXT("PickUpComponent"));
+    PickUpComponent->SetupAttachment(SceneRoot);
+    PickUpComponent->SetCollisionProfileName(FName("ItemPickUp"));
 
-	DefaultPickupInteractionPoint = CreateDefaultSubobject<UInteractionPointComponent>(
-		TEXT("DefaultPickupInteractionPoint"));
-	DefaultPickupInteractionPoint->SetupAttachment(IntactMesh);
-	DefaultPickupInteractionPoint->SetRelativeLocation(FVector(0.f, 0.f, 25.f));
+    DefaultPickupInteractionPoint = CreateDefaultSubobject<UInteractionPointComponent>(
+        TEXT("DefaultPickupInteractionPoint"));
+    DefaultPickupInteractionPoint->SetupAttachment(IntactMesh);
+    DefaultPickupInteractionPoint->SetRelativeLocation(FVector(0.f, 0.f, 25.f));
 
-	bDestroyActorAfterBreak = false;
-	bHideBrokenMeshAfterDelay = false;
+    bDestroyActorAfterBreak = false;
+    bHideBrokenMeshAfterDelay = false;
 }
 
 void AItemPickUp::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	if (UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
-	{
-		const bool bRegistered = PoolSubsystem->RegisterActor(this, true);
+    if (UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>())
+    {
+        const bool bRegistered = PoolSubsystem->RegisterActor(this, true);
 
-		if (!bRegistered)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AItemPickUp Pool 등록 실패 또는 이미 등록됨: %s"), *GetName());
-		}
-	}
+        if (!bRegistered)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("AItemPickUp Pool 등록 실패 또는 이미 등록됨: %s"), *GetName());
+        }
+    }
 }
 
 AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character)
 {
-	// <Old Version>
+    UWorld* World = GetWorld();
+    if (!IsValid(World) || !IsValid(Character)) return nullptr;
+    const TSubclassOf<AItem> RuntimeClass = GetItemClass();
+    if (!RuntimeClass) return nullptr;
+    UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>();
+    if (!IsValid(Pool)) return nullptr;
 
-	//if (ItemClass == nullptr) { return nullptr; }
-	//UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
-	//if (PoolSubsystem == nullptr) { return nullptr; }
-	//AItem* NewItem = nullptr;
-	//UWorld* const World = GetWorld();
-	//if (World != nullptr && Character != nullptr)
-	//{
-	//	NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation());
-	//	NewItem->InitItem(Character, this);
-	//	ItemPtr = NewItem;
-	//}
-
-	//return NewItem;
-
-	//---------------------------------------------
-	// <New Version>
-
-	if (ItemClass == nullptr) { return nullptr; }
-	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
-	if (PoolSubsystem == nullptr) { return nullptr; }
-	AItem* NewItem = nullptr;
-	UWorld* const World = GetWorld();
-	if (World != nullptr && Character != nullptr)
-	{
-		if (ItemPtr)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 1"));
-
-			NewItem = Cast<AItem>(PoolSubsystem->GetActorFromAvailablePool(ItemPtr, GetActorLocation(), GetActorRotation()));
-			NewItem->InitItem(Character, this);
-			ItemPtr = NewItem;
-			ItemInstanceID = NewItem->GetInstanceID();
-			return NewItem;
-		}
-
-		if (ItemInstanceID.IsValid())
-		{
-			NewItem = Cast<AItem>(PoolSubsystem->FindActorByInstanceIDFromPool(ItemInstanceID, ItemClass));
-			if (NewItem)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 2"));
-
-				//MEMO: Activate가 안되어있을 경우 Activate 시키기 위한 역할
-				Cast<AItem>(PoolSubsystem->GetActorFromAvailablePool(NewItem, GetActorLocation(), GetActorRotation()));
-				NewItem->InitItemPost(Character, this);
-				ItemPtr = NewItem;
-				ItemInstanceID = NewItem->GetInstanceID();
-				return NewItem;
-			}
-			else
-			{
-				NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation(), true);
-				if (NewItem)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 3"));
-
-					NewItem->InitItem(Character, this);
-					ItemPtr = NewItem;
-					ItemInstanceID = NewItem->GetInstanceID();
-					return NewItem;
-				}
-			}
-		}
-
-
-		NewItem = PoolSubsystem->SpawnFromPool(ItemClass, GetActorLocation(), GetActorRotation(), true);
-		if (NewItem)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AItem* AItemPickUp::SpawnItem(ACharacterPlayer* Character) 4"));
-
-			NewItem->InitItem(Character, this);
-			ItemPtr = NewItem;
-			ItemInstanceID = NewItem->GetInstanceID();
-		}
-	}
-
-	return NewItem;
+    AItem* NewItem = nullptr;
+    {
+        // Reuse a matching dormant instance when available; never take an active one.
+        const FGuid RequestedID = DroppedItemState.IsValid() ? DroppedItemState.InstanceID : ItemInstanceID;
+        AItem* LegacyItem = ItemPtr.Get();
+        if (!IsValid(LegacyItem) || LegacyItem->GetInstanceID() != RequestedID)
+            LegacyItem = RequestedID.IsValid() ? Cast<AItem>(Pool->FindActorByInstanceIDFromPool(RequestedID, RuntimeClass)) : nullptr;
+        bool bAlreadyOwned = false;
+        if (IsValid(LegacyItem))
+        {
+            if (UInventorySystemComponent* Inventory = Character->GetInventorySystemComponent())
+            {
+                for (EInventoryName Type : { EInventoryName::Item, EInventoryName::PrimaryWeapon, EInventoryName::SecondaryWeapon, EInventoryName::ThrowableWeapon })
+                {
+                    if (const TArray<FInventorySlot>* Slots = Inventory->GetInventoryConst(Type))
+                        for (const FInventorySlot& Slot : *Slots)
+                            if (Slot.GetItem() == LegacyItem) bAlreadyOwned = true;
+                }
+            }
+        }
+        if (IsValid(LegacyItem) && !bAlreadyOwned && !LegacyItem->IsActiveInPool() && LegacyItem->GetClass() == RuntimeClass.Get())
+        {
+            NewItem = Cast<AItem>(Pool->GetActorFromAvailablePool(LegacyItem, GetActorLocation(), GetActorRotation()));
+            if (IsValid(NewItem)) NewItem->InitItemPost(Character, this);
+        }
+    }
+    if (!IsValid(NewItem))
+    {
+        NewItem = Pool->SpawnFromPool(RuntimeClass, GetActorLocation(), GetActorRotation(), true);
+        if (!IsValid(NewItem)) return nullptr;
+        NewItem->InitItem(Character, this);
+    }
+    if (DroppedItemState.IsValid())
+    {
+        FItemInstanceSaveData State = DroppedItemState;
+        // A pooled actor may have been reused since this pickup was dropped.
+        if (State.InstanceID.IsValid())
+        {
+            AItem* Existing = Cast<AItem>(Pool->FindActorByInstanceIDFromPool(State.InstanceID, RuntimeClass));
+            if (IsValid(Existing) && Existing != NewItem) State.InstanceID = FGuid::NewGuid();
+        }
+        if (!NewItem->LoadItemSaveData(State))
+        {
+            NewItem->DeactivateItem();
+            return nullptr;
+        }
+    }
+    NewItem->SetItemNum(DroppedItemState.IsValid() ? FMath::Max(1, DroppedItemState.ItemNum) : FMath::Max(1, ItemNum));
+    // UInteractionComponent returns the pickup to the pool only after commit.
+    return NewItem;
 }
 
 void AItemPickUp::DeactivateItemPickUp()
 {
-	//// <Old Version>
-	//SetActorLocation(PoolLocation);
-	//ItemMesh->SetVisibility(false);
+    //// <Old Version>
+    //SetActorLocation(PoolLocation);
+    //ItemMesh->SetVisibility(false);
 
-	//---------------------------------------------
-	// <Object Pooling Version>
-	DeactivateItemPickUp_Pool();
+    //---------------------------------------------
+    // <Object Pooling Version>
+    DeactivateItemPickUp_Pool();
 }
 
 void AItemPickUp::ActivateItemPickUp(FVector location)
 {
-	SetActorLocation(location);
-	IntactMesh->SetVisibility(true);
+    SetActorLocation(location);
+    IntactMesh->SetVisibility(true);
 }
 
 void AItemPickUp::DestroyItemPickUp()
 {
-	Destroy();
+    Destroy();
 }
 
 void AItemPickUp::SetItemPtr(TObjectPtr<AItem> NewItem)
 {
-	if (NewItem)
-	{
-		ItemPtr = NewItem;
-		ItemInstanceID = NewItem->GetInstanceID();
-	}
+    ClearItemLink();
+    if (IsValid(NewItem.Get()))
+    {
+        ItemPtr = NewItem;
+        ItemInstanceID = NewItem->GetInstanceID();
+    }
+}
+
+void AItemPickUp::ClearItemLink()
+{
+    ItemPtr = nullptr;
+    ItemInstanceID.Invalidate();
+}
+
+TSubclassOf<AItem> AItemPickUp::GetItemClass() const
+{
+    return DroppedItemState.IsValid() ? TSubclassOf<AItem>(DroppedItemState.ItemClass.LoadSynchronous()) : ItemClass;
+}
+
+FName AItemPickUp::GetItemID() const
+{
+    if (DroppedItemState.IsValid()) return DroppedItemState.ItemID;
+    const TSubclassOf<AItem> Class = GetItemClass();
+    const AItem* Defaults = Class ? Class.GetDefaultObject() : nullptr;
+    return IsValid(Defaults) ? Defaults->GetItemID() : NAME_None;
+}
+
+void AItemPickUp::SetDroppedItemState(const FItemInstanceSaveData& State, int32 InAmmo)
+{
+    ClearItemLink();
+    DroppedItemState = State;
+    ItemNum = FMath::Max(1, State.ItemNum);
+    if (InAmmo != INDEX_NONE) NumAmmo = FMath::Max(0, InAmmo);
 }
 
 void AItemPickUp::OnAfterLoad()
 {
-	Super::OnAfterLoad();
+    Super::OnAfterLoad();
 
-	if (bIsActiveInPool)
-	{
-		OnActivateFromPool();
-	}
-	else
-	{
-		DeactivateItemPickUp_Pool();
-	}
+    if (bIsActiveInPool)
+    {
+        OnActivateFromPool();
+    }
+    else
+    {
+        DeactivateItemPickUp_Pool();
+    }
 }
 
 void AItemPickUp::SetOwningPool(UObjectPoolSubsystem* NewPool)
 {
-	OwningPool = NewPool;
+    OwningPool = NewPool;
 }
 
 void AItemPickUp::OnActivateFromPool()
 {
-	bIsActiveInPool = true;
+    bIsActiveInPool = true;
 
-	SetActorHiddenInGame(false);
+    SetActorHiddenInGame(false);
 
-	SetActorEnableCollision(true);
-	SetActorTickEnabled(true);
+    SetActorEnableCollision(true);
+    SetActorTickEnabled(true);
 }
 
 void AItemPickUp::OnDeactivateToPool()
 {
-	bIsActiveInPool = false;
+    bIsActiveInPool = false;
+    ClearItemLink();
+    DroppedItemState.Reset();
+    const AItemPickUp* Defaults = GetClass()->GetDefaultObject<AItemPickUp>();
+    ItemNum = Defaults ? FMath::Max(1, Defaults->ItemNum) : 1;
+    NumAmmo = Defaults ? Defaults->NumAmmo : 10;
 
-	SetActorHiddenInGame(true);
-	SetActorEnableCollision(false);
-	SetActorTickEnabled(false);
+    SetActorHiddenInGame(true);
+    SetActorEnableCollision(false);
+    SetActorTickEnabled(false);
 }
 
 bool AItemPickUp::IsActiveInPool() const
 {
-	return bIsActiveInPool;
+    return bIsActiveInPool;
 }
 
 void AItemPickUp::DeactivateItemPickUp_Pool()
 {
-	if (OwningPool)
-	{
-		OwningPool->ReturnToPool(this);
-	}
+    if (OwningPool)
+    {
+        OwningPool->ReturnToPool(this);
+    }
 }

@@ -2,10 +2,8 @@
 
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/InteractionComponent.h"
-#include "Items/InventoryName.h"
 #include "Items/InventorySlot.h"
 #include "Items/InventorySystemComponent.h"
-#include "Items/Item.h"
 #include "Objects/DestructibleDoor.h"
 #include "Objects/MapEscapeTrigger.h"
 #include "UI/ExitDoorWidget.h"
@@ -21,6 +19,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "Templates/UnrealTemplate.h"
 
 namespace
 {
@@ -34,46 +33,12 @@ namespace
 		TEXT("ExitDoor_Chip")
 	};
 
-	// Read and modify only the publicly exposed slot array; do not change the inventory class.
-	int32 CountItems(const ACharacterPlayer* Player, FName ItemID)
+	// Both the UI and insertion use the ordinary inventory's ItemID lookup.
+	int32 GetOwnedItemNum(const ACharacterPlayer* Player, FName ItemID)
 	{
-		const UInventorySystemComponent* Inventory = IsValid(Player) ? Player->GetInventorySystemComponent() : nullptr;
-		const TArray<FInventorySlot>* Slots = Inventory ? Inventory->GetInventoryConst(EInventoryName::Item) : nullptr;
-		if (!Slots || ItemID.IsNone()) { return 0; }
-
-		int32 Count = 0;
-		for (const FInventorySlot& Slot : *Slots)
-		{
-			if (!Slot.IsEmpty() && Slot.ItemID == ItemID)
-			{
-				Count += Slot.Num();
-			}
-		}
-		return Count;
-	}
-
-	bool ConsumeOneItem(ACharacterPlayer* Player, FName ItemID)
-	{
-		UInventorySystemComponent* Inventory = IsValid(Player) ? Player->GetInventorySystemComponent() : nullptr;
-		TArray<FInventorySlot>* Slots = Inventory ? Inventory->GetInventory(EInventoryName::Item) : nullptr;
-		if (!Slots || ItemID.IsNone()) { return false; }
-
-		for (FInventorySlot& Slot : *Slots)
-		{
-			if (Slot.IsEmpty() || Slot.ItemID != ItemID) { continue; }
-
-			// INDEX_NONE removes the last item. FInventorySlot resets itself when the slot becomes empty.
-			AItem* RemovedItem = Slot.RemoveItem(INDEX_NONE);
-			if (IsValid(RemovedItem))
-			{
-				RemovedItem->DeactivateItem();
-			}
-
-			// Refresh the inventory UI.
-			Player->OnInventoryUpdatedDelegate.Broadcast(*Slots);
-			return true;
-		}
-		return false;
+		const UInventorySystemComponent* Inventory = IsValid(Player)
+			? Player->GetInventorySystemComponent() : nullptr;
+		return IsValid(Inventory) ? Inventory->GetItemNumByID(ItemID) : 0;
 	}
 
 	const int32 GExitRequiredItemCount = 3;
@@ -502,7 +467,8 @@ void AExitDoor::ClearNearbyPlayer()
 
 void AExitDoor::HandleInventoryUpdated(const TArray<FInventorySlot>& InventorySlots)
 {
-	if (bWidgetShown)
+	// During insertion, HandleSlotClicked performs the final refresh after commit.
+	if (bWidgetShown && !bIsInsertingItem)
 	{
 		RefreshWidget();
 	}
@@ -604,7 +570,7 @@ void AExitDoor::RefreshWidget()
 		{
 			View.State = EExitSlotState::Inserted;
 		}
-		else if (CountItems(NearbyPlayer, Slot.ItemID) > 0)
+		else if (!bUnlocked && GetOwnedItemNum(NearbyPlayer.Get(), Slot.ItemID) > 0)
 		{
 			View.State = EExitSlotState::Owned;
 			bHasInsertable = true;
@@ -629,9 +595,10 @@ void AExitDoor::RefreshWidget()
 
 bool AExitDoor::HasInsertableItem(const ACharacterPlayer* Player) const
 {
+	if (bUnlocked || !IsValid(Player)) return false;
 	for (const FExitRequirementSlot& Slot : RequiredSlots)
 	{
-		if (!Slot.bInserted && CountItems(Player, Slot.ItemID) > 0)
+		if (!Slot.bInserted && GetOwnedItemNum(Player, Slot.ItemID) > 0)
 		{
 			return true;
 		}
@@ -642,30 +609,54 @@ bool AExitDoor::HasInsertableItem(const ACharacterPlayer* Player) const
 void AExitDoor::HandleSlotClicked(int32 SlotIndex)
 {
 	UPlayerUISubsystem* UISubsystem = RegisteredUISubsystem.Get();
-	if (!IsValid(UISubsystem) || !UISubsystem->IsActiveExitDoor(this) ||
-		!IsPlayerInExitRange(NearbyPlayer))
+	if (bIsInsertingItem || !IsValid(UISubsystem) || !UISubsystem->IsActiveExitDoor(this) ||
+		!IsPlayerInExitRange(NearbyPlayer.Get()))
 	{
 		return;
 	}
 
-	if (TryInsertSlot(SlotIndex, NearbyPlayer))
-	{
-		CheckUnlock();
-	}
-	RefreshWidget();
+	TryInsertSlot(SlotIndex, NearbyPlayer.Get());
+	if (IsValid(this)) RefreshWidget();
 }
 
 bool AExitDoor::TryInsertSlot(int32 SlotIndex, ACharacterPlayer* Player)
 {
-	if (bUnlocked || !RequiredSlots.IsValidIndex(SlotIndex)) { return false; }
+	if (bIsInsertingItem || bUnlocked || !IsPlayerInExitRange(Player) ||
+		!RequiredSlots.IsValidIndex(SlotIndex)) return false;
 
-	FExitRequirementSlot& Slot = RequiredSlots[SlotIndex];
-	if (Slot.bInserted || CountItems(Player, Slot.ItemID) <= 0) { return false; }
+	const FExitRequirementSlot& Slot = RequiredSlots[SlotIndex];
+	if (Slot.bInserted || Slot.ItemID.IsNone()) return false;
 
-	if (bConsumeItems && !ConsumeOneItem(Player, Slot.ItemID)) { return false; }
+	UInventorySystemComponent* Inventory = Player->GetInventorySystemComponent();
+	if (!IsValid(Inventory)) return false;
 
-	Slot.bInserted = true;
+	// Block nested insertion attempts caused by synchronous delegates.
+	TGuardValue<bool> InsertionGuard(bIsInsertingItem, true);
+	const FName ItemID = Slot.ItemID;
+	const bool bShouldConsume = bConsumeItems;
+
+	if (bShouldConsume)
+	{
+		// One unit only. Keep the actor if the stack still contains items.
+		// Defer normal inventory/QuickSlot notifications until the puzzle is committed.
+		if (!Inventory->TryConsumeOneItemByID(ItemID, false)) return false;
+	}
+	else if (Inventory->GetItemNumByID(ItemID) <= 0)
+	{
+		// Non-consuming exits still require the item to be owned.
+		return false;
+	}
+
+	RequiredSlots[SlotIndex].bInserted = true;
 	UE_LOG(LogTemp, Log, TEXT("ExitDoor %s: slot %d inserted (%d/%d)"), *GetName(), SlotIndex, GetInsertedCount(), RequiredSlots.Num());
+
+	// Commit unlock state before publishing the inventory update. Save listeners
+	// should see the consumed quantity and the completed exit state together.
+	CheckUnlock();
+	if (bShouldConsume && IsValid(Inventory))
+	{
+		Inventory->NotifyItemInventoryChanged();
+	}
 	return true;
 }
 

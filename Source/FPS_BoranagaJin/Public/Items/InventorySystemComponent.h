@@ -62,9 +62,13 @@ public:
 	bool RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName inventoryname);
 	//TODO: EquipdedFlashLight에 대한 처리
 	void RestoreEquippedQuickSlot(int32 QuickSlotIndex);
+	void ResetInventoryRestoreStatus() { bInventoryRestoreSucceeded = true; }
+	bool WasInventoryRestoreSuccessful() const { return bInventoryRestoreSucceeded; }
 private:
 	AItem* CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData);
 	void ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory);
+	void ReleaseItemReferences(AItem* Item, bool bUnequip);
+	bool bInventoryRestoreSucceeded = true;
 	void NotifyInventoryRestored();
 	//bool RestoreLegacyWeaponInventory(const TArray<FInventorySlotSaveData>& SaveData);
 	//void RefreshLegacyWeaponInventoryView();
@@ -140,6 +144,19 @@ protected:
 public:
 	const TArray<FInventorySlot>* GetInventoryConst(EInventoryName InventoryName) const;
 	TArray<FInventorySlot>* GetInventory(EInventoryName InventoryName);
+
+	/** Actual stack quantity of an ItemID across the ordinary ItemInventory. */
+	int32 GetItemNumByID(FName ItemID) const;
+
+	/**
+	 * Consume exactly one item without executing AItem::UseItem().
+	 * If bNotifyInventory is false, the caller must call NotifyItemInventoryChanged()
+	 * once after committing its own related state (e.g. an exit requirement).
+	 */
+	bool TryConsumeOneItemByID(FName ItemID, bool bNotifyInventory = true);
+
+	/** Publish the current ordinary inventory and QuickSlot snapshots. */
+	void NotifyItemInventoryChanged();
 protected:
 	void InitInventory();
 	bool AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable = true, int32 AddCount = 1);
@@ -147,7 +164,7 @@ protected:
 	bool AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
 	bool AddThrowableWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount = 1);
 	bool RemoveItem(TArray<FInventorySlot>& TargetInventory, EItemName ItemName, int32 RemoveCount = 1);
-	bool RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount = 1);
+	bool RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount = 1, bool bNotifyQuickSlot = true);
 	bool SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex);
 	bool IsValidSlotIndex(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex) const;
 	int32 FindItemSlot(const TArray<FInventorySlot>& TargetInventory, EItemName ItemName) const;
@@ -342,6 +359,8 @@ public:
 
 	// Updates references after inventory mutations.
 	void SynchronizeQuickSlots();
+private:
+	void SynchronizeQuickSlotsInternal(bool bNotifyQuickSlot);
 protected:
 	void InitQuickSlotInventory();
 	const TArray<FInventorySlot>* GetQuickSlotSourceInventory(EInventoryName InventoryName) const;

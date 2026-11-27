@@ -24,6 +24,8 @@
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 UInventorySystemComponent::UInventorySystemComponent()
 {
@@ -139,269 +141,222 @@ void UInventorySystemComponent::InitializePlayerReference()
 	}
 }
 
-bool UInventorySystemComponent::WriteInventorySaveData(TArray<FInventorySlotSaveData>& OutSaveData, EInventoryName inventoryname) const
+bool UInventorySystemComponent::WriteInventorySaveData(TArray<FInventorySlotSaveData>& OutSaveData, EInventoryName InventoryName) const
 {
-	const TArray<FInventorySlot>* InventoryToSave = GetInventoryConst(inventoryname);
-	if (!InventoryToSave) { return false; }
-
+	const TArray<FInventorySlot>* Inventory = GetInventoryConst(InventoryName);
+	if (!Inventory) return false;
 	OutSaveData.Reset();
-	OutSaveData.Reserve(InventoryToSave->Num());
-
-	bool bAllItemsSaved = true;
-
-	for (int32 SlotIndex = 0; SlotIndex < InventoryToSave->Num(); ++SlotIndex)
+	OutSaveData.Reserve(Inventory->Num());
+	bool bAllSaved = true;
+	for (const FInventorySlot& RuntimeSlot : *Inventory)
 	{
-		const FInventorySlot& RuntimeSlot = (*InventoryToSave)[SlotIndex];
-
-		FInventorySlotSaveData SlotSaveData;
-		SlotSaveData.MaxStackCount = RuntimeSlot.MaxStackCount;
-		//SlotSaveData.Count = RuntimeSlot.Count;
-
-		for (AItem* Item : RuntimeSlot.Items)
+		FInventorySlotSaveData& SavedSlot = OutSaveData.AddDefaulted_GetRef();
+		SavedSlot.MaxStackCount = RuntimeSlot.MaxStackCount;
+		if (RuntimeSlot.IsEmpty())
 		{
-			if (!IsValid(Item))
+			if (RuntimeSlot.ItemNum != 0 || RuntimeSlot.Item.Get() != nullptr)
 			{
-				bAllItemsSaved = false;
-				continue;
+				bAllSaved = false;
+				SavedSlot.Count = -1; // Invalid marker: prevents a silent successful save.
 			}
-
-			FItemInstanceSaveData ItemSaveData;
-
-			if (!Item->WriteItemSaveData(ItemSaveData))
-			{
-				bAllItemsSaved = false;
-				continue;
-			}
-
-			SlotSaveData.Items.Add(MoveTemp(ItemSaveData));
+			continue;
 		}
-
-		OutSaveData.Add(MoveTemp(SlotSaveData));
+		AItem* Item = RuntimeSlot.GetItem();
+		if (!IsValid(Item) || !Item->WriteItemSaveData(SavedSlot.Item))
+		{
+			SavedSlot.Item.Reset();
+			bAllSaved = false;
+			UE_LOG(LogTemp, Error, TEXT("Failed to save inventory item."));
+			continue;
+		}
+		SavedSlot.Item.ItemNum = RuntimeSlot.GetStackItemNum();
 	}
-
-	return bAllItemsSaved;
+	return bAllSaved;
 }
 
 bool UInventorySystemComponent::RestoreInventoryFromSaveData(const TArray<FInventorySlotSaveData>& SaveData, EInventoryName InventoryName)
 {
+	const auto Fail = [this]() { bInventoryRestoreSucceeded = false; return false; };
 	TArray<FInventorySlot>* Inventory = GetInventory(InventoryName);
-	if (!Inventory) { return false; }
+	if (!Inventory || !IsValid(PlayerOwner)) return Fail();
 
-	// Never keep a current equip/pending pointer to an actor that will be returned to the pool.
-	for (const FInventorySlot& Slot : *Inventory)
+	// Validate the serialized shape before discarding the current inventory.
+	TArray<FItemInstanceSaveData> ResolvedItems;
+	ResolvedItems.SetNum(SaveData.Num());
+	for (int32 Index = 0; Index < SaveData.Num(); ++Index)
 	{
-		for (AItem* Item : Slot.Items)
+		if (SaveData[Index].IsEmpty()) continue;
+		FItemInstanceSaveData& ItemData = ResolvedItems[Index];
+		if (!SaveData[Index].ResolveItem(ItemData))
 		{
-			if (CurrItem == Item) { CurrItem = nullptr; }
-			if (NextItem == Item) { NextItem = nullptr; }
-			if (CurrWeapon == Item) { CurrWeapon = nullptr; CurrWeaponIdx = INDEX_NONE; }
-			if (CurrThrowableWeapon == Item) { CurrThrowableWeapon = nullptr; CurrThrowableWeaponIdx = INDEX_NONE; }
-			if (CurrFlashLightItem == Item)
-			{
-				if (bOffHandFlashlightActive) { DisableOffHandFlashlight(); }
-				CurrFlashLightItem = nullptr;
-				bIsUsingFlashLightItem = false;
-			}
+			UE_LOG(LogTemp, Error, TEXT("Invalid or heterogeneous saved stack at slot %d"), Index);
+			return Fail();
+		}
+		UClass* Class = ItemData.ItemClass.LoadSynchronous();
+		AItem* Defaults = Class ? Cast<AItem>(Class->GetDefaultObject()) : nullptr;
+		if (!IsValid(Defaults)) return Fail();
+		const bool bThrowable = Defaults->IsA(AThrowableWeapon::StaticClass());
+		AWeapon* Weapon = Cast<AWeapon>(Defaults);
+		if (InventoryName == EInventoryName::ThrowableWeapon ? !bThrowable :
+			(InventoryName == EInventoryName::PrimaryWeapon || InventoryName == EInventoryName::SecondaryWeapon) ?
+			(!Weapon) :
+			(bThrowable || Weapon != nullptr))
+			return Fail();
+		// Old throwable arrays could contain the same launcher many times. Ammo is in its serialized state.
+		if (bThrowable && !SaveData[Index].Item.IsValid()) ItemData.ItemNum = 1;
+		const int32 Limit = FInventorySlot::CanRepresentStack(Defaults) ? FMath::Max(1, SaveData[Index].MaxStackCount) : 1;
+		if (ItemData.ItemNum <= 0 || ItemData.ItemNum > Limit)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Saved stack exceeds capacity at slot %d"), Index);
+			return Fail();
 		}
 	}
-	ClearInventoryForRestore(*Inventory);
+
 	const int32 RequiredSlots = InventoryName == EInventoryName::PrimaryWeapon
 		? FMath::Max(MaxPrimaryWeaponSlotsCount, 2)
-		: (InventoryName == EInventoryName::SecondaryWeapon
-			? FMath::Max(MaxSecondaryWeaponSlotsCount, 1)
-			: (InventoryName == EInventoryName::Item
-				? FMath::Max(MaxItemSlotsCount, 0)
-				: FMath::Max(MaxThrowableWeaponSlotsCount, 0)));
-	Inventory->SetNum(FMath::Max(SaveData.Num(), RequiredSlots));
-	// Previous QuickSlot weak refs may still be valid pooled actors. Clear
-	// their now-missing source ownership before assigning restored instances.
-	SynchronizeQuickSlots();
-
+		: InventoryName == EInventoryName::SecondaryWeapon ? FMath::Max(MaxSecondaryWeaponSlotsCount, 1)
+		: InventoryName == EInventoryName::Item ? FMath::Max(MaxItemSlotsCount, 0)
+		: FMath::Max(MaxThrowableWeaponSlotsCount, 0);
+	TArray<FInventorySlot> StagedInventory;
+	StagedInventory.SetNum(FMath::Max(SaveData.Num(), RequiredSlots));
 	bool bAllRestored = true;
-	for (int32 SlotIndex = 0; SlotIndex < SaveData.Num(); ++SlotIndex)
+	for (int32 Index = 0; Index < SaveData.Num(); ++Index)
 	{
-		const FInventorySlotSaveData& SavedSlot = SaveData[SlotIndex];
-		FInventorySlot& Slot = (*Inventory)[SlotIndex];
-		Slot.ClearSlot();
-		Slot.MaxStackCount = FMath::Max(SavedSlot.MaxStackCount, 1);
-		for (const FItemInstanceSaveData& SavedItem : SavedSlot.Items)
+		FInventorySlot& Slot = StagedInventory[Index];
+		Slot.MaxStackCount = FMath::Max(1, SaveData[Index].MaxStackCount);
+		const FItemInstanceSaveData& SavedItem = ResolvedItems[Index];
+		if (!SavedItem.IsValid()) continue;
+		AItem* Item = CreateRuntimeItemFromSaveData(SavedItem);
+		const bool bFirearmCategory = InventoryName == EInventoryName::PrimaryWeapon || InventoryName == EInventoryName::SecondaryWeapon;
+		AWeapon* Weapon = Cast<AWeapon>(Item);
+		const bool bWrongCategory = bFirearmCategory && (!IsValid(Weapon) ||
+			Weapon->GetQuickSlotType() != (InventoryName == EInventoryName::PrimaryWeapon ? EQuickSlotType::PrimaryWeapon : EQuickSlotType::SecondaryWeapon));
+		if (!IsValid(Item) || bWrongCategory || !Slot.AddItem(Item, SavedItem.ItemNum))
 		{
-			AItem* Item = CreateRuntimeItemFromSaveData(SavedItem);
-			if (!IsValid(Item)) { bAllRestored = false; continue; }
-
-			if ((InventoryName == EInventoryName::PrimaryWeapon || InventoryName == EInventoryName::SecondaryWeapon) &&
-				(!Item->IsA(AWeapon::StaticClass()) ||
-					CastChecked<AWeapon>(Item)->GetQuickSlotType() !=
-					(InventoryName == EInventoryName::PrimaryWeapon ? EQuickSlotType::PrimaryWeapon : EQuickSlotType::SecondaryWeapon)))
-			{
-				Item->DeactivateItem();
-				bAllRestored = false;
-				continue;
-			}
-			if (!Slot.AddItem(Item))
-			{
-				Item->DeactivateItem();
-				bAllRestored = false;
-			}
+			if (IsValid(Item)) Item->DeactivateItem();
+			bAllRestored = false;
 		}
 	}
-	if (InventoryName == EInventoryName::PrimaryWeapon || InventoryName == EInventoryName::SecondaryWeapon)
+
+	if (!bAllRestored)
 	{
-		const EQuickSlotType SlotType = InventoryName == EInventoryName::PrimaryWeapon
-			? EQuickSlotType::PrimaryWeapon : EQuickSlotType::SecondaryWeapon;
-		// No persisted quick-slot assignment was available in this two-file input;
-		// populate any unassigned matching slots from the restored category.
-		for (int32 Index = 0; Index < Inventory->Num(); ++Index)
+		for (FInventorySlot& Slot : StagedInventory)
 		{
-			if ((*Inventory)[Index].IsEmpty()) { continue; }
-			int32 ExistingQuickSlot = INDEX_NONE;
-			if (IsItemInQuickSlots((*Inventory)[Index].GetItem(0), ExistingQuickSlot)) { continue; }
-			const int32 FreeQuickSlot = FindEmptyQuickSlot(SlotType);
-			if (FreeQuickSlot != INDEX_NONE) { RegisterQuickSlot(FreeQuickSlot, InventoryName, Index); }
+			if (AItem* Item = Slot.GetItem()) Item->DeactivateItem();
+			Slot.ClearSlot();
 		}
+		UE_LOG(LogTemp, Error, TEXT("Inventory restore aborted; existing category preserved."));
+		return Fail();
+	}
+	ClearInventoryForRestore(*Inventory);
+	*Inventory = MoveTemp(StagedInventory);
+	switch (InventoryName)
+	{
+	case EInventoryName::Item: PlayerOwner->OnInventoryCreatedDelegate.Broadcast(Inventory->Num()); break;
+	case EInventoryName::PrimaryWeapon: PlayerOwner->OnPrimaryWeaponInventoryCreatedDelegate.Broadcast(Inventory->Num()); break;
+	case EInventoryName::SecondaryWeapon: PlayerOwner->OnSecondaryWeaponInventoryCreatedDelegate.Broadcast(Inventory->Num()); break;
+	case EInventoryName::ThrowableWeapon: PlayerOwner->OnThrowableWeaponInventoryCreatedDelegate.Broadcast(Inventory->Num()); break;
+	default: break;
+	}
+
+	// Rebuild quick-slot references to the new representatives.
+	for (int32 Index = 0; Index < Inventory->Num(); ++Index)
+	{
+		AItem* Item = (*Inventory)[Index].GetItem();
+		if (!IsValid(Item)) continue;
+		EQuickSlotType SlotType;
+		if (InventoryName == EInventoryName::PrimaryWeapon) SlotType = EQuickSlotType::PrimaryWeapon;
+		else if (InventoryName == EInventoryName::SecondaryWeapon) SlotType = EQuickSlotType::SecondaryWeapon;
+		else if (InventoryName == EInventoryName::ThrowableWeapon) SlotType = EQuickSlotType::ThrowableWeapon;
+		else if (AFlashlightItem* Light = Cast<AFlashlightItem>(Item))
+		{
+			if (IsValid(CurrFlashLightItem)) continue;
+			CurrFlashLightItem = Light;
+			SlotType = EQuickSlotType::Flashlight;
+		}
+		else continue;
+		const int32 QuickIndex = FindEmptyQuickSlot(SlotType);
+		if (QuickIndex != INDEX_NONE) RegisterQuickSlot(QuickIndex, InventoryName, Index);
 	}
 	NotifyInventoryRestored();
 	return bAllRestored;
 }
 
-
 AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData)
 {
-	//if (!SaveData.IsValid()) { return nullptr; }
-	//UWorld* World = GetWorld();
-	//if (!IsValid(World)) { return nullptr; }
-
-	////UClass* LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
-	//TSubclassOf<AItem> LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
-
-	//if (!IsValid(LoadedItemClass)) { 
-	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr; }
-	//if (!LoadedItemClass->IsChildOf(AItem::StaticClass()))
-	//{
-	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 2"));
-	//	return nullptr;
-	//}
-
-
-	////TODO: PoolSubsystem 사용
-	////TODO: ItemPickUp과 결합도가 높은데 얘는 어디서 관리해야할까
-	//UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
-	//if (!PoolSubsystem) { 
-	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr; }
-	//AItem* NewItem = nullptr;
-	//if (PlayerOwner)
-	//{
-	//	NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
-	//	NewItem->InitItem(PlayerOwner, nullptr); //MEMO: 일단 PickUp은 ullptr로 넣어줬음
-	//	// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
-	//}
-	//if (!IsValid(NewItem)) { 
-	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4")); return nullptr; }
-
-	//if (!NewItem->LoadItemSaveData(SaveData))
-	//{
-	//	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 5"));
-	//	NewItem->DeactivateItem();
-	//	return nullptr;
-	//}
-
-	//UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 6"));
-
-	//return NewItem;
-
-	//----------------------------------------------------------------------------------
-	// <New Version>
-
-
-	if (!SaveData.IsValid()) { return nullptr; }
-	UWorld* World = GetWorld();
-	if (!IsValid(World)) { return nullptr; }
-
-	//UClass* LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
-	TSubclassOf<AItem> LoadedItemClass = SaveData.ItemClass.LoadSynchronous();
-
-	if (!IsValid(LoadedItemClass)) {
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 1")); return nullptr;
-	}
-	if (!LoadedItemClass->IsChildOf(AItem::StaticClass()))
+	if (!SaveData.IsValid() || !IsValid(PlayerOwner) || !IsValid(GetWorld())) return nullptr;
+	TSubclassOf<AItem> ItemClass = SaveData.ItemClass.LoadSynchronous();
+	if (!ItemClass) return nullptr;
+	UObjectPoolSubsystem* Pool = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
+	if (!IsValid(Pool)) return nullptr;
+	AItem* Item = nullptr;
+	AItem* Existing = SaveData.InstanceID.IsValid() ? Cast<AItem>(Pool->FindActorByInstanceIDFromPool(SaveData.InstanceID, ItemClass)) : nullptr;
+	bool bAlreadyOwned = false;
+	if (IsValid(Existing))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 2"));
-		return nullptr;
-	}
-
-
-	//TODO: PoolSubsystem 사용
-	//TODO: ItemPickUp과 결합도가 높은데 얘는 어디서 관리해야할까
-	UObjectPoolSubsystem* PoolSubsystem = World->GetSubsystem<UObjectPoolSubsystem>();
-	if (!PoolSubsystem) {
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 3")); return nullptr;
-	}
-	AItem* NewItem = nullptr;
-	if (PlayerOwner)
-	{
-		if (SaveData.InstanceID.IsValid())
+		for (EInventoryName Type : { EInventoryName::Item, EInventoryName::PrimaryWeapon, EInventoryName::SecondaryWeapon, EInventoryName::ThrowableWeapon })
 		{
-			NewItem = Cast<AItem>(PoolSubsystem->FindActorByInstanceIDFromPool(SaveData.InstanceID, LoadedItemClass));
-			if (NewItem)
-			{
-				NewItem->InitItem(PlayerOwner, nullptr);
-			}
-			else
-			{
-				NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
-				if (NewItem)
-				{
-					NewItem->InitItem(PlayerOwner, nullptr);
-				}
-			}
-		}
-		else
-		{
-			NewItem = PoolSubsystem->SpawnFromPool(LoadedItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation());
-			if (NewItem)
-			{
-				NewItem->InitItem(PlayerOwner, nullptr);
-			}
-			//MEMO: 일단 PickUp은 ullptr로 넣어줬음
-			// ItemPtr = NewItem; //TODO: 향후 생성할 ItemPick과 1대1 매칭을 위한 것인데, 아직 아이템 픽업에 대한 처리가 없음
+			int32 Index = INDEX_NONE;
+			if (IsItemInSourceInventory(Type, Existing, Index)) { bAlreadyOwned = true; break; }
 		}
 	}
-	if (!IsValid(NewItem))
+	if (IsValid(Existing) && !Existing->IsActiveInPool() && !bAlreadyOwned)
+		Item = Cast<AItem>(Pool->GetActorFromAvailablePool(Existing, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation()));
+	if (!IsValid(Item))
+		Item = Pool->SpawnFromPool(ItemClass, PlayerOwner->GetActorLocation(), PlayerOwner->GetActorRotation(), true);
+	if (!IsValid(Item)) return nullptr;
+	Item->InitItem(PlayerOwner, nullptr);
+	FItemInstanceSaveData State = SaveData;
+	if (IsValid(Existing) && Existing != Item) State.InstanceID = FGuid::NewGuid();
+	if (!Item->LoadItemSaveData(State))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 4"));
+		Item->DeactivateItem();
 		return nullptr;
 	}
-
-	if (!NewItem->LoadItemSaveData(SaveData))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 5"));
-		NewItem->DeactivateItem();
-		return nullptr;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("AItem* UInventorySystemComponent::CreateRuntimeItemFromSaveData(const FItemInstanceSaveData& SaveData) 6"));
-
-	return NewItem;
+	return Item;
 }
 
 void UInventorySystemComponent::ClearInventoryForRestore(TArray<FInventorySlot>& TargetInventory)
 {
-	// A throwable stack may contain the same actor pointer multiple times.
-	// Return every actual actor to the pool only once.
 	TSet<AItem*> UniqueItems;
 	for (FInventorySlot& Slot : TargetInventory)
 	{
-		for (AItem* Item : Slot.Items)
-		{
-			if (IsValid(Item)) { UniqueItems.Add(Item); }
-		}
+		if (IsValid(Slot.Item.Get())) UniqueItems.Add(Slot.Item.Get());
 		Slot.ClearSlot();
 	}
 	TargetInventory.Reset();
+	for (AItem* Item : UniqueItems) ReleaseItemReferences(Item, false);
+	SynchronizeQuickSlots();
 	for (AItem* Item : UniqueItems)
+		if (IsValid(Item)) Item->DeactivateItem();
+}
+
+void UInventorySystemComponent::ReleaseItemReferences(AItem* Item, bool bUnequip)
+{
+	if (!IsValid(Item)) return;
+	const bool bWasCurrent = CurrItem == Item;
+	if (NextItem == Item) NextItem = nullptr;
+	if (EquippedQuickSlotItem.Get() == Item) EquippedQuickSlotItem.Reset();
+	if (CurrWeapon == Item || CurrFlashLightItem.Get() == Item)
+		if (bOffHandFlashlightActive) DisableOffHandFlashlight();
+	if (bWasCurrent) CurrItem = nullptr;
+	if (CurrWeapon == Item)
 	{
-		if (IsValid(Item)) { Item->DeactivateItem(); }
+		if (bUnequip && bWasCurrent && IsValid(PlayerOwner)) CurrWeapon->UnequipWeapon_Legacy(PlayerOwner);
+		if (CurrWeapon == Item) { CurrWeapon = nullptr; CurrWeaponIdx = INDEX_NONE; }
 	}
+	else if (CurrFlashLightItem.Get() == Item)
+	{
+		if (bUnequip && CurrFlashLightItem->IsEquipped() && IsValid(PlayerOwner)) CurrFlashLightItem->Unequip(PlayerOwner);
+		if (CurrFlashLightItem.Get() == Item) { CurrFlashLightItem = nullptr; bIsUsingFlashLightItem = false; }
+	}
+	else if (bUnequip && bWasCurrent && IsValid(PlayerOwner)) Item->Unequip(PlayerOwner);
+	if (CurrThrowableWeapon == Item)
+	{
+		CurrThrowableWeapon = nullptr;
+		CurrThrowableWeaponIdx = INDEX_NONE;
+	}
+	if (ControllingWeapon == Item) ControllingWeapon = nullptr;
 }
 
 void UInventorySystemComponent::NotifyInventoryRestored()
@@ -419,6 +374,7 @@ void UInventorySystemComponent::NotifyInventoryRestored()
 
 void UInventorySystemComponent::RestoreEquippedQuickSlot(int32 QuickSlotIndex)
 {
+	if (!bInventoryRestoreSucceeded) return;
 	if (!IsQuickSlotSelectable(QuickSlotIndex))
 	{
 		CurrentQuickSlotIndex = INDEX_NONE;
@@ -466,7 +422,7 @@ bool UInventorySystemComponent::FindOwnedWeapon(
 		const int32 Index = FindItemSlot(*Inventory, ItemName);
 		if (Inventory->IsValidIndex(Index))
 		{
-			AWeapon* Found = Cast<AWeapon>((*Inventory)[Index].Items[0].Get());
+			AWeapon* Found = Cast<AWeapon>((*Inventory)[Index].GetItem());
 			if (IsValid(Found))
 			{
 				OutWeapon = Found;
@@ -536,6 +492,53 @@ TArray<FInventorySlot>* UInventorySystemComponent::GetInventory(EInventoryName I
 	}
 }
 
+int32 UInventorySystemComponent::GetItemNumByID(FName ItemID) const
+{
+	if (ItemID.IsNone()) return 0;
+
+	int64 TotalItemNum = 0;
+	for (const FInventorySlot& Slot : ItemInventory)
+	{
+		if (!Slot.IsEmpty() && Slot.ItemID == ItemID)
+		{
+			// Num() is a display quantity; use the actual base stack quantity.
+			TotalItemNum += Slot.GetStackItemNum();
+			if (TotalItemNum >= MAX_int32) return MAX_int32;
+		}
+	}
+	return static_cast<int32>(TotalItemNum);
+}
+
+bool UInventorySystemComponent::TryConsumeOneItemByID(FName ItemID, bool bNotifyInventory)
+{
+	if (!IsValid(PlayerOwner) || ItemID.IsNone()) return false;
+
+	for (int32 SlotIndex = 0; SlotIndex < ItemInventory.Num(); ++SlotIndex)
+	{
+		const FInventorySlot& Slot = ItemInventory[SlotIndex];
+		if (Slot.IsEmpty() || Slot.ItemID != ItemID) continue;
+
+		// This is a quest-item transfer, not UseItem or Drop.
+		// Reuse the existing stack removal, equipment cleanup and pool return.
+		// Publish QuickSlot changes together with the inventory, not mid-transaction.
+		if (!RemoveItemAtSlot(ItemInventory, SlotIndex, 1, false)) return false;
+
+		if (bNotifyInventory) NotifyItemInventoryChanged();
+		return true;
+	}
+	return false;
+}
+
+void UInventorySystemComponent::NotifyItemInventoryChanged()
+{
+	if (!IsValid(PlayerOwner)) return;
+	PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+	if (IsValid(PlayerOwner))
+	{
+		PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
+	}
+}
+
 void UInventorySystemComponent::InitInventory()
 {
 	ItemInventory.SetNum(FMath::Max(MaxItemSlotsCount, 0));
@@ -562,99 +565,88 @@ void UInventorySystemComponent::InitInventory()
 
 bool UInventorySystemComponent::AddItem(TArray<FInventorySlot>& TargetInventory, AItem* NewItem, bool bIsStackable, int32 AddCount)
 {
-	if (NewItem == nullptr) return false;
-
-	if (NewItem->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
+	if (!IsValid(NewItem) || NewItem->GetItemName() == EItemName::ItemName_None || AddCount <= 0) return false;
+	for (FInventorySlot& Slot : TargetInventory)
+		if (Slot.GetItem() == NewItem) return bIsStackable && Slot.AddStack(AddCount);
+	// Do not transfer an actor already owned by another inventory.
+	for (EInventoryName Type : { EInventoryName::Item, EInventoryName::PrimaryWeapon, EInventoryName::SecondaryWeapon, EInventoryName::ThrowableWeapon })
 	{
-		return false;
+		int32 Index = INDEX_NONE;
+		if (IsItemInSourceInventory(Type, NewItem, Index)) return false;
 	}
-
 	if (bIsStackable)
 	{
 		for (FInventorySlot& Slot : TargetInventory)
 		{
-			if (Slot.CanStack(NewItem->GetItemName()))
+			if (Slot.CanStackWith(NewItem, AddCount) && Slot.AddStack(AddCount))
 			{
-				Slot.AddItem(NewItem, AddCount);
+				// Ownership of a redundant incoming runtime actor is transferred on success.
+				NewItem->DeactivateItem();
 				return true;
 			}
 		}
 	}
-
-	const int32 EmptySlotIndex = FindEmptySlot(TargetInventory);
-
-	if (EmptySlotIndex == INDEX_NONE)
-	{
-		return false;
-	}
-
-	TargetInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
-	return true;
+	for (FInventorySlot& Slot : TargetInventory)
+		if (Slot.IsEmpty() && Slot.AddItem(NewItem, AddCount)) return true;
+	return false;
 }
 
-bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
+bool UInventorySystemComponent::AddItemFromPickUp(AItemPickUp* Pickup, int32 AddCount)
 {
-	if (NewItemPickUp == nullptr) return false;
-	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
-	{
-		return false;
-	}
-
-	if (NewItemPickUp->IsStackable())
+	if (!IsValid(Pickup) || !IsValid(PlayerOwner) || Pickup->GetItemName() == EItemName::ItemName_None || AddCount <= 0) return false;
+	const TSubclassOf<AItem> ItemClass = Pickup->GetItemClass();
+	const AItem* Defaults = ItemClass ? ItemClass.GetDefaultObject() : nullptr;
+	if (!IsValid(Defaults) || Defaults->IsA(AWeapon::StaticClass()) || Defaults->IsA(AThrowableWeapon::StaticClass())) return false;
+	const bool bStackable = Pickup->IsStackable() && FInventorySlot::CanRepresentStack(Defaults);
+	if (bStackable)
 	{
 		for (FInventorySlot& Slot : ItemInventory)
 		{
-			if (Slot.CanStack(NewItemPickUp->GetItemName()))
+			// Check the entire quantity before committing. No spawn for an existing stack.
+			if (Slot.CanStack(Pickup->GetItemName(), AddCount) && Slot.Item->GetClass() == ItemClass.Get() &&
+				Slot.ItemID == Pickup->GetItemID())
 			{
-				AItem* NewItem = Cast<AItem>(NewItemPickUp->SpawnItem(PlayerOwner));
-				if (!NewItem) { return false; }
-				Slot.AddItem(NewItem, AddCount);
+				if (!Slot.AddStack(AddCount)) return false;
+				Pickup->ClearItemLink();
 				return true;
 			}
 		}
 	}
+	else if (AddCount != 1) return false;
 
-	const int32 EmptySlotIndex = FindEmptySlot(ItemInventory);
-	if (EmptySlotIndex == INDEX_NONE)
+	int32 FreeIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < ItemInventory.Num(); ++Index)
 	{
-		return false;
-	}
-
-	AItem* NewItem = Cast<AItem>(NewItemPickUp->SpawnItem(PlayerOwner));
-	if (!NewItem) { return false; }
-
-	bool bItemAdded = ItemInventory[EmptySlotIndex].AddItem(NewItem, AddCount);
-
-	if (bItemAdded)
-	{
-		if (NewItem->GetItemName() == EItemName::ItemName_FlashLight)
+		if (ItemInventory[Index].IsEmpty() && AddCount <= FMath::Max(1, ItemInventory[Index].MaxStackCount))
 		{
-			if (CurrFlashLightItem == nullptr)
-			{
-				CurrFlashLightItem = Cast<AFlashlightItem>(NewItem);
-
-				int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::Flashlight);
-				RegisterQuickSlot(QuickSlotIdx, EInventoryName::Item, EmptySlotIndex);
-
-				if (!CurrItem)
-				{
-					SelectQuickSlot(QuickSlotIdx);
-				}
-			}
+			FreeIndex = Index; break;
 		}
 	}
-	else
+	if (FreeIndex == INDEX_NONE) return false;
+	AItem* NewItem = Pickup->SpawnItem(PlayerOwner);
+	if (!IsValid(NewItem)) return false;
+	if (NewItem->GetItemName() != Pickup->GetItemName() || !ItemInventory[FreeIndex].AddItem(NewItem, AddCount))
 	{
 		NewItem->DeactivateItem();
+		return false;
 	}
-
-	return bItemAdded;
+	if (AFlashlightItem* Light = Cast<AFlashlightItem>(NewItem))
+	{
+		if (!IsValid(CurrFlashLightItem))
+		{
+			CurrFlashLightItem = Light;
+			const int32 QuickIndex = FindEmptyQuickSlot(EQuickSlotType::Flashlight);
+			if (QuickIndex != INDEX_NONE && RegisterQuickSlot(QuickIndex, EInventoryName::Item, FreeIndex) && !IsValid(CurrItem))
+				SelectQuickSlot(QuickIndex);
+		}
+	}
+	return true;
 }
 
 bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
 {
 	if (!IsValid(NewItemPickUp) || !IsValid(PlayerOwner) ||
-		NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
+		NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount != 1)
 	{
 		return false;
 	}
@@ -666,13 +658,17 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 	int32 ExistingIndex = INDEX_NONE;
 	if (FindOwnedWeapon(NewItemPickUp->GetItemName(), ExistingWeapon, ExistingInventory, ExistingIndex))
 	{
+		// A dropped gun has serialized state; the pickup's default ammo is not its saved ammo.
+		// Do not destroy that gun by treating it as a fresh magazine pickup.
+		if (NewItemPickUp->HasDroppedItemState()) return false;
 		return ExistingWeapon->AddAmmo(NewItemPickUp->GetAmmo());
 	}
 
 	// Classification comes from the actual spawned weapon (the source project
 	// already uses AWeapon::GetQuickSlotType()).
-	AWeapon* NewWeapon = Cast<AWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
-	if (!IsValid(NewWeapon)) { return false; }
+	AItem* SpawnedItem = NewItemPickUp->SpawnItem(PlayerOwner);
+	AWeapon* NewWeapon = Cast<AWeapon>(SpawnedItem);
+	if (!IsValid(NewWeapon)) { if (IsValid(SpawnedItem)) SpawnedItem->DeactivateItem(); return false; }
 
 	const EQuickSlotType WeaponType = NewWeapon->GetQuickSlotType();
 	TArray<FInventorySlot>* Target = GetWeaponInventoryForType(WeaponType);
@@ -712,71 +708,37 @@ bool UInventorySystemComponent::AddWeaponFromPickUp(AItemPickUp* NewItemPickUp, 
 }
 
 
-bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* NewItemPickUp, int32 AddCount)
+bool UInventorySystemComponent::AddThrowableWeaponFromPickUp(AItemPickUp* Pickup, int32 AddCount)
 {
-	if (NewItemPickUp == nullptr) return false;
-	if (NewItemPickUp->GetItemName() == EItemName::ItemName_None || AddCount <= 0)
+	if (!IsValid(Pickup) || !IsValid(PlayerOwner) || Pickup->GetItemName() == EItemName::ItemName_None || AddCount != 1) return false;
+	const int32 ExistingIndex = FindItemSlot(ThrowableWeaponInventory, Pickup->GetItemName());
+	if (ThrowableWeaponInventory.IsValidIndex(ExistingIndex))
 	{
+		FInventorySlot& Slot = ThrowableWeaponInventory[ExistingIndex];
+		AThrowableWeapon* Launcher = Cast<AThrowableWeapon>(Slot.GetItem());
+		if (!IsValid(Launcher) || Launcher->GetClass() != Pickup->GetItemClass().Get()) return false;
+		// The launcher is a single item; throwable projectiles are its ammunition.
+		// Never add a second stack count on top of AddAmmo.
+		if (!Launcher->AddAmmoFromPickup(Pickup->GetAmmo())) return false;
+		Slot.SynchronizeItemNum();
+		Pickup->ClearItemLink();
+		return true;
+	}
+	const int32 FreeIndex = FindEmptySlot(ThrowableWeaponInventory);
+	if (FreeIndex == INDEX_NONE) return false;
+	AItem* SpawnedItem = Pickup->SpawnItem(PlayerOwner);
+	AThrowableWeapon* Launcher = Cast<AThrowableWeapon>(SpawnedItem);
+	if (!IsValid(Launcher) ||
+		(!Pickup->HasDroppedItemState() && (Pickup->GetAmmo() <= 0 || !Launcher->SetAmmoForPickup(Pickup->GetAmmo()))) ||
+		!ThrowableWeaponInventory[FreeIndex].AddItem(Launcher, 1))
+	{
+		if (IsValid(SpawnedItem)) SpawnedItem->DeactivateItem();
 		return false;
 	}
-
-	int32 WeaponIdx = FindItemSlot(ThrowableWeaponInventory, NewItemPickUp->GetItemName());
-	if (WeaponIdx != INDEX_NONE)
-	{
-		if (!ThrowableWeaponInventory[WeaponIdx].IsEmpty())
-		{
-			AThrowableWeapon* Weapon = Cast<AThrowableWeapon>(ThrowableWeaponInventory[WeaponIdx].GetItem(0));
-			if (Weapon)
-			{
-				Weapon->AddAmmo(NewItemPickUp->GetAmmo());
-				ThrowableWeaponInventory[WeaponIdx].AddItem(Weapon, AddCount);
-				return true;
-			}
-		}
-	}
-
-	if (NewItemPickUp->IsStackable())
-	{
-		for (FInventorySlot& Slot : ThrowableWeaponInventory)
-		{
-			if (Slot.CanStack(NewItemPickUp->GetItemName()))
-			{
-				AThrowableWeapon* NewWeapon = Cast<AThrowableWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
-				if (!NewWeapon) { return false; }
-
-				Slot.AddItem(NewWeapon, AddCount);
-				return true;
-			}
-		}
-	}
-
-	const int32 EmptySlotIndex = FindEmptySlot(ThrowableWeaponInventory);
-	if (EmptySlotIndex == INDEX_NONE)
-	{
-		return false;
-	}
-
-	AThrowableWeapon* NewWeapon = Cast<AThrowableWeapon>(NewItemPickUp->SpawnItem(PlayerOwner));
-	if (!NewWeapon) { return false; }
-
-	bool bWeaponAdded = ThrowableWeaponInventory[EmptySlotIndex].AddItem(NewWeapon, AddCount);
-
-	int32 QuickSlotIdx = FindEmptyQuickSlot(EQuickSlotType::ThrowableWeapon);
-	RegisterQuickSlot(QuickSlotIdx, EInventoryName::ThrowableWeapon, EmptySlotIndex);
-
-	if (bWeaponAdded)
-	{
-		if (!CurrItem)
-		{
-			SelectQuickSlot(QuickSlotIdx);
-		}
-	}
-	else
-	{
-		NewWeapon->DeactivateItem();
-	}
-
-	return bWeaponAdded;
+	const int32 QuickIndex = FindEmptyQuickSlot(EQuickSlotType::ThrowableWeapon);
+	if (QuickIndex != INDEX_NONE && RegisterQuickSlot(QuickIndex, EInventoryName::ThrowableWeapon, FreeIndex) && !IsValid(CurrItem))
+		SelectQuickSlot(QuickIndex);
+	return true;
 }
 
 bool UInventorySystemComponent::RemoveItem(TArray<FInventorySlot>& TargetInventory, EItemName ItemName, int32 RemoveCount)
@@ -796,56 +758,19 @@ bool UInventorySystemComponent::RemoveItem(TArray<FInventorySlot>& TargetInvento
 	return RemoveItemAtSlot(TargetInventory, SlotIndex, RemoveCount);
 }
 
-bool UInventorySystemComponent::RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount)
+bool UInventorySystemComponent::RemoveItemAtSlot(TArray<FInventorySlot>& TargetInventory, int32 SlotIndex, int32 RemoveCount, bool bNotifyQuickSlot)
 {
-	// <Old>
-
-	//if (!IsValidSlotIndex(TargetInventory, SlotIndex) || RemoveCount <= 0)
-	//{
-	//	return false;
-	//}
-
-	//FInventorySlot& Slot = TargetInventory[SlotIndex];
-
-	//if (Slot.IsEmpty())
-	//{
-	//	return false;
-	//}
-
-	//return Slot.RemoveItem(RemoveCount) == nullptr ? false : true;
-
-	//-------------------------------------------------
-
-	// <New>
-
-	if (!TargetInventory.IsValidIndex(SlotIndex) || RemoveCount <= 0)
-	{
-		return false;
-	}
-
+	if (!TargetInventory.IsValidIndex(SlotIndex) || RemoveCount <= 0) return false;
 	FInventorySlot& Slot = TargetInventory[SlotIndex];
-
-	if (Slot.Num() < RemoveCount)
+	AItem* Item = Slot.GetItem();
+	if (!IsValid(Item) || !Slot.RemoveItems(RemoveCount)) return false;
+	if (Slot.IsEmpty())
 	{
-		return false;
+		ReleaseItemReferences(Item, true);
+		SynchronizeQuickSlotsInternal(bNotifyQuickSlot);
+		if (IsValid(Item)) Item->DeactivateItem();
 	}
-
-	for (int32 i = 0; i < RemoveCount; ++i)
-	{
-		AItem* RemovedItem = Slot.RemoveItem(INDEX_NONE);
-
-		if (!RemovedItem)
-		{
-			return false;
-		}
-
-		// Actual consume/deactivation policy belongs to the caller.
-	}
-
-	SynchronizeQuickSlots();
-
 	return true;
-
 }
 
 bool UInventorySystemComponent::SwapSlots(TArray<FInventorySlot>& TargetInventory, int32 FromIndex, int32 ToIndex)
@@ -1131,54 +1056,19 @@ void UInventorySystemComponent::DropItemInventorySlot(FName InventoryName, int32
 	}
 
 	FInventorySlot& Slot = (*Inventory)[LocalIndex];
-	AItem* FirstItem = Slot.GetItem(0);
-	if (!IsValid(FirstItem)) { return; }
-
-	const bool bDroppedSelected = (CurrItem == FirstItem);
-	if (AWeapon* DroppedWeapon = Cast<AWeapon>(FirstItem))
+	AItem* Item = Slot.GetItem();
+	if (!IsValid(Item)) return;
+	if (AThrowableWeapon* Launcher = Cast<AThrowableWeapon>(Item))
 	{
-		if (DroppedWeapon == CurrWeapon)
-		{
-			if (bOffHandFlashlightActive) { DisableOffHandFlashlight(); }
-			DroppedWeapon->UnequipWeapon_Legacy(PlayerOwner);
-			CurrWeapon = nullptr;
-			CurrWeaponIdx = INDEX_NONE;
-		}
+		if (CurrItem == Launcher && Launcher->GetCurrentState() != EThrowableWeaponStateType::Idle &&
+			Launcher->GetCurrentState() != EThrowableWeaponStateType::Unequiped) return;
 	}
-	if (AFlashlightItem* DroppedLight = Cast<AFlashlightItem>(FirstItem))
-	{
-		if (DroppedLight == CurrFlashLightItem)
-		{
-			if (bOffHandFlashlightActive) { DisableOffHandFlashlight(); }
-			if (DroppedLight->IsEquipped()) { DroppedLight->Unequip(PlayerOwner); }
-			CurrFlashLightItem = nullptr;
-			bIsUsingFlashLightItem = false;
-		}
-	}
-	if (FirstItem == CurrThrowableWeapon)
-	{
-		CurrThrowableWeapon = nullptr;
-		CurrThrowableWeaponIdx = INDEX_NONE;
-	}
-	if (bDroppedSelected) { CurrItem = nullptr; }
-	if (NextItem == FirstItem) { NextItem = nullptr; }
-	if (EquippedQuickSlotItem.Get() == FirstItem) { EquippedQuickSlotItem.Reset(); }
-
-	// Drop all actors from the slot. A stack may contain multiple items.
-	// Some throwable stacks in this project store the same actor pointer
-	// multiple times; avoid returning one actor to the pool repeatedly.
-	TSet<AItem*> UniqueItems;
-	for (AItem* Item : Slot.Items)
-	{
-		if (IsValid(Item)) { UniqueItems.Add(Item); }
-	}
+	// World creation must succeed before changing inventory ownership or quantity.
+	if (!Item->CreateDroppedItemPickUp()) return;
 	Slot.ClearSlot();
+	ReleaseItemReferences(Item, true);
 	SynchronizeQuickSlots();
-
-	for (AItem* Item : UniqueItems)
-	{
-		if (IsValid(Item)) { Item->DeactivateItemAndGetItemPickUp(); }
-	}
+	Item->DeactivateItem();
 
 	if (Type == EInventoryName::Item)
 	{
@@ -1217,7 +1107,7 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 
 	FInventorySlot& TargetSlot = ItemInventory[SlotIndex];
 	if (TargetSlot.IsEmpty()) { return; }
-	AItem* ItemToUse = TargetSlot.GetItem(0);
+	AItem* ItemToUse = TargetSlot.GetItem();
 
 	if (!IsValid(ItemToUse))
 	{
@@ -1243,6 +1133,7 @@ void UInventorySystemComponent::UseItemInventorySlot(FName InventoryName, int32 
 
 	// 인벤토리 UI 갱신
 	PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 
 	// 필요하다면 ToolWidget을 닫는 Delegate도 Broadcast
 	// PlayerOwner->OnItemToolWidgetCloseRequestedDelegate.Broadcast();
@@ -1263,21 +1154,21 @@ bool UInventorySystemComponent::TryStorePickup(AItemPickUp* Pickup)
 		return TryStoreMagazineAmmo(Pickup);
 	}
 
-	if (Pickup->IsWeapon())
+	if (Pickup->IsWeapon() && !Pickup->IsThrowableWeapon())
 	{
-		if (!AddWeaponFromPickUp(Pickup)) { return false; }
+		if (!AddWeaponFromPickUp(Pickup, Pickup->GetItemNum())) { return false; }
 		SynchronizeQuickSlots();
 		NotifyWeaponInventoriesChanged();
 	}
 	else if (Pickup->IsThrowableWeapon())
 	{
-		if (!AddThrowableWeaponFromPickUp(Pickup)) { return false; }
+		if (!AddThrowableWeaponFromPickUp(Pickup, Pickup->GetItemNum())) { return false; }
 		SynchronizeQuickSlots();
 		PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
 	}
 	else
 	{
-		if (!AddItemFromPickUp(Pickup)) { return false; }
+		if (!AddItemFromPickUp(Pickup, Pickup->GetItemNum())) { return false; }
 		SynchronizeQuickSlots();
 		PlayerOwner->OnInventoryUpdatedDelegate.Broadcast(ItemInventory);
 	}
@@ -1517,7 +1408,7 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 
 	//-------------------------------
 
-	//NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem(0);
+	//NextItem = ThrowableWeaponInventory[WeaponIdx].GetItem();
 
 	//if (CurrItem)
 	//{
@@ -1536,7 +1427,11 @@ void UInventorySystemComponent::EquipThrowableWeapon(int32 WeaponIdx)
 
 void UInventorySystemComponent::UpdateThrowableWeaponInventorySlots()
 {
+	if (!IsValid(PlayerOwner)) return;
+	for (FInventorySlot& Slot : ThrowableWeaponInventory) Slot.SynchronizeItemNum();
+	SynchronizeQuickSlots();
 	PlayerOwner->OnThrowableWeaponInventoryUpdatedDelegate.Broadcast(ThrowableWeaponInventory);
+	PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 }
 #pragma endregion
 
@@ -1685,7 +1580,7 @@ bool UInventorySystemComponent::FindFlashLightInInventory()
 	int32 idx = FindItemSlot(ItemInventory, EItemName::ItemName_FlashLight);
 	if (idx != INDEX_NONE)
 	{
-		if (AFlashlightItem* flashlight = Cast<AFlashlightItem>(ItemInventory[idx].GetItem(0)))
+		if (AFlashlightItem* flashlight = Cast<AFlashlightItem>(ItemInventory[idx].GetItem()))
 		{
 			CurrFlashLightItem = Cast<AFlashlightItem>(flashlight);
 
@@ -1794,6 +1689,11 @@ void UInventorySystemComponent::UpdateOffHandFlashlightAttachment()
 
 void UInventorySystemComponent::SynchronizeQuickSlots()
 {
+	SynchronizeQuickSlotsInternal(true);
+}
+
+void UInventorySystemComponent::SynchronizeQuickSlotsInternal(bool bNotifyQuickSlot)
+{
 	bool bChanged = false;
 	const int32 BeforeSelection = CurrentQuickSlotIndex;
 
@@ -1829,7 +1729,7 @@ void UInventorySystemComponent::SynchronizeQuickSlots()
 			bChanged = true;
 		}
 	}
-	if (IsValid(PlayerOwner) && (bChanged || BeforeSelection != CurrentQuickSlotIndex))
+	if (bNotifyQuickSlot && IsValid(PlayerOwner) && (bChanged || BeforeSelection != CurrentQuickSlotIndex))
 	{
 		PlayerOwner->OnQuickSlotUpdatedDelegate.Broadcast(QuickSlotInventory, CurrentQuickSlotIndex);
 	}
@@ -1872,13 +1772,10 @@ bool UInventorySystemComponent::IsItemInSourceInventory(EInventoryName Inventory
 	{
 		const FInventorySlot& Slot = (*Inventory)[SlotIndex];
 
-		for (const TObjectPtr<AItem>& StoredItem : Slot.Items)
+		if (Slot.GetItem() == Item)
 		{
-			if (StoredItem.Get() == Item)
-			{
-				OutSlotIndex = SlotIndex;
-				return true;
-			}
+			OutSlotIndex = SlotIndex;
+			return true;
 		}
 	}
 
@@ -2052,7 +1949,7 @@ bool UInventorySystemComponent::RegisterQuickSlot(int32 QuickSlotIndex, EInvento
 	const FInventorySlot& SourceSlot = (*Inventory)[SourceSlotIndex];
 	if (SourceSlot.IsEmpty()) { return false; }
 
-	AItem* Item = SourceSlot.Items[0].Get();
+	AItem* Item = SourceSlot.GetItem();
 
 	if (!IsQuickSlotCompatible(QuickSlotIndex, SourceInventory, Item)) { return false; }
 

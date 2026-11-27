@@ -168,7 +168,7 @@ public:
 	/** Blueprint/CDO-safe read: no projectile is spawned or activated for prediction. */
 	bool GetTrajectoryPhysics(FThrowableProjectileTrajectoryPhysics& OutPhysics) const;
 	void LaunchProjectile(FVector StartPos, FRotator Direction);
-	void LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed);
+	bool LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed);
 
 	UFUNCTION(BlueprintCallable, Category = "Throwable|Payload") void StartFuse();
 	UFUNCTION(BlueprintCallable, Category = "Throwable|Payload") void ActivatePayload();

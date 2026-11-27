@@ -7,6 +7,8 @@
 #include "Data/PlayerWeaponPrimaryDataAsset.h"
 #include "Data/WeaponData.h"
 #include "Items/InventorySystemComponent.h"
+#include "Items/ItemPickUp.h"
+#include "TimerManager.h"
 #include "Items/Projectile/ProjectileShell.h"
 #include "Items/Weapons/WeaponCamShakeBase.h"
 #include "Items/Weapons/WeaponInterface.h"
@@ -66,14 +68,28 @@ AWeapon::AWeapon()
 
 	bIsWeapon = true;
 	bIsStackable = false;
+	SetItemNum(1);
 }
 
 void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
+	if (!IsValid(NewCharacter)) return;
 	Character = NewCharacter;
-	if (bWasInitialized) { return; }
-	bWasInitialized = true;
 	ItemPickUp = PickUpActor;
+	if (!ItemPickUpClass && IsValid(PickUpActor)) ItemPickUpClass = PickUpActor->GetClass();
+	SetItemNum(1);
+	bIsStackable = false;
+	bIsWeapon = true;
+	CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
+	CharacterController = Cast<APlayerController>(Character->GetController());
+	if (bWasInitialized)
+	{
+		TotalAmmo = InitialReserveAmmo;
+		LeftAmmoInCurrMag = InitialMagazineAmmo;
+		RefreshAmmoUI();
+		return;
+	}
+	bWasInitialized = true;
 	LoadItemData();
 
 	if (Character)
@@ -82,6 +98,10 @@ void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 		//InitializeCamera(Character);
 		LoadWeaponData_Upgrade();
 	}
+	InitialReserveAmmo = FMath::Clamp(TotalAmmo, 0, FMath::Max(0, MaxTotalAmmo));
+	InitialMagazineAmmo = FMath::Clamp(LeftAmmoInCurrMag, 0, FMath::Max(0, MaxAmmoPerMag));
+	TotalAmmo = InitialReserveAmmo;
+	LeftAmmoInCurrMag = InitialMagazineAmmo;
 	InitializeUI();
 
 	// Set up action bindings
@@ -107,39 +127,8 @@ void AWeapon::InitItem(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 
 void AWeapon::InitItemPost(ACharacterPlayer* NewCharacter, AItemPickUp* PickUpActor)
 {
-	Character = NewCharacter;
-	if (bWasInitialized) { return; }
-	bWasInitialized = true;
-	ItemPickUp = PickUpActor;
-	LoadItemData();
-
-	if (Character)
-	{
-		CharacterAnimInstance = Character->GetArmMesh()->GetAnimInstance();
-		//InitializeCamera(Character);
-		LoadWeaponDataPost();
-	}
-	InitializeUI();
-
-	// Set up action bindings
-	CharacterController = Cast<APlayerController>(Character->GetController());
-	if (CharacterController)
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(CharacterController->GetLocalPlayer()))
-		{
-			// Set the priority of the mapping to 1, so that it overrides the Jump action with the Fire action when using touch input
-			Subsystem->AddMappingContext(FireMappingContext, 1);
-		}
-	}
-
-	SetMeshVisibility(false);
-	SetAimSocketRelativeTransform();
-
-	//TODO: ObjectPoolingSystem에 편입
-	InitProjectileShells();
-
-	InitProjectiles(FireData_L.ProjectileClass, 10);
-	InitProjectiles(FireData_R.ProjectileClass, 10);
+	// Snapshot restoration runs after initialization in ItemPickUp/InventorySystem.
+	AWeapon::InitItem(NewCharacter, PickUpActor);
 }
 
 void AWeapon::InitializeCamera(ACharacterPlayer* NewCharacter) //TODO: Need to integrate camera system with player system
@@ -1012,7 +1001,8 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 	//UE_LOG(LogTemp, Warning, TEXT("FireSingleProjectile_Pool"));
 
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
-	if (!FireData) return;
+	if (!FireData || !FireData->ProjectileClass || FireData->AmmoCost < 0 || !IsValid(WeaponMesh) || !IsValid(MuzzlePoint)) return;
+	if (bIsHoming && (!IsValid(HomingTarget) || !HomingTarget->GetRootComponent())) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
 
@@ -1035,7 +1025,6 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 				return;
 			}
 		}
-		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 	}
 
 	FVector ProjectileStartLocation = Cam->GetComponentLocation();
@@ -1080,6 +1069,8 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 		const FRotator SpawnRotation = ProjectileDirection.Rotation();
 
 		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		if (!IsValid(Projectile)) return;
+		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 		Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable);
 		SetUpAimUIDelegateBinding(Projectile); //TODO: 중복바인딩 방지
 		if (bIsHoming)
@@ -1132,7 +1123,7 @@ void AWeapon::FireSingleProjectile(FWeaponFireParams* FireData, int32 NumPenetra
 void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius, int32 AdditionalPellet, bool bIsHoming, AActor* HomingTarget)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
-	if (!FireData) return;
+	if (!FireData || !FireData->ProjectileClass || FireData->AmmoCost < 0 || !IsValid(WeaponMesh) || !IsValid(MuzzlePoint)) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
 
@@ -1155,7 +1146,6 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 				return;
 			}
 		}
-		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 	}
 
 	FVector ProjectileStartLocation = Cam->GetComponentLocation();
@@ -1182,17 +1172,25 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 		const FVector SpawnLocation = ProjectileStartLocation;
 		const FVector MuzzleLocation = WeaponMesh->GetSocketLocation(FName(TEXT("Muzzle")));
 
+		bool bShotCommitted = false;
 		for (int pellet = 0; pellet < (FireData->PelletsNum + AdditionalPellet); pellet++)
 		{
 			const FVector RandomVec = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(ProjectileDirection.GetSafeNormal(), GetGripSpreadAngle(FireData->MaxAngleOfMultiProjectileSpread));
 
 			AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+			if (!IsValid(Projectile)) continue;
+			if (!bShotCommitted)
+			{
+				ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
+				bShotCommitted = true;
+			}
 			Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable);
 			SetUpAimUIDelegateBinding(Projectile);
 
 			Projectile->InitProjectileMovement(ProjectileStartLocation, RandomVec, MuzzleLocation);
 		}
 
+		if (!bShotCommitted) return;
 		if (bWeaponAssetsReady)
 		{
 			//TODO: 방향 정상화
@@ -1246,15 +1244,57 @@ void AWeapon::FireMultiProjectile(FWeaponFireParams* FireData, int32 NumPenetrab
 void AWeapon::OnItemStateRestored()
 {
 	Super::OnItemStateRestored();
+	SetItemNum(1);
+	bIsStackable = false;
+	bIsWeapon = true;
+	TotalAmmo = FMath::Clamp(TotalAmmo, 0, FMath::Max(0, MaxTotalAmmo));
+	LeftAmmoInCurrMag = FMath::Clamp(LeftAmmoInCurrMag, 0, FMath::Max(0, MaxAmmoPerMag));
+	RefreshAmmoUI();
+}
 
-	TotalAmmo = FMath::Max(TotalAmmo, 0);
-	LeftAmmoInCurrMag = FMath::Max(LeftAmmoInCurrMag, 0);
-
-	if (AmmoCounterWidget)
+void AWeapon::RefreshAmmoUI()
+{
+	if (IsValid(AmmoCounterWidget))
 	{
-		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 		AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
+		AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
 	}
+}
+
+void AWeapon::OnDeactivateToPool()
+{
+	if (UWorld* World = GetWorld())
+	{
+		auto& Timers = World->GetTimerManager();
+		for (FTimerHandle* Handle : { &SwitchingTimer, &ReloadingTimer, &SingleShotTimer, &BurstShotTimer,
+			&FullAutoShotTimer, &ChargingTimer, &RecoilRecoverTimer, &CamSettingTimer })
+			Timers.ClearTimer(*Handle);
+	}
+	ResetInputActionBinding();
+	ActivateAimUIWidget(false);
+	ActivateAmmoCounterWidget(false);
+	DestroyChargeEffect();
+	StopWeaponSound();
+	DetachWeaponFromPlayer();
+	SetMeshVisibility(false);
+	CurrentState = EWeaponStateType::WeaponStateType_Unequipped;
+	BufferedFireRequest.Reset();
+	bFireInputDuringReload = false;
+	BurstShotFired = 0;
+	ElapsedChargeTime = 0.f;
+	bIsZoomIn = false;
+	bIsUsingPlayerCamFov = false;
+	bIsRecoiling = false;
+	bIsSpreading = false;
+	TotalTargetRecoilValuePitch = TotalTargetRecoilValueYaw = 0.f;
+	CulmulatedRecoilValuePitch = CulmulatedRecoilValueYaw = 0.f;
+	RecoveredRecoilValuePitch = RecoveredRecoilValueYaw = 0.f;
+	TotalTargetSpreadValue = CurrentSpreadVaule = SpreadRecoverTimer = 0.f;
+	CharacterAnimInstance = nullptr;
+	CharacterController = nullptr;
+	Character = nullptr;
+	ItemPickUp = nullptr;
+	Super::OnDeactivateToPool();
 }
 
 #pragma endregion
@@ -1375,7 +1415,7 @@ void AWeapon::UpdateState(float DeltaTime)
 void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
-	if (!FireData) return;
+	if (!FireData || !FireData->ProjectileClass || FireData->AmmoCost < 0 || !IsValid(WeaponMesh) || !IsValid(MuzzlePoint)) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
 
@@ -1398,7 +1438,6 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 				return;
 			}
 		}
-		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 	}
 
 	FVector ProjectileStartLocation = Cam->GetComponentLocation();
@@ -1437,6 +1476,8 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 		const FRotator SpawnRotation = ProjectileStartLocation.Rotation();
 
 		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		if (!IsValid(Projectile)) return;
+		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 		Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable, true);
 		SetUpAimUIDelegateBinding(Projectile);
 
@@ -1482,7 +1523,7 @@ void AWeapon::FireSingleHitScan(FWeaponFireParams* FireData, int32 NumPenetrable
 void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable, float AdditionalDamage, float AdditionalRecoilAmountPitch, float AdditionalRecoilAmountYaw, float AdditionalProjectileRadius)
 {
 	if (CurrentState == EWeaponStateType::WeaponStateType_Unequipped) return;
-	if (!FireData) return;
+	if (!FireData || !FireData->ProjectileClass || FireData->AmmoCost < 0 || !IsValid(WeaponMesh) || !IsValid(MuzzlePoint)) return;
 	if (!Character) return;
 	if (Character->GetController() == nullptr) return;
 
@@ -1505,7 +1546,6 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 				return;
 			}
 		}
-		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 	}
 
 	FVector StartLocation = Cam->GetComponentLocation();
@@ -1542,6 +1582,8 @@ void AWeapon::FireSingleAutoAim(FWeaponFireParams* FireData, int32 NumPenetrable
 		const FRotator SpawnRotation = SpreadedDirection.Rotation();
 
 		AProjectile* Projectile = GetProjectileFromPool(FireData->ProjectileClass);
+		if (!IsValid(Projectile)) return;
+		ConsumeAmmo(FireData->AmmoCost, FireData->bAllowFireWithInsufficientAmmo);
 
 		Projectile->InitProjectile(Character, this, AdditionalDamage, AdditionalProjectileRadius, NumPenetrable, false, true);
 		SetUpAimUIDelegateBinding(Projectile);
@@ -2507,77 +2549,21 @@ void AWeapon::InterruptReloadAndFire()
 
 void AWeapon::ConsumeAmmo(int32 AmmoCost, bool AllowFireWithInsufficientAmmo)
 {
-	if (LeftAmmoInCurrMag > 0)
-	{
-		if (AllowFireWithInsufficientAmmo)
-		{
-			if (LeftAmmoInCurrMag >= AmmoCost)
-			{
-				LeftAmmoInCurrMag -= AmmoCost;
-			}
-			else
-			{
-				LeftAmmoInCurrMag = 0;
-			}
-		}
-		else
-		{
-			LeftAmmoInCurrMag -= AmmoCost;
-		}
-
-		//TODO: PlayerUISubsystem에 편입
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
-		}
-	}
+	if (AmmoCost <= 0 || LeftAmmoInCurrMag <= 0) return;
+	if (!AllowFireWithInsufficientAmmo && AmmoCost > LeftAmmoInCurrMag) return;
+	LeftAmmoInCurrMag -= FMath::Min(AmmoCost, LeftAmmoInCurrMag);
+	RefreshAmmoUI();
 }
 
 void AWeapon::ReloadAmmo(bool bPumpAction)
 {
-	if (bPumpAction)
-	{
-		int32 RequiredAmmo = 1;
-		int32 AmmoToReload = FMath::Min(RequiredAmmo, TotalAmmo);
-
-		LeftAmmoInCurrMag += AmmoToReload;
-		TotalAmmo -= AmmoToReload;
-
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
-			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-		}
-	}
-	else
-	{
-		//int32 RequiredAmmo = MaxAmmoPerMag - LeftAmmoInCurrentMag;
-		//if (TotalAmmo < RequiredAmmo)
-		//{
-		//	LeftAmmoInCurrentMag = LeftAmmoInCurrentMag + TotalAmmo;
-		//	TotalAmmo = 0;
-		//}
-		//else
-		//{
-		//	TotalAmmo = TotalAmmo - RequiredAmmo;
-		//	LeftAmmoInCurrentMag = MaxAmmoPerMag;
-		//}
-
-		int32 RequiredAmmo = MaxAmmoPerMag - LeftAmmoInCurrMag;
-		int32 AmmoToReload = FMath::Min(RequiredAmmo, TotalAmmo);
-
-		LeftAmmoInCurrMag += AmmoToReload;
-		TotalAmmo -= AmmoToReload;
-
-		//--------------
-
-		//LeftAmmoInCurrentMag = MaxAmmoPerMag;
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
-			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-		}
-	}
+	const int32 FreeSpace = FMath::Max(0, MaxAmmoPerMag - LeftAmmoInCurrMag);
+	const int32 RequiredAmmo = bPumpAction ? FMath::Min(1, FreeSpace) : FreeSpace;
+	const int32 AmmoToReload = FMath::Min(RequiredAmmo, FMath::Max(0, TotalAmmo));
+	if (AmmoToReload <= 0) return;
+	LeftAmmoInCurrMag += AmmoToReload;
+	TotalAmmo -= AmmoToReload;
+	RefreshAmmoUI();
 }
 
 bool AWeapon::HasAmmoInCurrentMag()
@@ -2592,18 +2578,11 @@ bool AWeapon::HasAmmoInCurrentMag(int32 AmmoCost)
 
 bool AWeapon::AddAmmo(int32 NumAmmo)
 {
-	if (TotalAmmo < MaxTotalAmmo)
-	{
-		int32 NewTotalAmmo = FMath::Clamp(TotalAmmo + NumAmmo, 0, MaxTotalAmmo);
-		TotalAmmo = NewTotalAmmo;
-		if (AmmoCounterWidget)
-		{
-			AmmoCounterWidget->UpdateAmmoCount(LeftAmmoInCurrMag);
-			AmmoCounterWidget->UpdateTotalAmmo(TotalAmmo);
-		}
-		return true;
-	}
-	return false;
+	// A pickup transaction consumes the entire pickup on success. Reject partial additions.
+	if (NumAmmo <= 0 || static_cast<int64>(TotalAmmo) + NumAmmo > FMath::Max(0, MaxTotalAmmo)) return false;
+	TotalAmmo += NumAmmo;
+	RefreshAmmoUI();
+	return true;
 }
 
 void AWeapon::AutoReload()
@@ -2692,7 +2671,8 @@ void AWeapon::ActivateAmmoCounterWidget(bool bflag)
 	{
 		if (AmmoCounterWidget)
 		{
-			AmmoCounterWidget->AddToViewport();
+			RefreshAmmoUI();
+			if (!AmmoCounterWidget->IsInViewport()) AmmoCounterWidget->AddToViewport();
 		}
 	}
 	else
@@ -4036,6 +4016,7 @@ void AWeapon::InitProjectiles(TSubclassOf<AProjectile> ProjectileClass, int32 Nu
 AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileClass)
 {
 	UWorld* const World = GetWorld();
+	if (!IsValid(World) || !ProjectileClass) return nullptr;
 	auto& Pool = ProjectilePool.FindOrAdd(ProjectileClass);
 
 	//UE_LOG(LogTemp, Warning, TEXT("GetProjectileFromPool"));
@@ -4058,6 +4039,7 @@ AProjectile* AWeapon::GetProjectileFromPool(TSubclassOf<AProjectile> ProjectileC
 		}
 	}
 
+	if (!IsValid(Projectile)) return nullptr;
 	Projectile->SetWeapon(this); //TODO: 어차피 GetFromPool 하자마자 Init 따로 호출하면서 처리하는데 굳이?
 	ActiveProjectileSet.Add(Projectile);
 

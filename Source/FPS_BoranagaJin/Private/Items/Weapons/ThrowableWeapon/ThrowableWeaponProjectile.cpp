@@ -303,17 +303,18 @@ void AThrowableWeaponProjectile::LaunchProjectile(FVector StartPos, FRotator Dir
 	ProjectileMovement->Activate();
 }
 
-void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed)
+bool AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, const FVector& Direction, float LaunchSpeed)
 {
-	if (!IsValid(ProjectileMovement) || !IsValid(CollisionComp))
+	if (!bIsActivated || !IsValid(ProjectileMovement) || !IsValid(CollisionComp) ||
+		StartPosition.ContainsNaN() || Direction.ContainsNaN() || !FMath::IsFinite(LaunchSpeed) || LaunchSpeed <= 0.f)
 	{
-		return;
+		return false;
 	}
 
 	const FVector NormalizedDirection = Direction.GetSafeNormal();
 	if (NormalizedDirection.IsNearlyZero())
 	{
-		return;
+		return false;
 	}
 
 	SetActorLocationAndRotation(StartPosition, NormalizedDirection.Rotation());
@@ -327,7 +328,9 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 	// Limit the initial velocity exactly as the predictor does when MaxSpeed is configured.
 	const FVector RawLaunchVelocity = NormalizedDirection * LaunchSpeed;
 	ProjectileMovement->Velocity = ProjectileMovement->LimitVelocity(RawLaunchVelocity);
+	if (ProjectileMovement->Velocity.IsNearlyZero() || ProjectileMovement->Velocity.ContainsNaN()) return false;
 	ProjectileMovement->Activate(true);
+	if (!ProjectileMovement->IsActive()) return false;
 
 	UE_LOG(LogTemp, Log, TEXT("[ThrowableBounce] Launch: Bounce=%d Active=%d Sim=%d Updated=%s Velocity=%s"),
 		ProjectileMovement->bShouldBounce,
@@ -337,12 +340,13 @@ void AThrowableWeaponProjectile::LaunchProjectile(const FVector& StartPosition, 
 		*ProjectileMovement->Velocity.ToString());
 
 	StartFuse();
-	StartLifeTimer(LifeSpan);
+	if (bIsActivated && !bPayloadActivated) StartLifeTimer(LifeSpan);
 
 	UE_LOG(LogTemp, Error, TEXT("Throwable launched. Type=%s Speed=%.1f GravityScale=%.2f"),
 		*UEnum::GetValueAsString(ProjectileType),
 		LaunchSpeed,
 		ProjectileMovement->ProjectileGravityScale);
+	return true;
 }
 
 void AThrowableWeaponProjectile::HandleProjectileBounce(const FHitResult& ImpactResult, const FVector& ImpactVelocity)
