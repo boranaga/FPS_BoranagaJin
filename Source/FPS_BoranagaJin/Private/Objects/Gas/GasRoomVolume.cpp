@@ -132,7 +132,7 @@ void AGasRoomVolume::UpdateExposure(float Dt)
     if (Concentration <= ToxicThreshold) { ExposureSeconds.Reset(); return; }
     TArray<FOverlapResult> Hits;
     FCollisionObjectQueryParams Objects(ECC_Pawn);
-    Objects.AddObjectTypesToQuery(ECC_GameTraceChannel6); // Existing project PawnEnemy channel.
+    Objects.AddObjectTypesToQuery(ECC_GameTraceChannel2); // Existing project PawnEnemy channel.
     FCollisionQueryParams Params(SCENE_QUERY_STAT(GasRoomPawns),false,this);
     GetWorld()->OverlapMultiByObjectType(Hits, RoomBounds->GetComponentLocation(), RoomBounds->GetComponentQuat(), Objects,
         FCollisionShape::MakeBox(RoomBounds->GetScaledBoxExtent()), Params);

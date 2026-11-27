@@ -233,7 +233,7 @@ void AGasPipe::Simulate(float Dt)
         TArray<FOverlapResult> Hits;
         FCollisionQueryParams Params(SCENE_QUERY_STAT(GasJet),false,this);
         FCollisionObjectQueryParams Objects(ECC_Pawn);
-        Objects.AddObjectTypesToQuery(ECC_GameTraceChannel6); // Project PawnEnemy channel.
+        Objects.AddObjectTypesToQuery(ECC_GameTraceChannel2); // Project PawnEnemy channel.
         GetWorld()->OverlapMultiByObjectType(Hits,P+N*Length*0.5f,FQuat::Identity,Objects,FCollisionShape::MakeSphere(BroadRadius),Params);
         TSet<TWeakObjectPtr<APawn>> Seen;
         for (const FOverlapResult& H:Hits)
