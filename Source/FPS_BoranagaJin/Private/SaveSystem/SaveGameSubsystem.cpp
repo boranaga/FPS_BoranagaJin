@@ -12,6 +12,7 @@
 #include "Characters/Player/CharacterPlayer.h"
 #include "Characters/BloodStainActor.h"
 #include "Characters/BloodTrailComponent.h"
+#include "Characters/HealthComponent.h"
 #include "Items/Item.h"
 #include "Items/ItemPickUp.h"
 #include "Items/InventorySystemComponent.h"
@@ -30,6 +31,52 @@ DEFINE_LOG_CATEGORY_STATIC(LogSaveGameSubsystem, Log, All);
 
 namespace
 {
+	void CaptureCharacterComponents(AActor* Actor, FWorldActorSaveData& Data)
+	{
+		if (!IsValid(Actor) || Actor->IsA<ACharacterPlayer>()) return;
+		if (const UHealthComponent* Health = Actor->FindComponentByClass<UHealthComponent>())
+		{
+			Data.bHasHealthComponentData = true;
+			Data.HealthComponentCurrentHealth = Health->WriteHealthSaveData();
+		}
+		if (const UBloodTrailComponent* Trail = Actor->FindComponentByClass<UBloodTrailComponent>())
+			Trail->WriteBloodTrailSaveData(Data.BloodTrailData);
+	}
+
+	void RestoreCharacterComponents(AActor* Actor, const FWorldActorSaveData& Data)
+	{
+		if (!IsValid(Actor) || Actor->IsA<ACharacterPlayer>()) return;
+		// Old records have no component snapshots. Let the owner's existing load hook handle them.
+		if (Data.BloodTrailData.bHasData)
+			if (UBloodTrailComponent* Trail = Actor->FindComponentByClass<UBloodTrailComponent>())
+				Trail->LoadBloodTrailSaveData(Data.BloodTrailData);
+		if (Data.bHasHealthComponentData)
+			if (UHealthComponent* Health = Actor->FindComponentByClass<UHealthComponent>())
+				Health->LoadHealthSaveData(Data.HealthComponentCurrentHealth);
+	}
+
+	struct FRestoredActorEntry
+	{
+		TWeakObjectPtr<AActor> Actor;
+		const FWorldActorSaveData* Data = nullptr;
+	};
+
+	void ApplyRestoredActorComponentsAndHooks(const TArray<FRestoredActorEntry>& Entries)
+	{
+		// All Actor properties in this batch were deserialized first.
+		for (const FRestoredActorEntry& Entry : Entries)
+		{
+			if (AActor* Actor = Entry.Actor.Get(); IsValid(Actor) && Entry.Data)
+				RestoreCharacterComponents(Actor, *Entry.Data);
+		}
+		for (const FRestoredActorEntry& Entry : Entries)
+		{
+			if (AActor* Actor = Entry.Actor.Get(); IsValid(Actor))
+				if (ISaveableActorInterface* Saveable = Cast<ISaveableActorInterface>(Actor))
+					Saveable->OnAfterLoad();
+		}
+	}
+
 	void CollectSavedInventoryIDs(const UFPSGameSave& Save, TSet<FGuid>& OutIDs)
 	{
 		const auto Collect = [&OutIDs](const TArray<FInventorySlotSaveData>& Slots)
@@ -938,6 +985,7 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 		ActorSaveData.InstanceID = SaveID;
 		ActorSaveData.ActorClass = Actor->GetClass();
 		ActorSaveData.bRuntimeSpawned = SaveableActor->IsRuntimeSpawned();
+		CaptureCharacterComponents(Actor, ActorSaveData);
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
@@ -1000,6 +1048,7 @@ void USaveGameSubsystem::CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject)
 		ActorSaveData.InstanceID = SaveID;
 		ActorSaveData.ActorClass = Actor->GetClass();
 		ActorSaveData.bRuntimeSpawned = SaveableActor->IsRuntimeSpawned();
+		CaptureCharacterComponents(Actor, ActorSaveData);
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
@@ -1071,7 +1120,7 @@ void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave&
 {
 	UWorld* World = GetWorld();
 	if (!IsValid(World)) { return; }
-	TArray<ISaveableActorInterface*> RestoredActors;
+	TArray<FRestoredActorEntry> RestoredActors;
 	UObjectPoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UObjectPoolSubsystem>();
 	if (PoolSubsystem == nullptr) { return; }
 
@@ -1109,17 +1158,11 @@ void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave&
 		FSaveGameArchive Archive(MemoryReader);
 
 		Actor->Serialize(Archive);
-
-		RestoredActors.Add(SaveableActor);
+		MemoryReader.Close();
+		RestoredActors.Add(FRestoredActorEntry{ Actor, &ActorSaveData });
 	}
 
-	for (ISaveableActorInterface* SaveableActor : RestoredActors)
-	{
-		if (SaveableActor)
-		{
-			SaveableActor->OnAfterLoad();
-		}
-	}
+	ApplyRestoredActorComponentsAndHooks(RestoredActors);
 }
 
 void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
@@ -1131,7 +1174,7 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	// ExitDoor can unlock another door or enable an escape trigger in OnAfterLoad.
 	// Doing that while other actors are still being deserialized may overwrite
 	// their restored state, depending on TActorIterator order.
-	TArray<TWeakObjectPtr<AActor>> RestoredActors;
+	TArray<FRestoredActorEntry> RestoredActors;
 	TSet<FGuid> InventoryIDs;
 	CollectSavedInventoryIDs(SaveObject, InventoryIDs);
 
@@ -1147,7 +1190,7 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 		if (!SaveID.IsValid() || InventoryIDs.Contains(SaveID)) { continue; }
 
 		const FWorldActorSaveData* ActorSaveData = SaveObject.FindActorData(SaveID);
-		if (!ActorSaveData) { continue; }
+		if (!ActorSaveData || ActorSaveData->bRuntimeSpawned) { continue; }
 
 		if (SaveableActor->ShouldSaveTransform())
 		{
@@ -1160,22 +1203,11 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 		Actor->Serialize(Archive);
 		MemoryReader.Close();
 
-		RestoredActors.Add(Actor);
+		RestoredActors.Add(FRestoredActorEntry{ Actor, ActorSaveData });
 	}
 
-	// Phase 2: all serialized properties are now available to OnAfterLoad.
-	// World references (including ExitDoor's LinkedDoor) remain level-configured;
-	// only the saveable actor state is deserialized.
-	for (const TWeakObjectPtr<AActor>& ActorEntry : RestoredActors)
-	{
-		AActor* Actor = ActorEntry.Get();
-		if (!IsValid(Actor)) { continue; }
-
-		if (ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor))
-		{
-			SaveableActor->OnAfterLoad();
-		}
-	}
+	// Phase 2: restore component state, then run existing owner hooks.
+	ApplyRestoredActorComponentsAndHooks(RestoredActors);
 }
 
 void USaveGameSubsystem::RestoreBloodStainData(const UFPSGameSave& SaveObject)

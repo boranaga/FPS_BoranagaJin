@@ -21,6 +21,13 @@ void UBloodTrailComponent::BeginPlay()
 	if (!OwnerActor) { return; }
 	HealthComponent = OwnerActor->FindComponentByClass<UHealthComponent>();
 	LastBloodDropLocation = OwnerActor->GetActorLocation();
+	bRuntimeInitialized = true;
+	if (PendingBloodTrailSaveData.IsSet())
+	{
+		const FBloodTrailComponentSaveData Pending = PendingBloodTrailSaveData.GetValue();
+		PendingBloodTrailSaveData.Reset();
+		ApplyBloodTrailSaveData(Pending);
+	}
 	EnsureBloodStainPool();
 }
 
@@ -53,28 +60,86 @@ void UBloodTrailComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 //	}
 //}
 
+void UBloodTrailComponent::WriteBloodTrailSaveData(FBloodTrailComponentSaveData& OutData) const
+{
+	OutData = FBloodTrailComponentSaveData();
+	if (PendingBloodTrailSaveData.IsSet())
+	{
+		OutData = PendingBloodTrailSaveData.GetValue();
+		return;
+	}
+	const UWorld* World = GetWorld();
+	if (!World || !bRuntimeInitialized) return;
+	const float Now = World->GetTimeSeconds();
+	OutData.bHasData = true;
+	OutData.bIsBleeding = IsBleeding();
+	OutData.RemainingBleedingTime = OutData.bIsBleeding
+		? (BleedingEndTime > 0.f ? FMath::Max(0.f, BleedingEndTime - Now) : -1.f)
+		: 0.f;
+	OutData.LastBloodDropAge = LastBloodDropTime == -BIG_NUMBER
+		? -1.f : FMath::Max(0.f, Now - LastBloodDropTime);
+	OutData.LastBloodDropLocation = LastBloodDropLocation;
+	OutData.NextSequenceIndex = NextSequenceIndex;
+}
+
+void UBloodTrailComponent::LoadBloodTrailSaveData(const FBloodTrailComponentSaveData& SaveData)
+{
+	if (!bRuntimeInitialized || !GetWorld())
+	{
+		PendingBloodTrailSaveData = SaveData;
+		return;
+	}
+	PendingBloodTrailSaveData.Reset();
+	ApplyBloodTrailSaveData(SaveData);
+}
+
+void UBloodTrailComponent::ApplyBloodTrailSaveData(const FBloodTrailComponentSaveData& SaveData)
+{
+	const UWorld* World = GetWorld();
+	const AActor* OwnerActor = GetOwner();
+	if (!World || !IsValid(OwnerActor)) return;
+	const float Now = World->GetTimeSeconds();
+
+	// Replace the previous state, including in-place loads and legacy saves.
+	StopBleeding();
+	LastBloodDropTime = -BIG_NUMBER;
+	LastBloodDropLocation = OwnerActor->GetActorLocation();
+	NextSequenceIndex = 0;
+	if (!SaveData.bHasData) return;
+
+	if (!SaveData.LastBloodDropLocation.ContainsNaN())
+		LastBloodDropLocation = SaveData.LastBloodDropLocation;
+	if (FMath::IsFinite(SaveData.LastBloodDropAge) && SaveData.LastBloodDropAge >= 0.f)
+		LastBloodDropTime = Now - SaveData.LastBloodDropAge;
+	NextSequenceIndex = FMath::Max(0, SaveData.NextSequenceIndex);
+
+	if (!SaveData.bIsBleeding || !FMath::IsFinite(SaveData.RemainingBleedingTime)) return;
+	if (SaveData.RemainingBleedingTime == -1.f)
+		StartBleeding(true);
+	else if (SaveData.RemainingBleedingTime > 0.f)
+		StartBleeding(false, SaveData.RemainingBleedingTime);
+}
+
 void UBloodTrailComponent::StartBleeding(bool bLoop, float duration)
 {
-	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::StartBleeding(bool bLoop, float duration)"));
-
-	if (bLoop) { bIsBleeding = true; }
-	else
+	if (bLoop)
 	{
 		bIsBleeding = true;
-		BleedingEndTime = GetWorld()->GetTimeSeconds() + duration;
+		BleedingEndTime = 0.f; // Clear a previous timed bleeding deadline.
+		return;
 	}
+	if (!GetWorld() || !FMath::IsFinite(duration) || duration <= 0.f)
+	{
+		StopBleeding();
+		return;
+	}
+	bIsBleeding = true;
+	BleedingEndTime = GetWorld()->GetTimeSeconds() + duration;
 }
 
 void UBloodTrailComponent::UpdateBleedingState()
 {
-	if (bIsBleeding)
-	{
-		const bool bHeavyDamageBleedingActive = GetWorld()->GetTimeSeconds() < BleedingEndTime;
-		if (!bHeavyDamageBleedingActive && GetWorld() && BleedingEndTime > 0)
-		{
-			StopBleeding();
-		}
-	}
+	if (bIsBleeding && !IsBleeding()) StopBleeding();
 }
 
 bool UBloodTrailComponent::CanDropBlood() const
@@ -161,15 +226,15 @@ void UBloodTrailComponent::SpawnBloodStain()
 
 void UBloodTrailComponent::StopBleeding()
 {
-	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::StopBleeding()"));
-
 	bIsBleeding = false;
 	BleedingEndTime = 0.f;
 }
 
 bool UBloodTrailComponent::IsBleeding() const
 {
-	return bIsBleeding;
+	if (!bIsBleeding) return false;
+	const UWorld* World = GetWorld();
+	return BleedingEndTime <= 0.f || (World && World->GetTimeSeconds() < BleedingEndTime);
 }
 bool UBloodTrailComponent::ReloadSettingsFromOwnerDataTable()
 {
@@ -206,5 +271,16 @@ void UBloodTrailComponent::AdvanceSequenceIndexPast(int32 RestoredSequenceIndex)
 	if (RestoredSequenceIndex >= 0 && RestoredSequenceIndex < MAX_int32)
 	{
 		NextSequenceIndex = FMath::Max(NextSequenceIndex, RestoredSequenceIndex + 1);
+		if (PendingBloodTrailSaveData.IsSet())
+		{
+			FBloodTrailComponentSaveData& Pending = PendingBloodTrailSaveData.GetValue();
+			if (!Pending.bHasData)
+			{
+				Pending.bHasData = true;
+				if (const AActor* OwnerActor = GetOwner())
+					Pending.LastBloodDropLocation = OwnerActor->GetActorLocation();
+			}
+			Pending.NextSequenceIndex = FMath::Max(Pending.NextSequenceIndex, RestoredSequenceIndex + 1);
+		}
 	}
 }

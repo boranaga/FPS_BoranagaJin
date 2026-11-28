@@ -113,6 +113,28 @@ float UHealthComponent::GetHealthPercent() const
 	return MaxHealth > 0.f ? CurrentHealth / MaxHealth : 0.f;
 }
 
+float UHealthComponent::WriteHealthSaveData() const
+{
+	return PendingInitialHealth.IsSet() ? PendingInitialHealth.GetValue() : CurrentHealth;
+}
+
+void UHealthComponent::LoadHealthSaveData(float SavedCurrentHealth)
+{
+	if (!FMath::IsFinite(SavedCurrentHealth))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid saved health on %s"), *GetNameSafe(GetOwner()));
+		return;
+	}
+	if (!bSettingsInitialized)
+	{
+		// BeginPlay applies this only after the configured maximum is loaded.
+		PendingInitialHealth = SavedCurrentHealth;
+		return;
+	}
+	// Refresh listeners even when HP is unchanged. Death is still a transition.
+	CommitHealth(SavedCurrentHealth, true);
+}
+
 void UHealthComponent::SetCurrHealth(float NewHealthVal)
 {
 	if (!FMath::IsFinite(NewHealthVal)) { return; }
@@ -130,7 +152,7 @@ void UHealthComponent::ResetHealth()
 	CommitHealth(MaxHealth);
 }
 
-void UHealthComponent::CommitHealth(float NewHealth)
+void UHealthComponent::CommitHealth(float NewHealth, bool bForceNotify)
 {
 	const float OldHealth = CurrentHealth;
 	const bool bWasDead = bIsDead;
@@ -139,7 +161,7 @@ void UHealthComponent::CommitHealth(float NewHealth)
 	const bool bBecameDead = !bWasDead && bIsDead;
 
 	// Listeners always observe a consistent health/death state.
-	if (OldHealth != CurrentHealth) { BroadcastHealthChanged(); }
+	if (bForceNotify || OldHealth != CurrentHealth) { BroadcastHealthChanged(); }
 	if (bBecameDead && bIsDead) { OnDeath.Broadcast(); }
 }
 

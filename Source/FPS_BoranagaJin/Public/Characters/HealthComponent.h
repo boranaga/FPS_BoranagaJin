@@ -60,9 +60,13 @@ public:
 	float GetMaxHealth() const;
 	float GetHealthPercent() const;
 
+	// Save the gameplay HP, not the DT configuration or derived death flag.
+	float WriteHealthSaveData() const;
+	void LoadHealthSaveData(float SavedCurrentHealth);
+
 	void SetCurrHealth(float NewHealthVal);
 	void ResetHealth();
 private:
-	void CommitHealth(float NewHealth);
+	void CommitHealth(float NewHealth, bool bForceNotify = false);
 	void BroadcastHealthChanged();
 };

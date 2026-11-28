@@ -6,6 +6,7 @@
 #include "Characters/HealthComponent.h"
 #include "Characters/StaminaComponent.h"
 #include "Characters/BloodTrailComponent.h"
+#include "SaveSystem/SaveDataTypes.h"
 #include "Characters/Player/PlayerCameraComponent.h"
 #include "Characters/InteractionComponent.h"
 #include "Characters/Enemies/EnemyBase.h"
@@ -383,7 +384,13 @@ void ACharacterPlayer::WritePlayerSaveData(FPlayerSaveData& OutSaveData) const
 
 	if (HealthComponent)
 	{
-		OutSaveData.CurrentHealth = HealthComponent->GetCurrentHealth();
+		OutSaveData.CurrentHealth = HealthComponent->WriteHealthSaveData();
+	}
+
+	OutSaveData.BloodTrailData = FBloodTrailComponentSaveData();
+	if (IsValid(BloodTrailComponent))
+	{
+		BloodTrailComponent->WriteBloodTrailSaveData(OutSaveData.BloodTrailData);
 	}
 
 	//-------------------
@@ -412,11 +419,6 @@ void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData)
 	UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData)"));
 
 	SetActorTransform(SaveData.PlayerTransform, false, nullptr, ETeleportType::TeleportPhysics);
-	if (HealthComponent)
-	{
-		UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData 1)"));
-		HealthComponent->SetCurrHealth(SaveData.CurrentHealth);
-	}
 	if (InventorySystem)
 	{
 		UE_LOG(LogTemp, Error, TEXT("void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData 2)"));
@@ -427,7 +429,13 @@ void ACharacterPlayer::LoadPlayerSaveData(const FPlayerSaveData& SaveData)
 		InventorySystem->RestoreInventoryFromSaveData(SaveData.ThrowableWeaponInventorySlots, EInventoryName::ThrowableWeapon);
 
 		InventorySystem->RestoreEquippedQuickSlot(SaveData.EquippedQuickSlotIndex);
+		if (!InventorySystem->WasInventoryRestoreSuccessful()) return;
 	}
+	// Transform is already restored. Apply bleeding before notifying health listeners.
+	if (IsValid(BloodTrailComponent))
+		BloodTrailComponent->LoadBloodTrailSaveData(SaveData.BloodTrailData);
+	if (IsValid(HealthComponent))
+		HealthComponent->LoadHealthSaveData(SaveData.CurrentHealth);
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)

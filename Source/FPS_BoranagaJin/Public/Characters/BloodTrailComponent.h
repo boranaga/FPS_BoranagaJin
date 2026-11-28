@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Misc/Optional.h"
+#include "SaveSystem/SaveDataTypes.h"
 #include "BloodTrailComponent.generated.h"
 
 class ABloodStainActor;
@@ -64,10 +66,16 @@ private:
 
 	int32 NextSequenceIndex = 0;
 
+	bool bRuntimeInitialized = false;
+	TOptional<FBloodTrailComponentSaveData> PendingBloodTrailSaveData;
+
 public:
 	//void NotifyDamageReceived(float AppliedDamage);
 	UFUNCTION(BlueprintCallable, Category = "Blood Trail - Configuration")
 	bool ReloadSettingsFromOwnerDataTable();
+
+	void WriteBloodTrailSaveData(FBloodTrailComponentSaveData& OutData) const;
+	void LoadBloodTrailSaveData(const FBloodTrailComponentSaveData& SaveData);
 
 	void StartBleeding(bool bLoop = true, float duration = 0.f);
 	void StopBleeding();
@@ -76,6 +84,7 @@ public:
 	// Keep subsequently created stains ordered after restored markers.
 	void AdvanceSequenceIndexPast(int32 RestoredSequenceIndex);
 private:
+	void ApplyBloodTrailSaveData(const FBloodTrailComponentSaveData& SaveData);
 	void UpdateBleedingState();
 	bool CanDropBlood() const;
 	bool FindGroundBelow(FHitResult& OutHitResult) const;

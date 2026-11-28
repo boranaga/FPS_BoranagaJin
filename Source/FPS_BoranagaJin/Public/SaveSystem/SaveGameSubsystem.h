@@ -141,7 +141,7 @@ private:
 	int32 SaveUserIndex = 0;
 
 	UPROPERTY()
-	int32 CurrentSaveVersion = 3; // v3: pooled blood stain records; v2 remains readable.
+	int32 CurrentSaveVersion = 4; // v4: character component state; older saves remain readable.
 
 	UPROPERTY()
 	bool bIsSaving = false;
