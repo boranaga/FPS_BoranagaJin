@@ -3,6 +3,8 @@
 #include "Characters/HealthComponent.h"
 #include "Characters/CharacterComponentSettingsSource.h"
 #include "Characters/CharacterComponentSettings.h"
+#include "ObjectPoolSubsystem.h"
+#include "Engine/World.h"
 
 UBloodTrailComponent::UBloodTrailComponent()
 {
@@ -19,6 +21,7 @@ void UBloodTrailComponent::BeginPlay()
 	if (!OwnerActor) { return; }
 	HealthComponent = OwnerActor->FindComponentByClass<UHealthComponent>();
 	LastBloodDropLocation = OwnerActor->GetActorLocation();
+	EnsureBloodStainPool();
 }
 
 void UBloodTrailComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -112,54 +115,47 @@ bool UBloodTrailComponent::FindGroundBelow(FHitResult& OutHitResult) const
 	return GetWorld()->LineTraceSingleByChannel(OutHitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
 }
 
+void UBloodTrailComponent::EnsureBloodStainPool() const
+{
+	UWorld* World = GetWorld();
+	if (!World || !BloodStainClass || BloodStainPoolPrewarmCount <= 0) return;
+	if (UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>())
+	{
+		// Multiple characters using one BP class share a minimum capacity.
+		Pool->EnsurePoolCapacity(BloodStainClass, BloodStainPoolPrewarmCount);
+	}
+}
+
 void UBloodTrailComponent::SpawnBloodStain()
 {
-	UE_LOG(LogTemp, Error, TEXT("void UBloodTrailComponent::SpawnBloodStain()"));
-
-	if (!BloodStainClass || !GetWorld())
-	{
-		return;
-	}
-
+	UWorld* World = GetWorld();
 	AActor* OwnerActor = GetOwner();
+	if (!World || !IsValid(OwnerActor) || !BloodStainClass) return;
 
-	if (!OwnerActor)
-	{
-		return;
-	}
+	UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>();
+	if (!IsValid(Pool)) return;
 
 	FHitResult GroundHit;
+	if (!FindGroundBelow(GroundHit)) return;
 
-	if (!FindGroundBelow(GroundHit))
+	const FVector Normal = GroundHit.ImpactNormal.GetSafeNormal();
+	if (Normal.IsNearlyZero() || Normal.ContainsNaN() || GroundHit.ImpactPoint.ContainsNaN()) return;
+	const FVector SpawnLocation = GroundHit.ImpactPoint + Normal * 2.f;
+
+	ABloodStainActor* BloodStain = Pool->SpawnFromPool(
+		BloodStainClass, SpawnLocation, FRotator::ZeroRotator);
+	if (!IsValid(BloodStain)) return;
+
+	if (!BloodStain->InitializeBloodStain(OwnerActor, NextSequenceIndex, Normal))
 	{
+		// A failed initialization must not leave a checked-out actor behind.
+		Pool->ReturnToPool(BloodStain);
 		return;
 	}
 
-	FActorSpawnParameters SpawnParameters;
-	SpawnParameters.Owner = OwnerActor;
-	SpawnParameters.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	//TODO: Object Pooling으로 관리하기
-	ABloodStainActor* BloodStain =
-		GetWorld()->SpawnActor<ABloodStainActor>(
-			BloodStainClass,
-			GroundHit.ImpactPoint +
-			GroundHit.ImpactNormal * 2.f,
-			FRotator::ZeroRotator,
-			SpawnParameters
-		);
-
-	if (!BloodStain)
-	{
-		return;
-	}
-
-	BloodStain->InitializeBloodStain(OwnerActor, NextSequenceIndex, GroundHit.ImpactNormal);
-
+	// Only successful stains advance trail ordering, time and distance.
 	++NextSequenceIndex;
-
-	LastBloodDropTime = GetWorld()->GetTimeSeconds();
+	LastBloodDropTime = World->GetTimeSeconds();
 	LastBloodDropLocation = OwnerActor->GetActorLocation();
 }
 
@@ -199,5 +195,8 @@ bool UBloodTrailComponent::ReloadSettingsFromOwnerDataTable()
 
 	// Tick interval can be changed at runtime without reconstructing the component.
 	SetComponentTickInterval(BloodTrailTickInterval);
+	// A runtime DT reload can select a different BloodStain Blueprint class.
+	// Existing marks keep their original class and expire independently.
+	if (HasBegunPlay()) EnsureBloodStainPool();
 	return true;
 }

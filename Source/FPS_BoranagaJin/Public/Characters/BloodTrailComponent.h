@@ -24,6 +24,10 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Blood Trail")
 	TSubclassOf<ABloodStainActor> BloodStainClass;
 
+	/** Minimum total size of the shared class pool, not a per-character count or maximum. */
+	UPROPERTY(EditAnywhere, Category = "Blood Trail|Pool", meta = (ClampMin = "0", UIMin = "0"))
+	int32 BloodStainPoolPrewarmCount = 16;
+
 	/*
 	 * HP가 이 비율 이하이면 지속적으로 출혈한다.
 	 */
@@ -74,4 +78,5 @@ private:
 	bool CanDropBlood() const;
 	bool FindGroundBelow(FHitResult& OutHitResult) const;
 	void SpawnBloodStain();
+	void EnsureBloodStainPool() const;
 };
