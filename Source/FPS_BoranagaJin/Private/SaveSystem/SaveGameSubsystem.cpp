@@ -10,6 +10,8 @@
 #include "ObjectPoolSubsystem.h"
 
 #include "Characters/Player/CharacterPlayer.h"
+#include "Characters/BloodStainActor.h"
+#include "Characters/BloodTrailComponent.h"
 #include "Items/Item.h"
 #include "Items/ItemPickUp.h"
 #include "Items/InventorySystemComponent.h"
@@ -470,6 +472,9 @@ bool USaveGameSubsystem::ApplyLoadedGame()
 		return false;
 	}
 
+	// Trail owners and the Player must exist in their restored state first.
+	RestoreBloodStainData(*LoadedSaveGame);
+
 	CurrentCheckpointData = LoadedSaveGame->CheckpointData;
 	CompletedTutorialIDs = LoadedSaveGame->CompletedTutorialIDs;
 
@@ -892,6 +897,7 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 	if (!IsValid(World)) { return; }
 
 	SaveObject.WorldActorData.Reset();
+	SaveObject.RuntimeSpawnedWorldActorData.Reset();
 
 	TSet<FGuid> UsedSaveIDs;
 	TSet<AItem*> InventoryItems;
@@ -903,6 +909,10 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 	{
 		AActor* Actor = *It;
 		if (!IsValid(Actor) || ShouldSkipWorldItem(Actor, InventoryItems, LegacyLinkedIDs)) { continue; }
+		if (const ABloodStainActor* Stain = Cast<ABloodStainActor>(Actor))
+		{
+			if (!Stain->ShouldSaveBloodStain()) continue;
+		}
 
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
@@ -942,7 +952,8 @@ void USaveGameSubsystem::CaptureWorldActorData(UFPSGameSave& SaveObject)
 
 		MemoryWriter.Close();
 
-		SaveObject.WorldActorData.Add(MoveTemp(ActorSaveData));
+		if (Cast<ABloodStainActor>(Actor)) SaveObject.RuntimeSpawnedWorldActorData.Add(MoveTemp(ActorSaveData));
+		else SaveObject.WorldActorData.Add(MoveTemp(ActorSaveData));
 	}
 }
 
@@ -964,6 +975,10 @@ void USaveGameSubsystem::CaptureWorldActorData_Upgrade(UFPSGameSave& SaveObject)
 	{
 		AActor* Actor = *It;
 		if (!IsValid(Actor) || ShouldSkipWorldItem(Actor, InventoryItems, LegacyLinkedIDs)) { continue; }
+		if (const ABloodStainActor* Stain = Cast<ABloodStainActor>(Actor))
+		{
+			if (!Stain->ShouldSaveBloodStain()) continue;
+		}
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
 		const FGuid SaveID = SaveableActor->GetInstanceID();
@@ -1065,11 +1080,14 @@ void USaveGameSubsystem::RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave&
 	for (const FWorldActorSaveData& ActorSaveData : SaveObject.RuntimeSpawnedWorldActorData)
 	{
 		if (!ActorSaveData.InstanceID.IsValid() || InventoryIDs.Contains(ActorSaveData.InstanceID)) { continue; }
+		UClass* ActorClass = ActorSaveData.ActorClass.LoadSynchronous();
+		// Blood stains restore after the general world and Player have been applied.
+		if (ActorClass && ActorClass->IsChildOf(ABloodStainActor::StaticClass())) continue;
 		AActor* Actor = nullptr;
 
 		if (ActorSaveData.bRuntimeSpawned)
 		{
-			Actor = PoolSubsystem->SpawnFromPool(ActorSaveData.ActorClass.Get(), FVector::ZeroVector, FRotator::ZeroRotator, true);
+			Actor = PoolSubsystem->SpawnFromPool(ActorClass, FVector::ZeroVector, FRotator::ZeroRotator, true);
 		}
 
 		if (!IsValid(Actor))
@@ -1120,7 +1138,7 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (!IsValid(Actor)) { continue; }
+		if (!IsValid(Actor) || Actor->IsA<ABloodStainActor>()) { continue; }
 
 		ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor);
 		if (!SaveableActor) { continue; }
@@ -1156,6 +1174,121 @@ void USaveGameSubsystem::RestoreWorldActorData(const UFPSGameSave& SaveObject)
 		if (ISaveableActorInterface* SaveableActor = Cast<ISaveableActorInterface>(Actor))
 		{
 			SaveableActor->OnAfterLoad();
+		}
+	}
+}
+
+void USaveGameSubsystem::RestoreBloodStainData(const UFPSGameSave& SaveObject)
+{
+	UWorld* World = GetWorld();
+	if (!IsValid(World)) return;
+	UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>();
+	if (!IsValid(Pool)) return;
+
+	// Replace, rather than append, the saved snapshot. Also handles in-place
+	// loads and old saves without any blood records. Never return while iterating.
+	TArray<TWeakObjectPtr<ABloodStainActor>> ExistingStains;
+	for (TActorIterator<ABloodStainActor> It(World); It; ++It)
+	{
+		ABloodStainActor* Stain = *It;
+		if (IsValid(Stain) && (Stain->IsActiveInPool() || Stain->IsBloodStainActive())) ExistingStains.Add(Stain);
+	}
+	for (const TWeakObjectPtr<ABloodStainActor>& Entry : ExistingStains)
+	{
+		if (ABloodStainActor* Stain = Entry.Get()) Stain->ReleaseBloodStain();
+	}
+
+	// Resolve owners after all other saveable actors have restored their GUIDs.
+	TMap<FGuid, TWeakObjectPtr<AActor>> OwnersByID;
+	TSet<FGuid> AmbiguousIDs;
+	TMap<FName, TWeakObjectPtr<AActor>> PlacedOwners;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!IsValid(Actor) || Actor->IsA<ABloodStainActor>()) continue;
+		if (const IPoolableActorInterface* Poolable = Cast<IPoolableActorInterface>(Actor))
+		{
+			if (!Poolable->IsActiveInPool()) continue;
+		}
+		if (const ISaveableActorInterface* Saveable = Cast<ISaveableActorInterface>(Actor))
+		{
+			const FGuid ID = Saveable->GetInstanceID();
+			if (ID.IsValid())
+			{
+				if (OwnersByID.Contains(ID)) AmbiguousIDs.Add(ID);
+				else OwnersByID.Add(ID, Actor);
+			}
+		}
+		if (Actor->GetLevel() == World->PersistentLevel && Actor->HasAnyFlags(RF_WasLoaded))
+		{
+			PlacedOwners.Add(Actor->GetFName(), Actor);
+		}
+	}
+	ACharacterPlayer* Player = FindPlayerCharacter();
+	TSet<FGuid> InventoryIDs;
+	CollectSavedInventoryIDs(SaveObject, InventoryIDs);
+	TSet<FGuid> RestoredIDs;
+	for (const FWorldActorSaveData& Data : SaveObject.RuntimeSpawnedWorldActorData)
+	{
+		UClass* Class = Data.ActorClass.LoadSynchronous();
+		if (!Class || !Class->IsChildOf(ABloodStainActor::StaticClass())) continue;
+		if (!Data.bRuntimeSpawned || Data.bDestroyed || !Data.InstanceID.IsValid() ||
+			Data.ActorTransform.ContainsNaN() || !Data.ActorTransform.IsRotationNormalized() ||
+			RestoredIDs.Contains(Data.InstanceID) || InventoryIDs.Contains(Data.InstanceID) ||
+			OwnersByID.Contains(Data.InstanceID))
+		{
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Invalid or duplicate blood stain record: %s"), *Data.InstanceID.ToString());
+			continue;
+		}
+		// Unlike the generic runtime path, reuse the already prewarmed actors.
+		ABloodStainActor* Stain = Cast<ABloodStainActor>(Pool->SpawnFromPool(Class,
+			Data.ActorTransform.GetLocation(), Data.ActorTransform.Rotator()));
+		if (!IsValid(Stain))
+		{
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Failed to acquire blood stain: %s"), *Data.InstanceID.ToString());
+			continue;
+		}
+		Stain->SetActorTransform(Data.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
+		FMemoryReader Reader(Data.ActorData, true);
+		FSaveGameArchive Archive(Reader);
+		Stain->Serialize(Archive);
+		const bool bArchiveError = Archive.IsError() || Reader.IsError() || Data.ActorData.IsEmpty();
+		Reader.Close();
+		if (bArchiveError)
+		{
+			Stain->ReleaseBloodStain();
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Failed to deserialize blood stain: %s"), *Data.InstanceID.ToString());
+			continue;
+		}
+
+		AActor* Owner = nullptr;
+		if (Stain->WasPlayerTrailOwner()) Owner = Player;
+		else if (const FGuid ID = Stain->GetSavedTrailOwnerID(); ID.IsValid())
+		{
+			if (!AmbiguousIDs.Contains(ID))
+			{
+				if (const TWeakObjectPtr<AActor>* Entry = OwnersByID.Find(ID)) Owner = Entry->Get();
+			}
+		}
+		else if (const TWeakObjectPtr<AActor>* Entry = PlacedOwners.Find(Stain->GetSavedPlacedOwnerName()))
+		{
+			Owner = Entry->Get();
+		}
+		Stain->PrepareRestoredBloodStain(Data.InstanceID, Owner);
+		Stain->OnAfterLoad();
+		if (!IsValid(Stain) || !Stain->IsBloodStainActive())
+		{
+			if (IsValid(Stain) && Stain->IsActiveInPool()) Stain->ReleaseBloodStain();
+			UE_LOG(LogSaveGameSubsystem, Warning, TEXT("Invalid or expired blood stain state: %s"), *Data.InstanceID.ToString());
+			continue;
+		}
+		RestoredIDs.Add(Data.InstanceID);
+		if (IsValid(Owner))
+		{
+			if (UBloodTrailComponent* Trail = Owner->FindComponentByClass<UBloodTrailComponent>())
+			{
+				Trail->AdvanceSequenceIndexPast(Stain->GetSequenceIndex());
+			}
 		}
 	}
 }

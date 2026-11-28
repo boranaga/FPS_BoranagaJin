@@ -3917,7 +3917,7 @@ bool UEnemyStateMachineComponent::FindNextBloodStain(ABloodStainActor*& OutBlood
 
 bool UEnemyStateMachineComponent::IsBloodStainValid(const ABloodStainActor* BloodStain) const
 {
-	if (!IsValid(BloodStain) || !GetWorld()) { return false; }
+	if (!IsValid(BloodStain) || !BloodStain->IsBloodStainActive() || !GetWorld()) { return false; }
 	const float BloodAge = GetWorld()->GetTimeSeconds() - BloodStain->GetBloodSpawnTime();
 	return BloodAge <= MaximumTrackableBloodAge;
 }

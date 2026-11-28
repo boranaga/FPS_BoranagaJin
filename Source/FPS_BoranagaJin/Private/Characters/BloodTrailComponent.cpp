@@ -130,7 +130,7 @@ void UBloodTrailComponent::SpawnBloodStain()
 {
 	UWorld* World = GetWorld();
 	AActor* OwnerActor = GetOwner();
-	if (!World || !IsValid(OwnerActor) || !BloodStainClass) return;
+	if (!World || !IsValid(OwnerActor) || !BloodStainClass || NextSequenceIndex == MAX_int32) return;
 
 	UObjectPoolSubsystem* Pool = World->GetSubsystem<UObjectPoolSubsystem>();
 	if (!IsValid(Pool)) return;
@@ -199,4 +199,12 @@ bool UBloodTrailComponent::ReloadSettingsFromOwnerDataTable()
 	// Existing marks keep their original class and expire independently.
 	if (HasBegunPlay()) EnsureBloodStainPool();
 	return true;
+}
+
+void UBloodTrailComponent::AdvanceSequenceIndexPast(int32 RestoredSequenceIndex)
+{
+	if (RestoredSequenceIndex >= 0 && RestoredSequenceIndex < MAX_int32)
+	{
+		NextSequenceIndex = FMath::Max(NextSequenceIndex, RestoredSequenceIndex + 1);
+	}
 }

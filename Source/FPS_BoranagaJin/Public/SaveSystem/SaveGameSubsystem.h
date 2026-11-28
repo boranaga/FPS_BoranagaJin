@@ -101,6 +101,7 @@ private:
 	bool RestorePlayerData(const UFPSGameSave& SaveObject);
 	void RestoreRuntimeSpawnedWorldActorData(const UFPSGameSave& SaveObject);
 	void RestoreWorldActorData(const UFPSGameSave& SaveObject);
+	void RestoreBloodStainData(const UFPSGameSave& SaveObject);
 
 	void HandleAsyncSaveCompleted(const FString& SlotName, const int32 UserIndex, bool bSuccess);
 
@@ -140,7 +141,7 @@ private:
 	int32 SaveUserIndex = 0;
 
 	UPROPERTY()
-	int32 CurrentSaveVersion = 2;
+	int32 CurrentSaveVersion = 3; // v3: pooled blood stain records; v2 remains readable.
 
 	UPROPERTY()
 	bool bIsSaving = false;

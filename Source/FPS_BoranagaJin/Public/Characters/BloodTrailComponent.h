@@ -73,6 +73,8 @@ public:
 	void StopBleeding();
 	bool IsBleeding() const;
 	float GetBleedingEndTime() const { return BleedingEndTime; }
+	// Keep subsequently created stains ordered after restored markers.
+	void AdvanceSequenceIndexPast(int32 RestoredSequenceIndex);
 private:
 	void UpdateBleedingState();
 	bool CanDropBlood() const;

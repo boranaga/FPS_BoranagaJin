@@ -3,6 +3,7 @@
 #include "Components/DecalComponent.h"
 #include "Engine/World.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "ObjectPoolSubsystem.h"
 #include "TimerManager.h"
 
@@ -103,6 +104,12 @@ void ABloodStainActor::ResetBloodStainRuntime()
 	TrailOwner.Reset();
 	SequenceIndex = INDEX_NONE;
 	BloodSpawnTime = 0.f;
+	InstanceID.Invalidate();
+	SavedBloodAge = -1.f;
+	SavedRemainingLife = -2.f;
+	bSavedOwnerIsPlayer = false;
+	SavedTrailOwnerID.Invalidate();
+	SavedPlacedOwnerName = NAME_None;
 	SetOwner(nullptr);
 	SetInstigator(nullptr);
 	SetActorHiddenInGame(true);
@@ -123,20 +130,47 @@ void ABloodStainActor::ResetBloodStainRuntime()
 	}
 }
 
-void ABloodStainActor::ConfigureDecalFade()
+void ABloodStainActor::ConfigureDecalFade(float Age)
 {
-	// Restore the visual fade for this lease. Decal lifetime must not destroy
-	// the component; the actor's own timer is responsible for pool return.
-	DecalComponent->SetFadeIn(ConfiguredFadeInStartDelay, ConfiguredFadeInDuration);
-	DecalComponent->SetFadeOut(ConfiguredFadeStartDelay, ConfiguredFadeDuration, false);
+	// Resume the remaining fade schedule; a partially completed fade restarts
+	// from the visible endpoint over its remaining duration (no material change).
+	const auto RemainingFade = [Age](float Delay, float Duration, float& OutDelay, float& OutDuration)
+		{
+			Delay = FMath::Max(0.f, Delay);
+			Duration = FMath::Max(0.f, Duration);
+			OutDelay = FMath::Max(0.f, Delay - Age);
+			OutDuration = FMath::Max(0.f, Duration - FMath::Max(0.f, Age - Delay));
+		};
+	float InDelay, InDuration, OutDelay, OutDuration;
+	RemainingFade(ConfiguredFadeInStartDelay, ConfiguredFadeInDuration, InDelay, InDuration);
+	RemainingFade(ConfiguredFadeStartDelay, ConfiguredFadeDuration, OutDelay, OutDuration);
+	DecalComponent->SetFadeIn(InDelay, InDuration);
+	DecalComponent->SetFadeOut(OutDelay, OutDuration, false);
 	DecalComponent->SetLifeSpan(0.f);
+}
+
+void ABloodStainActor::ShowBloodStain(float Age, float RemainingLife)
+{
+	StopLifetimeTimers();
+	BloodSpawnTime = GetWorld()->GetTimeSeconds() - Age;
+	bBloodStainInitialized = true;
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
+	ConfigureDecalFade(Age);
+	SetActorHiddenInGame(false);
+	DecalComponent->SetVisibility(true);
+	if (RemainingLife > 0.f)
+	{
+		GetWorld()->GetTimerManager().SetTimer(BloodLifeTimer, this,
+			&ABloodStainActor::ReleaseBloodStain, RemainingLife, false);
+	}
 }
 
 bool ABloodStainActor::InitializeBloodStain(AActor* InTrailOwner, int32 InSequenceIndex, const FVector& SurfaceNormal)
 {
 	UWorld* World = GetWorld();
 	if (!World || !IsValid(InTrailOwner) || InTrailOwner->GetWorld() != World ||
-		InSequenceIndex < 0 || !IsValid(DecalComponent) || SurfaceNormal.ContainsNaN() ||
+		InSequenceIndex < 0 || InSequenceIndex == MAX_int32 || !IsValid(DecalComponent) || SurfaceNormal.ContainsNaN() ||
 		SurfaceNormal.IsNearlyZero() || (OwningPool.IsValid() && !bIsActiveInPool) ||
 		bBloodStainInitialized)
 	{
@@ -158,27 +192,16 @@ bool ABloodStainActor::InitializeBloodStain(AActor* InTrailOwner, int32 InSequen
 	SetOwner(InTrailOwner);
 	TrailOwner = InTrailOwner;
 	SequenceIndex = InSequenceIndex;
-	BloodSpawnTime = World->GetTimeSeconds();
-	bBloodStainInitialized = true;
-
-	SetActorEnableCollision(false);
-	SetActorTickEnabled(false);
-	ConfigureDecalFade();
-	SetActorHiddenInGame(false);
-	DecalComponent->SetVisibility(true);
+	InstanceID = FGuid::NewGuid();
 
 	// InitialLifeSpan == 0 retains the previous infinite-lifetime convention.
-	// If a BP fade finishes earlier, retire the marker when it becomes invisible.
 	float LeaseDuration = ConfiguredLifeSpan;
-	const float FadeEndTime = DecalComponent->FadeStartDelay + DecalComponent->FadeDuration;
+	const float FadeEndTime = ConfiguredFadeStartDelay + ConfiguredFadeDuration;
 	if (FMath::IsFinite(FadeEndTime) && FadeEndTime > 0.f)
 	{
 		LeaseDuration = LeaseDuration > 0.f ? FMath::Min(LeaseDuration, FadeEndTime) : FadeEndTime;
 	}
-	if (LeaseDuration > 0.f)
-	{
-		World->GetTimerManager().SetTimer(BloodLifeTimer, this, &ABloodStainActor::ReleaseBloodStain, LeaseDuration, false);
-	}
+	ShowBloodStain(0.f, LeaseDuration > 0.f ? LeaseDuration : -1.f);
 	return true;
 }
 
@@ -215,4 +238,84 @@ int32 ABloodStainActor::GetSequenceIndex() const
 float ABloodStainActor::GetBloodSpawnTime() const
 {
 	return bBloodStainInitialized ? BloodSpawnTime : 0.f;
+}
+
+FGuid ABloodStainActor::GetInstanceID() const
+{
+	return bBloodStainInitialized ? InstanceID : FGuid();
+}
+
+float ABloodStainActor::GetRemainingBloodLife() const
+{
+	UWorld* World = GetWorld();
+	if (!World || !bBloodStainInitialized) return 0.f;
+	const float LeaseRemaining = World->GetTimerManager().GetTimerRemaining(BloodLifeTimer);
+	// Respect an earlier expiry requested through the inherited SetLifeSpan API.
+	const float NativeRemaining = GetLifeSpan();
+	if (NativeRemaining > 0.f)
+	{
+		return LeaseRemaining >= 0.f ? FMath::Min(LeaseRemaining, NativeRemaining) : NativeRemaining;
+	}
+	return LeaseRemaining >= 0.f ? LeaseRemaining : -1.f;
+}
+
+bool ABloodStainActor::ShouldSaveBloodStain() const
+{
+	if (!bBloodStainInitialized || !InstanceID.IsValid() || !IsValid(DecalComponent)) return false;
+	const float Remaining = GetRemainingBloodLife();
+	return FMath::IsFinite(Remaining) && (Remaining == -1.f || Remaining > 0.f);
+}
+
+void ABloodStainActor::OnBeforeSave()
+{
+	if (!ShouldSaveBloodStain()) return;
+	SavedBloodAge = FMath::Max(0.f, static_cast<float>(GetWorld()->GetTimeSeconds() - BloodSpawnTime));
+	SavedRemainingLife = GetRemainingBloodLife();
+	bSavedOwnerIsPlayer = false;
+	SavedTrailOwnerID.Invalidate();
+	SavedPlacedOwnerName = NAME_None;
+	if (AActor* OwnerActor = TrailOwner.Get())
+	{
+		// CharacterPlayer uses ISaveablePlayerInterface rather than a world GUID.
+		bSavedOwnerIsPlayer = OwnerActor == UGameplayStatics::GetPlayerPawn(this, 0);
+		if (bSavedOwnerIsPlayer) return;
+		if (const ISaveableActorInterface* SaveableOwner = Cast<ISaveableActorInterface>(OwnerActor))
+		{
+			SavedTrailOwnerID = SaveableOwner->GetInstanceID();
+			if (SavedTrailOwnerID.IsValid()) return;
+		}
+		// Never match a dynamically generated Actor by its potentially reused name.
+		if (OwnerActor->GetLevel() == GetWorld()->PersistentLevel && OwnerActor->HasAnyFlags(RF_WasLoaded))
+		{
+			SavedPlacedOwnerName = OwnerActor->GetFName();
+		}
+	}
+}
+
+void ABloodStainActor::PrepareRestoredBloodStain(const FGuid& SavedID, AActor* ResolvedOwner)
+{
+	if (!bIsActiveInPool || bBloodStainInitialized) return;
+	InstanceID = SavedID;
+	if (IsValid(ResolvedOwner) && ResolvedOwner->GetWorld() == GetWorld())
+	{
+		TrailOwner = ResolvedOwner;
+		SetOwner(ResolvedOwner);
+	}
+}
+
+void ABloodStainActor::OnAfterLoad()
+{
+	if (!bIsActiveInPool || bBloodStainInitialized) return;
+	if (!GetWorld() || !IsValid(DecalComponent) || !InstanceID.IsValid() ||
+		SequenceIndex < 0 || SequenceIndex == MAX_int32 ||
+		!FMath::IsFinite(SavedBloodAge) || SavedBloodAge < 0.f ||
+		!FMath::IsFinite(SavedRemainingLife) ||
+		(SavedRemainingLife != -1.f && SavedRemainingLife <= 0.f))
+	{
+		ReleaseBloodStain();
+		return;
+	}
+	// Transform is already restored by the subsystem. Do not randomize it again.
+	// BloodSpawnTime is rebased to this world's clock (it may be negative).
+	ShowBloodStain(SavedBloodAge, SavedRemainingLife);
 }
